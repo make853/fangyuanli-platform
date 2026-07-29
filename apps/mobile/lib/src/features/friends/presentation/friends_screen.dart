@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
+import 'friend_profile_screen.dart';
 import 'friend_requests_screen.dart';
 
 class FriendsScreen extends ConsumerStatefulWidget {
@@ -272,57 +273,68 @@ class _ContactTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: contact.pinned ? const Color(0xFFE7EFEA) : Colors.white,
+    return Material(
+      color: contact.pinned ? const Color(0xFFE7EFEA) : Colors.white,
+      borderRadius: BorderRadius.circular(15),
+      child: InkWell(
         borderRadius: BorderRadius.circular(15),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          _InitialAvatar(name: contact.visibleName),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => FriendProfileScreen(initialContact: contact),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              _InitialAvatar(name: contact.visibleName),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Flexible(
-                      child: Text(
-                        contact.visibleName,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            contact.visibleName,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (contact.pinned) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.push_pin_rounded,
+                            size: 14,
+                            color: Color(0xFF587067),
+                          ),
+                        ],
+                      ],
                     ),
-                    if (contact.pinned) ...[
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.push_pin_rounded,
-                        size: 14,
-                        color: Color(0xFF587067),
+                    if (contact.remarkName != null &&
+                        contact.remarkName!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        '昵称：${contact.displayName}',
+                        style: const TextStyle(
+                          color: Color(0xFF78847E),
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ],
                 ),
-                if (contact.remarkName != null &&
-                    contact.remarkName!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    '昵称：${contact.displayName}',
-                    style: const TextStyle(
-                      color: Color(0xFF78847E),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFFA1AAA5)),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -14,6 +14,22 @@ abstract interface class RelationshipRepository {
     required String requestId,
     required bool accept,
   });
+
+  Future<FriendSettings> updateFriendSettings({
+    required String friendUserId,
+    String? remarkName,
+    bool clearRemark = false,
+    bool? canViewMyPosts,
+    bool? pinned,
+  });
+
+  Future<void> deleteFriend(String friendUserId);
+
+  Future<BlockedUser> blockUser(String targetUserId);
+
+  Future<BlockedUser> unblockUser(String targetUserId);
+
+  Future<PageResult<BlockedUser>> loadBlocks();
 }
 
 class HttpRelationshipRepository implements RelationshipRepository {
@@ -54,6 +70,64 @@ class HttpRelationshipRepository implements RelationshipRepository {
       data: {'decision': accept ? 'accept' : 'reject'},
     );
     return FriendDecision.fromJson(_data(envelope));
+  }
+
+  @override
+  Future<FriendSettings> updateFriendSettings({
+    required String friendUserId,
+    String? remarkName,
+    bool clearRemark = false,
+    bool? canViewMyPosts,
+    bool? pinned,
+  }) async {
+    final body = <String, dynamic>{
+      if (remarkName != null || clearRemark)
+        'remarkName': clearRemark ? null : remarkName,
+      'canViewMyPosts': ?canViewMyPosts,
+      'pinned': ?pinned,
+    };
+    final envelope = await _client.patch(
+      '/friends/$friendUserId/settings',
+      data: body,
+      idempotent: true,
+    );
+    return FriendSettings.fromJson(_data(envelope));
+  }
+
+  @override
+  Future<void> deleteFriend(String friendUserId) {
+    return _client.deleteWithoutResponse(
+      '/friends/$friendUserId',
+      idempotent: true,
+    );
+  }
+
+  @override
+  Future<BlockedUser> blockUser(String targetUserId) async {
+    final envelope = await _client.put(
+      '/blocks/$targetUserId',
+      data: const <String, dynamic>{},
+      idempotent: true,
+    );
+    return BlockedUser.fromJson(_data(envelope));
+  }
+
+  @override
+  Future<BlockedUser> unblockUser(String targetUserId) async {
+    final envelope = await _client.delete(
+      '/blocks/$targetUserId',
+      idempotent: true,
+    );
+    return BlockedUser.fromJson(_data(envelope));
+  }
+
+  @override
+  Future<PageResult<BlockedUser>> loadBlocks() async {
+    final envelope = await _client.get(
+      '/blocks',
+      queryParameters: const {'limit': 100},
+    );
+    return _parsePage(envelope, BlockedUser.fromJson);
   }
 
   PageResult<T> _parsePage<T>(

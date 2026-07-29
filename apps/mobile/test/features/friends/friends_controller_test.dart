@@ -8,6 +8,30 @@ class _FakeRelationshipRepository implements RelationshipRepository {
 
   FriendRequest request;
   bool accepted = false;
+  String? remarkName;
+  bool canViewMyPosts = true;
+  bool pinned = false;
+  final blockedUsers = <BlockedUser>[];
+
+  @override
+  Future<BlockedUser> blockUser(String targetUserId) async {
+    final blocked = BlockedUser(
+      target: const UserSummary(userId: 'remote-user', displayName: '远山'),
+      state: BlockState.blocked,
+      priorRelation: accepted ? PriorRelation.friend : PriorRelation.stranger,
+      directMessagingAllowed: false,
+    );
+    accepted = false;
+    blockedUsers
+      ..removeWhere((item) => item.target.userId == targetUserId)
+      ..insert(0, blocked);
+    return blocked;
+  }
+
+  @override
+  Future<void> deleteFriend(String friendUserId) async {
+    accepted = false;
+  }
 
   @override
   Future<FriendDecision> decide({
@@ -38,13 +62,14 @@ class _FakeRelationshipRepository implements RelationshipRepository {
   Future<PageResult<FriendContact>> loadFriends() async {
     return PageResult(
       items: accepted
-          ? const [
+          ? [
               FriendContact(
                 userId: 'remote-user',
                 displayName: '远山',
                 nickname: '远山',
-                canViewMyPosts: true,
-                pinned: false,
+                remarkName: remarkName,
+                canViewMyPosts: canViewMyPosts,
+                pinned: pinned,
                 directConversationId: 'conversation-1',
               ),
             ]
@@ -54,8 +79,52 @@ class _FakeRelationshipRepository implements RelationshipRepository {
   }
 
   @override
+  Future<PageResult<BlockedUser>> loadBlocks() async {
+    return PageResult(items: List.of(blockedUsers), hasMore: false);
+  }
+
+  @override
   Future<PageResult<FriendRequest>> loadReceivedRequests() async {
     return PageResult(items: [request], hasMore: false);
+  }
+
+  @override
+  Future<BlockedUser> unblockUser(String targetUserId) async {
+    final previous = blockedUsers.singleWhere(
+      (item) => item.target.userId == targetUserId,
+    );
+    blockedUsers.remove(previous);
+    accepted = previous.priorRelation == PriorRelation.friend;
+    return BlockedUser(
+      target: previous.target,
+      state: BlockState.unblocked,
+      priorRelation: previous.priorRelation,
+      restoredRelation: previous.priorRelation,
+      directMessagingAllowed: accepted,
+    );
+  }
+
+  @override
+  Future<FriendSettings> updateFriendSettings({
+    required String friendUserId,
+    String? remarkName,
+    bool clearRemark = false,
+    bool? canViewMyPosts,
+    bool? pinned,
+  }) async {
+    if (clearRemark) {
+      this.remarkName = null;
+    } else if (remarkName != null) {
+      this.remarkName = remarkName;
+    }
+    this.canViewMyPosts = canViewMyPosts ?? this.canViewMyPosts;
+    this.pinned = pinned ?? this.pinned;
+    return FriendSettings(
+      friendUserId: friendUserId,
+      remarkName: this.remarkName,
+      canViewMyPosts: this.canViewMyPosts,
+      pinned: this.pinned,
+    );
   }
 }
 
@@ -109,5 +178,39 @@ void main() {
       FriendRequestStatus.rejected,
     );
     expect(controller.state.contacts, isEmpty);
+  });
+
+  test('备注、权限和置顶更新后立即反映在联系人状态', () async {
+    final repository = _FakeRelationshipRepository(request: pendingRequest)
+      ..accepted = true;
+    final controller = FriendsController(repository);
+    await controller.load();
+
+    expect(await controller.updateRemark('remote-user', '小远'), isTrue);
+    expect(await controller.updatePostPermission('remote-user', false), isTrue);
+    expect(await controller.updatePinned('remote-user', true), isTrue);
+
+    final contact = controller.state.contacts.single;
+    expect(contact.visibleName, '小远');
+    expect(contact.canViewMyPosts, isFalse);
+    expect(contact.pinned, isTrue);
+  });
+
+  test('拉黑后移出联系人，解除后恢复原好友关系', () async {
+    final repository = _FakeRelationshipRepository(request: pendingRequest)
+      ..accepted = true;
+    final controller = FriendsController(repository);
+    await controller.load();
+
+    expect(await controller.blockUser('remote-user'), isTrue);
+    expect(controller.state.contacts, isEmpty);
+    expect(
+      controller.state.blockedUsers.single.priorRelation,
+      PriorRelation.friend,
+    );
+
+    expect(await controller.unblockUser('remote-user'), isTrue);
+    expect(controller.state.blockedUsers, isEmpty);
+    expect(controller.state.contacts.single.userId, 'remote-user');
   });
 }
