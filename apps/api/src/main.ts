@@ -1,5 +1,5 @@
 import { createApp } from "./bootstrap.js";
+import { resolveListenOptions } from "./runtime-config.js";
 
 const app = await createApp();
-const port = Number(process.env.PORT ?? 3000);
-await app.listen({ host: "0.0.0.0", port });
+await app.listen(resolveListenOptions(process.env));
