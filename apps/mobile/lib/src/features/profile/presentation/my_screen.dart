@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/domain/friend_models.dart';
+import '../application/profile_controller.dart';
+import 'privacy_screen.dart';
+import 'profile_detail_screen.dart';
 
 class MyScreen extends ConsumerWidget {
   const MyScreen({super.key});
@@ -11,50 +14,80 @@ class MyScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authControllerProvider).session;
+    final profileState = ref.watch(profileControllerProvider);
+    final profile = profileState.profile;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
       children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Row(
-            children: [
-              const CircleAvatar(
-                radius: 31,
-                backgroundColor: Color(0xFFDDEEE7),
-                child: Icon(
-                  Icons.person_rounded,
-                  color: Color(0xFF167A5B),
-                  size: 31,
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const MyProfileDetailScreen(),
                 ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '我的账号',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w700,
-                      ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 31,
+                    backgroundColor: Color(0xFFDDEEE7),
+                    child: profile == null
+                        ? const Icon(
+                            Icons.person_rounded,
+                            color: Color(0xFF167A5B),
+                            size: 31,
+                          )
+                        : Text(
+                            profile.initial,
+                            style: const TextStyle(
+                              color: Color(0xFF167A5B),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          profile?.nickname ?? '我的账号',
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          profile?.fangyuanNumber == null
+                              ? session == null
+                                    ? '登录状态读取中'
+                                    : '手机号账号已登录'
+                              : '方圆号：${profile!.fangyuanNumber}',
+                          style: const TextStyle(
+                            color: Color(0xFF78847E),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      session == null ? '登录状态读取中' : '手机号账号已登录',
-                      style: const TextStyle(
-                        color: Color(0xFF78847E),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded),
+                ],
               ),
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -98,6 +131,18 @@ class AccountSecurityScreen extends ConsumerWidget {
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
+                ListTile(
+                  title: const Text('隐私'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PrivacyScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(
                   title: const Text('黑名单'),
                   trailing: Row(

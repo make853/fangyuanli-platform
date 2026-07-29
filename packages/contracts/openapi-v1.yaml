@@ -2041,12 +2041,12 @@ components:
         - $ref: '#/components/schemas/UserSummary'
         - type: object
           required:
-            [fangyuanNumber, nickname, signature, profileVisibility, relationship, allowedActions]
+            [fangyuanNumber, nickname, signature, profileVisibility, profileVersion, relationship, allowedActions]
           properties:
             fangyuanNumber:
-              type: string
+              type: [string, 'null']
             nickname:
-              type: string
+              type: [string, 'null']
             gender:
               type: string
               enum: [unspecified, male, female, custom, hidden]
@@ -2059,6 +2059,9 @@ components:
             profileVisibility:
               type: string
               enum: [full, limited]
+            profileVersion:
+              type: integer
+              minimum: 1
             relationship:
               $ref: '#/components/schemas/RelationshipView'
             allowedActions:

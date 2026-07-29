@@ -8,6 +8,7 @@ import '../../../core/realtime/realtime_controller.dart';
 import '../../conversations/application/conversation_list_controller.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/presentation/friends_screen.dart';
+import '../../profile/application/profile_controller.dart';
 import '../../profile/presentation/my_screen.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
@@ -54,6 +55,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
       );
       unawaited(
         ref.read(friendsControllerProvider.notifier).load(silent: true),
+      );
+      unawaited(
+        ref.read(profileControllerProvider.notifier).load(silent: true),
       );
     }
   }
