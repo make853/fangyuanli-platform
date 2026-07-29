@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import type { AuthRepository, SessionResult } from "./auth.repository.js";
 import { AuthService } from "./auth.service.js";
+import { PhoneIdentityService } from "./phone-identity.js";
+import { TokenService } from "./token-service.js";
 
 function configureEnvironment(): void {
   process.env.NODE_ENV = "staging";
@@ -49,7 +51,11 @@ test("staging login creates a verification and preserves verify idempotency", as
       return session;
     }
   } as unknown as AuthRepository;
-  const service = new AuthService(repository);
+  const service = new AuthService(
+    repository,
+    new PhoneIdentityService(),
+    new TokenService()
+  );
 
   const sent = await service.sendSms({
     countryCode: "+86",
@@ -80,7 +86,11 @@ test("rejects an email identity before touching the repository", async () => {
       return null;
     }
   } as unknown as AuthRepository;
-  const service = new AuthService(repository);
+  const service = new AuthService(
+    repository,
+    new PhoneIdentityService(),
+    new TokenService()
+  );
 
   await assert.rejects(
     service.sendSms({

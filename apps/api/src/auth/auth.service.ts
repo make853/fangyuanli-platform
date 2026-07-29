@@ -12,10 +12,11 @@ import { TokenService } from "./token-service.js";
 
 @Injectable()
 export class AuthService {
-  private readonly phoneIdentity = new PhoneIdentityService();
-  private readonly tokens = new TokenService();
-
-  constructor(private readonly repository: AuthRepository) {}
+  constructor(
+    private readonly repository: AuthRepository,
+    private readonly phoneIdentity: PhoneIdentityService,
+    private readonly tokens: TokenService
+  ) {}
 
   async sendSms(input: {
     countryCode?: unknown;

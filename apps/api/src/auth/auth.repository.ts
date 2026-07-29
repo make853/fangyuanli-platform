@@ -4,6 +4,7 @@ import { Pool, type PoolClient } from "pg";
 import { requireDatabaseUrl } from "../database/environment.js";
 import { AuthDomainError, type DeviceInput } from "./auth.types.js";
 import type { PhoneIdentity } from "./phone-identity.js";
+import type { AccessClaims } from "./token-service.js";
 
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -347,6 +348,27 @@ export class AuthRepository implements OnApplicationShutdown {
         throw new AuthDomainError("AUTH_SESSION_INVALID", "登录状态已失效", 401);
       }
     }
+  }
+
+  async isSessionActive(claims: AccessClaims, now = new Date()): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1
+         FROM auth_sessions
+        WHERE id = $1
+          AND user_id = $2
+          AND device_id = $3
+          AND token_version = $4
+          AND revoked_at IS NULL
+          AND expires_at > $5`,
+      [
+        claims.sessionId,
+        claims.userId,
+        claims.deviceId,
+        claims.tokenVersion,
+        now
+      ]
+    );
+    return result.rowCount === 1;
   }
 
   private async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {

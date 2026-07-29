@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { Injectable } from "@nestjs/common";
 import { jwtVerify, SignJWT } from "jose";
 import type { AuthTokens } from "./auth.types.js";
 
@@ -20,6 +21,7 @@ export type AccessClaims = {
   tokenVersion: number;
 };
 
+@Injectable()
 export class TokenService {
   constructor(private readonly environment: NodeJS.ProcessEnv = process.env) {}
 

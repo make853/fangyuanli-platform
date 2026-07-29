@@ -15,6 +15,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post("sms/send")
+  @HttpCode(200)
   async sendSms(
     @Body() body: Record<string, unknown>,
     @Headers("x-request-id") requestId?: string
@@ -26,6 +27,7 @@ export class AuthController {
   }
 
   @Post("sms/verify")
+  @HttpCode(200)
   async verifySms(
     @Body() body: Record<string, unknown>,
     @Headers("idempotency-key") idempotencyKey?: string,
@@ -38,6 +40,7 @@ export class AuthController {
   }
 
   @Post("refresh")
+  @HttpCode(200)
   async refresh(
     @Body() body: Record<string, unknown>,
     @Headers("x-request-id") requestId?: string
