@@ -9,8 +9,10 @@
   "scripts": {
     "verify": "node scripts/verify-layout.mjs",
     "test": "pnpm -r --if-present test",
+    "build:api": "pnpm --filter @fangyuanli/api build",
     "dev:api": "pnpm --filter @fangyuanli/api dev",
-    "start:api": "pnpm --filter @fangyuanli/api start"
+    "start:api": "pnpm --filter @fangyuanli/api start",
+    "start:api:prod": "pnpm --filter @fangyuanli/api start:prod"
   },
   "optionalDependencies": {
     "@esbuild/darwin-x64": "0.28.1"

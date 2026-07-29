@@ -4,15 +4,15 @@ services:
   postgres:
     image: postgis/postgis:18-3.6
     environment:
-      POSTGRES_DB: fangyuanli
-      POSTGRES_USER: fangyuanli
-      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: ${POSTGRES_DB:-fangyuanli}
+      POSTGRES_USER: ${POSTGRES_USER:-fangyuanli}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the environment file}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fangyuanli -d fangyuanli"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20

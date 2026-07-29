@@ -17,3 +17,29 @@
 3. 配置腾讯云 TAT 执行受控部署脚本；
 4. 配置健康检查和回滚；
 5. 配置数据库备份到 COS。
+
+## Staging API systemd 服务
+
+当前过渡阶段由 systemd 托管编译后的 API，API 只监听服务器回环地址，
+不会直接暴露到公网。部署新提交时：
+
+```bash
+cd /srv/fangyuanli
+git pull --ff-only
+pnpm install --frozen-lockfile
+pnpm verify
+pnpm test
+pnpm build:api
+sudo install -m 0644 deploy/systemd/fangyuanli-api.service \
+  /etc/systemd/system/fangyuanli-api.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now fangyuanli-api.service
+curl --fail http://127.0.0.1:3000/health
+```
+
+查看运行状态和最近日志：
+
+```bash
+systemctl status fangyuanli-api.service --no-pager
+journalctl -u fangyuanli-api.service -n 100 --no-pager
+```
