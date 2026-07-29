@@ -8,6 +8,7 @@
     "start": "tsx src/main.ts",
     "start:prod": "node dist/main.js",
     "build": "tsc -p tsconfig.build.json",
+    "smoke:prod": "node scripts/smoke-prod.mjs",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed:ab": "tsx src/database/seed-ab.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
