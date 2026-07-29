@@ -3,6 +3,7 @@ import test from "node:test";
 import { createApp } from "./bootstrap.js";
 
 test("GET /health returns an operational response", async (t) => {
+  process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
   const app = await createApp();
   await app.init();
   t.after(async () => app.close());
