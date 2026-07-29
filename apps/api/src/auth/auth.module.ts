@@ -12,9 +12,15 @@ import { TokenService } from "./token-service.js";
     AccessTokenGuard,
     AuthRepository,
     AuthService,
-    PhoneIdentityService,
-    TokenService
+    {
+      provide: PhoneIdentityService,
+      useFactory: () => new PhoneIdentityService()
+    },
+    {
+      provide: TokenService,
+      useFactory: () => new TokenService()
+    }
   ],
-  exports: [AccessTokenGuard]
+  exports: [AccessTokenGuard, AuthRepository, TokenService]
 })
 export class AuthModule {}
