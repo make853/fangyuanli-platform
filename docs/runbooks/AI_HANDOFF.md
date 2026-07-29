@@ -58,9 +58,16 @@ make853/fangyuanli-platform
 - NestJS + Fastify API 健康检查；
 - PostgreSQL + PostGIS、Redis 的 Docker Compose 基础配置；
 - 基础结构检查、API 测试、TypeScript 编译和 GitHub CI；
-- GitHub 私有仓库建立。
+- GitHub 私有仓库建立；
+- 手机号登录、设备会话和服务端令牌校验；
+- A/B 测试账号；
+- 好友申请、同意/拒绝、联系人、单向设置、删除好友；
+- 拉黑、解除拉黑及原好友关系恢复；
+- 每对好友唯一私聊会话；
+- staging 部署和真实 A/B 关系闭环验收；
+- 编译产物启动检查已纳入 CI。
 
-尚未完成真实业务后端和 Flutter 客户端。HTML 原型中的交互大部分是模拟状态，不等于 A/B 账号真实互通。
+好友关系已经真实互通，但私聊消息、实时通道、未读同步和 Flutter 客户端尚未完成。HTML 原型中的其余交互大部分仍是模拟状态。
 
 ## 4. 下一条开发主线
 
@@ -80,15 +87,15 @@ make853/fangyuanli-platform
 
 建议实施顺序：
 
-1. 创建初始 SQL 迁移；
-2. 创建 A、B 测试账号和场景夹具；
-3. 实现登录令牌与设备会话；
-4. 实现好友申请状态机；
-5. 实现联系人同步；
-6. 实现私聊消息序号、幂等键、断线重连和未读游标；
-7. 实现拉黑、消息拦截和解除拉黑后的关系恢复；
-8. 完成 API、WebSocket 和端到端双账号测试；
-9. 部署到 staging 并进行两台设备/两个账号验收。
+前五步好友关系部分已经完成。接下来固定按以下顺序继续：
+
+1. 实现私聊消息写入、服务端序号和客户端消息幂等键；
+2. 实现消息分页、断线重连和未读游标；
+3. 实现拉黑后的消息发送硬拦截；
+4. 增加实时消息通道和多设备未读同步；
+5. 完成 API、实时通道和端到端双账号测试；
+6. 部署到 staging 并进行两台设备/两个账号验收；
+7. 再接入 Flutter iPhone 客户端。
 
 ## 5. 工程原则
 
@@ -116,6 +123,8 @@ make853/fangyuanli-platform
 pnpm install
 pnpm verify
 pnpm test
+pnpm --filter @fangyuanli/api build
+pnpm --filter @fangyuanli/api smoke:prod
 docker compose up -d postgres redis
 pnpm --filter @fangyuanli/api dev
 ```
