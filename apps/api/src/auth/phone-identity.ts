@@ -3,6 +3,7 @@ import {
   createHmac,
   randomBytes
 } from "node:crypto";
+import { Injectable } from "@nestjs/common";
 import { AuthDomainError } from "./auth.types.js";
 
 const CHINA_MOBILE_PATTERN = /^1[3-9]\d{9}$/;
@@ -30,6 +31,7 @@ export type PhoneIdentity = {
   lastFour: string;
 };
 
+@Injectable()
 export class PhoneIdentityService {
   constructor(private readonly environment: NodeJS.ProcessEnv = process.env) {}
 

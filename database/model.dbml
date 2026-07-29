@@ -225,6 +225,7 @@ Table friend_requests {
   sender_user_id uuid [not null, ref: > users.id]
   receiver_user_id uuid [not null, ref: > users.id]
   application_note varchar(200) [not null]
+  create_idempotency_key_hash char(64)
   status request_status [not null, default: 'pending']
   decided_at timestamptz
   created_at timestamptz [not null]
@@ -233,6 +234,7 @@ Table friend_requests {
   Indexes {
     (receiver_user_id, status, created_at)
     (sender_user_id, receiver_user_id, status)
+    (sender_user_id, create_idempotency_key_hash) [unique]
   }
 }
 
@@ -256,10 +258,27 @@ Table friend_settings {
   owner_user_id uuid [not null, ref: > users.id, note: '设置发起方']
   remark_name varchar(64)
   can_view_owner_posts bool [not null, default: true]
+  pinned bool [not null, default: false]
   updated_at timestamptz [not null]
 
   Indexes {
     (friendship_id, owner_user_id) [pk]
+  }
+}
+
+Table relationship_audit_logs {
+  id uuid [pk]
+  actor_user_id uuid [not null, ref: > users.id]
+  target_user_id uuid [not null, ref: > users.id]
+  action varchar(40) [not null]
+  friend_request_id uuid [ref: > friend_requests.id]
+  friendship_id uuid [ref: > friendships.id]
+  metadata jsonb
+  created_at timestamptz [not null]
+
+  Indexes {
+    (actor_user_id, created_at)
+    (target_user_id, created_at)
   }
 }
 

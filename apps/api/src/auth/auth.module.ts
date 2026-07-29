@@ -2,9 +2,19 @@ import { Module } from "@nestjs/common";
 import { AuthController } from "./auth.controller.js";
 import { AuthRepository } from "./auth.repository.js";
 import { AuthService } from "./auth.service.js";
+import { AccessTokenGuard } from "./access-token.guard.js";
+import { PhoneIdentityService } from "./phone-identity.js";
+import { TokenService } from "./token-service.js";
 
 @Module({
   controllers: [AuthController],
-  providers: [AuthRepository, AuthService]
+  providers: [
+    AccessTokenGuard,
+    AuthRepository,
+    AuthService,
+    PhoneIdentityService,
+    TokenService
+  ],
+  exports: [AccessTokenGuard]
 })
 export class AuthModule {}
