@@ -91,6 +91,22 @@ class RealtimeController extends StateNotifier<RealtimeState> {
     await start();
   }
 
+  Future<void> recoverAfterResume() async {
+    if (!_running) {
+      await start();
+      return;
+    }
+    final socket = _socket;
+    if (socket == null) return;
+    _socket = null;
+    try {
+      await socket.close();
+    } catch (_) {
+      // The reconnect loop owns recovery; a stale platform socket may already
+      // have been torn down while the app was backgrounded.
+    }
+  }
+
   Future<void> stop() async {
     _running = false;
     final socket = _socket;

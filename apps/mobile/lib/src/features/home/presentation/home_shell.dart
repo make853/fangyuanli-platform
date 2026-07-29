@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -42,7 +44,17 @@ class _HomeShellState extends ConsumerState<HomeShell>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      ref.read(realtimeControllerProvider.notifier).ensureConnected();
+      unawaited(
+        ref.read(realtimeControllerProvider.notifier).recoverAfterResume(),
+      );
+      unawaited(
+        ref
+            .read(conversationListControllerProvider.notifier)
+            .load(silent: true),
+      );
+      unawaited(
+        ref.read(friendsControllerProvider.notifier).load(silent: true),
+      );
     }
   }
 
