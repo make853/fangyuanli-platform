@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "smoke:prod": "node scripts/smoke-prod.mjs",
     "accept:messages:ab": "node scripts/accept-direct-messages.mjs",
+    "accept:realtime:ab": "node scripts/accept-realtime-messages.mjs",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed:ab": "tsx src/database/seed-ab.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
@@ -18,15 +19,20 @@
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",
     "@nestjs/platform-fastify": "^11.1.6",
+    "@nestjs/platform-ws": "^11.1.28",
+    "@nestjs/websockets": "^11.1.28",
     "fastify": "^5.6.1",
     "jose": "^6.1.3",
     "pg": "^8.16.3",
+    "redis": "^5.12.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/pg": "^8.15.6",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

@@ -8,6 +8,7 @@ import {
   type ConversationSummary,
   type MessageView,
   type ReadCursorView,
+  type RealtimeConversationState,
   type UnreadState
 } from "./conversation.types.js";
 
@@ -216,7 +217,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     text: string;
     replyToMessageId: string | null;
     now: Date;
-  }): Promise<MessageView> {
+  }): Promise<{ message: MessageView; created: boolean }> {
     return this.transaction(async (client) => {
       const participant = await this.requireParticipant(
         client,
@@ -237,7 +238,10 @@ export class ConversationRepository implements OnApplicationShutdown {
             409
           );
         }
-        return messageView(existing.rows[0], input.now);
+        return {
+          message: messageView(existing.rows[0], input.now),
+          created: false
+        };
       }
       if (
         participant.conversation_status !== "active" ||
@@ -322,8 +326,36 @@ export class ConversationRepository implements OnApplicationShutdown {
           input.now
         ]
       );
-      return this.getMessage(client, messageId);
+      return {
+        message: await this.getMessage(client, messageId),
+        created: true
+      };
     });
+  }
+
+  async participantUserIds(
+    userId: string,
+    conversationId: string
+  ): Promise<string[]> {
+    const participant = await this.requireParticipant(
+      this.pool,
+      userId,
+      conversationId,
+      false
+    );
+    return [participant.user_low_id, participant.user_high_id];
+  }
+
+  async realtimeConversationState(
+    userId: string,
+    conversationId: string
+  ): Promise<RealtimeConversationState> {
+    const conversation = await this.getConversation(userId, conversationId);
+    return {
+      conversationId,
+      unread: conversation.unread,
+      navigationUnreadCount: await this.navigationUnread(userId)
+    };
   }
 
   async listMessages(input: {

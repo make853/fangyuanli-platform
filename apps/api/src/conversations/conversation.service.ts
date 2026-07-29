@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
+import { RealtimeTransport } from "../realtime/realtime-transport.js";
 import { ConversationRepository } from "./conversation.repository.js";
 import {
   ConversationDomainError,
@@ -10,7 +11,12 @@ const UUID_PATTERN =
 
 @Injectable()
 export class ConversationService {
-  constructor(private readonly repository: ConversationRepository) {}
+  private readonly logger = new Logger(ConversationService.name);
+
+  constructor(
+    private readonly repository: ConversationRepository,
+    @Optional() private readonly realtime?: RealtimeTransport
+  ) {}
 
   async listConversations(input: {
     userId: string;
@@ -38,6 +44,18 @@ export class ConversationService {
       userId,
       this.uuid(conversationId, "CONVERSATION_ID_INVALID")
     );
+  }
+
+  syncConversationSnapshots(userId: string): Promise<{
+    items: unknown[];
+    hasMore: boolean;
+  }> {
+    return this.repository
+      .listConversations({ userId, offset: 0, limit: 200 })
+      .then((result) => ({
+        items: result.items,
+        hasMore: result.hasMore
+      }));
   }
 
   async sendMessage(input: {
@@ -78,7 +96,7 @@ export class ConversationService {
       input.body.replyToMessageId === null
         ? null
         : this.uuid(input.body.replyToMessageId, "REPLY_MESSAGE_ID_INVALID");
-    return this.repository.sendTextMessage({
+    const persisted = await this.repository.sendTextMessage({
       userId: input.userId,
       conversationId,
       clientMessageId,
@@ -86,6 +104,10 @@ export class ConversationService {
       replyToMessageId,
       now: new Date()
     });
+    if (persisted.created) {
+      await this.publishMessageCreated(input.userId, persisted.message);
+    }
+    return persisted.message;
   }
 
   listMessages(input: {
@@ -121,7 +143,7 @@ export class ConversationService {
     });
   }
 
-  advanceReadCursor(input: {
+  async advanceReadCursor(input: {
     userId: string;
     conversationId?: unknown;
     lastReadSequence?: unknown;
@@ -139,7 +161,7 @@ export class ConversationService {
         400
       );
     }
-    return this.repository.advanceReadCursor({
+    const result = await this.repository.advanceReadCursor({
       userId: input.userId,
       conversationId: this.uuid(
         input.conversationId,
@@ -148,6 +170,58 @@ export class ConversationService {
       lastReadSequence: input.lastReadSequence,
       now: new Date()
     });
+    await this.publishUnreadChanged(input.userId, result.conversationId);
+    return result;
+  }
+
+  private async publishMessageCreated(
+    actorUserId: string,
+    message: MessageView
+  ): Promise<void> {
+    if (!this.realtime) return;
+    try {
+      const userIds = await this.repository.participantUserIds(
+        actorUserId,
+        message.conversationId
+      );
+      await Promise.all(
+        userIds.flatMap((userId) => [
+          this.realtime!.publish(userId, "message.created", { ...message }),
+          this.publishUnreadChanged(userId, message.conversationId)
+        ])
+      );
+    } catch (error) {
+      this.logger.error(
+        `Message persisted but realtime publish failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  private async publishUnreadChanged(
+    userId: string,
+    conversationId: string
+  ): Promise<void> {
+    if (!this.realtime) return;
+    try {
+      const state = await this.repository.realtimeConversationState(
+        userId,
+        conversationId
+      );
+      await this.realtime.publish(userId, "conversation.unread.changed", {
+        conversationId,
+        unread: state.unread,
+        navigationKey: "friends",
+        navigationUnreadCount: state.navigationUnreadCount
+      });
+    } catch (error) {
+      this.logger.error(
+        `Unread state persisted but realtime publish failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   private uuid(value: unknown, code: string): string {

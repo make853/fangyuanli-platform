@@ -70,3 +70,9 @@ export type ReadCursorView = {
   unread: UnreadState;
   navigationUnreadDelta: number;
 };
+
+export type RealtimeConversationState = {
+  conversationId: string;
+  unread: UnreadState;
+  navigationUnreadCount: number;
+};
