@@ -2,17 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_controller.dart';
+import '../../../core/realtime/realtime_controller.dart';
+import '../../conversations/application/conversation_list_controller.dart';
+import '../../friends/application/friends_controller.dart';
 import '../../friends/presentation/friends_screen.dart';
 import '../../profile/presentation/my_screen.dart';
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell>
+    with WidgetsBindingObserver {
   int _index = 0;
 
   static const _destinations = [
@@ -24,7 +28,31 @@ class _HomeShellState extends State<HomeShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(realtimeControllerProvider.notifier).ensureConnected();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    ref.watch(realtimeControllerProvider);
+    final conversationState = ref.watch(conversationListControllerProvider);
+    final friendsState = ref.watch(friendsControllerProvider);
+    final friendsUnread =
+        conversationState.navigationUnread + friendsState.pendingRequestCount;
     return Scaffold(
       appBar: AppBar(
         title: Text(_destinations[_index].label),
@@ -59,12 +87,36 @@ class _HomeShellState extends State<HomeShell> {
         destinations: [
           for (final destination in _destinations)
             NavigationDestination(
-              icon: Icon(destination.icon),
-              selectedIcon: Icon(destination.selectedIcon),
+              icon: _DestinationIcon(
+                icon: destination.icon,
+                unreadCount: destination.label == '好友' ? friendsUnread : 0,
+              ),
+              selectedIcon: _DestinationIcon(
+                icon: destination.selectedIcon,
+                unreadCount: destination.label == '好友' ? friendsUnread : 0,
+              ),
               label: destination.label,
             ),
         ],
       ),
+    );
+  }
+}
+
+class _DestinationIcon extends StatelessWidget {
+  const _DestinationIcon({required this.icon, required this.unreadCount});
+
+  final IconData icon;
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Icon(icon);
+    if (unreadCount <= 0) return child;
+    return Badge.count(
+      count: unreadCount,
+      backgroundColor: const Color(0xFFE24A52),
+      child: child,
     );
   }
 }

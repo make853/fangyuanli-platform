@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/application/auth_controller.dart';
+import '../../conversations/application/conversation_list_controller.dart';
+import '../../conversations/domain/conversation_summary.dart';
+import '../../conversations/presentation/direct_chat_screen.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 import 'friend_profile_screen.dart';
@@ -32,6 +36,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(friendsControllerProvider);
+    final conversations = ref.watch(conversationListControllerProvider);
     return Column(
       children: [
         Material(
@@ -48,7 +53,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
           child: TabBarView(
             controller: _tabController,
             children: [
-              _MessagesTab(state: state),
+              _MessagesTab(state: state, conversations: conversations),
               _ContactsTab(state: state),
             ],
           ),
@@ -59,14 +64,21 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
 }
 
 class _MessagesTab extends ConsumerWidget {
-  const _MessagesTab({required this.state});
+  const _MessagesTab({required this.state, required this.conversations});
 
   final FriendsState state;
+  final ConversationListState conversations;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final currentUserId = ref.watch(authControllerProvider).session?.userId;
     return RefreshIndicator(
-      onRefresh: ref.read(friendsControllerProvider.notifier).load,
+      onRefresh: () async {
+        await Future.wait([
+          ref.read(friendsControllerProvider.notifier).load(),
+          ref.read(conversationListControllerProvider.notifier).load(),
+        ]);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
@@ -80,6 +92,25 @@ class _MessagesTab extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
           ],
+          if (conversations.errorMessage != null) ...[
+            _InlineError(
+              message: conversations.errorMessage!,
+              onRetry: ref
+                  .read(conversationListControllerProvider.notifier)
+                  .load,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (conversations.isLoading && conversations.items.isEmpty)
+            const LinearProgressIndicator(minHeight: 2),
+          if (currentUserId != null)
+            for (final conversation in conversations.items) ...[
+              _ConversationTile(
+                conversation: conversation,
+                currentUserId: currentUserId,
+              ),
+              const SizedBox(height: 10),
+            ],
           _SystemMessageTile(
             title: '好友申请',
             subtitle: state.pendingRequestCount == 0
@@ -129,6 +160,125 @@ class _MessagesTab extends ConsumerWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => _EmptyInboxScreen(title: title, message: message),
+      ),
+    );
+  }
+}
+
+class _ConversationTile extends StatelessWidget {
+  const _ConversationTile({
+    required this.conversation,
+    required this.currentUserId,
+  });
+
+  final ConversationSummary conversation;
+  final String currentUserId;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = conversation.notificationMode == 'muted';
+    final unreadColor = muted
+        ? const Color(0xFF9AA49F)
+        : const Color(0xFFE24A52);
+    return Material(
+      color: conversation.pinned ? const Color(0xFFE7EFEA) : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => DirectChatScreen(
+                conversationId: conversation.conversationId,
+                title: conversation.title,
+                currentUserId: currentUserId,
+              ),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 23,
+                backgroundColor: const Color(0xFFDDEEE7),
+                child: Text(
+                  conversation.title.trim().isEmpty
+                      ? '友'
+                      : conversation.title.trim().characters.first,
+                  style: const TextStyle(
+                    color: Color(0xFF167A5B),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            conversation.title,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (conversation.pinned) ...[
+                          const SizedBox(width: 5),
+                          const Icon(
+                            Icons.push_pin_rounded,
+                            size: 14,
+                            color: Color(0xFF587067),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      conversation.lastMessage?.preview ?? '还没有消息',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF78847E),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (conversation.unread.count > 0)
+                Container(
+                  constraints: const BoxConstraints(minWidth: 21),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: unreadColor,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Text(
+                    conversation.unread.count > 99
+                        ? '99+'
+                        : '${conversation.unread.count}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

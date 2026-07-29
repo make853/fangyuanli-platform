@@ -4,9 +4,12 @@ import 'package:uuid/uuid.dart';
 import '../../../core/network/api_failure.dart';
 import '../../../core/network/authenticated_api_client.dart';
 import '../../auth/application/auth_controller.dart';
+import '../domain/conversation_summary.dart';
 import '../domain/direct_message.dart';
 
 abstract interface class ConversationRepository {
+  Future<ConversationListPage> loadConversations();
+
   Future<DirectMessagePage> loadMessages(String conversationId);
 
   Future<DirectMessage> sendText(String conversationId, String text);
@@ -20,6 +23,27 @@ class HttpConversationRepository implements ConversationRepository {
 
   final AuthenticatedApiClient _client;
   final Uuid _uuid;
+
+  @override
+  Future<ConversationListPage> loadConversations() async {
+    final envelope = await _client.get(
+      '/conversations',
+      queryParameters: const {'limit': 50},
+    );
+    final data = _data(envelope);
+    final rawItems = data['items'];
+    if (rawItems is! List) {
+      throw const ApiFailure(message: '服务器返回的会话格式不正确');
+    }
+    return ConversationListPage(
+      items: [
+        for (final item in rawItems)
+          ConversationSummary.fromJson(Map<String, dynamic>.from(item as Map)),
+      ],
+      navigationUnread: data['navigationUnread'] as int? ?? 0,
+      hasMore: data['hasMore'] as bool? ?? false,
+    );
+  }
 
   @override
   Future<DirectMessagePage> loadMessages(String conversationId) async {
