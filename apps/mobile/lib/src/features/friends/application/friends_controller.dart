@@ -57,8 +57,10 @@ class FriendsController extends StateNotifier<FriendsState> {
 
   final RelationshipRepository _repository;
 
-  Future<void> load() async {
-    state = state.copyWith(isLoading: true, clearError: true);
+  Future<void> load({bool silent = false}) async {
+    if (!silent) {
+      state = state.copyWith(isLoading: true, clearError: true);
+    }
     try {
       final results = await Future.wait([
         _repository.loadReceivedRequests(),
