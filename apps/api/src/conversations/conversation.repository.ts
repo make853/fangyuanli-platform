@@ -243,6 +243,13 @@ export class ConversationRepository implements OnApplicationShutdown {
           created: false
         };
       }
+      if (participant.blocked) {
+        throw new ConversationDomainError(
+          "DIRECT_MESSAGE_BLOCKED",
+          "当前关系不允许发送消息",
+          403
+        );
+      }
       if (
         participant.conversation_status !== "active" ||
         participant.friendship_status !== "active"
@@ -250,13 +257,6 @@ export class ConversationRepository implements OnApplicationShutdown {
         throw new ConversationDomainError(
           "DIRECT_MESSAGE_REQUIRES_FRIEND",
           "只有好友可以发送私聊消息",
-          403
-        );
-      }
-      if (participant.blocked) {
-        throw new ConversationDomainError(
-          "DIRECT_MESSAGE_BLOCKED",
-          "当前关系不允许发送消息",
           403
         );
       }
