@@ -11,6 +11,7 @@ coverage/
 .flutter-plugins
 .flutter-plugins-dependencies
 .metadata
+!apps/mobile/.metadata
 ios/Pods/
 ios/Flutter/ephemeral/
 android/.gradle/
@@ -19,6 +20,6 @@ android/.gradle/
 *.p12
 *.mobileprovision
 secrets/
-data/
-logs/
-backups/
+/data/
+/logs/
+/backups/
