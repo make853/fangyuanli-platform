@@ -48,15 +48,65 @@ class AuthenticatedApiClient {
     Object? data,
     bool idempotent = false,
   }) {
+    final idempotencyKey = idempotent ? _uuid.v4() : null;
     return _request(
       (options) => _dio.post<Map<String, dynamic>>(
         path,
         data: data,
-        options: idempotent
-            ? options.copyWith(
-                headers: {...?options.headers, 'idempotency-key': _uuid.v4()},
-              )
-            : options,
+        options: _withIdempotency(options, idempotencyKey),
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Object? data,
+    bool idempotent = false,
+  }) {
+    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    return _request(
+      (options) => _dio.patch<Map<String, dynamic>>(
+        path,
+        data: data,
+        options: _withIdempotency(options, idempotencyKey),
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Object? data,
+    bool idempotent = false,
+  }) {
+    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    return _request(
+      (options) => _dio.put<Map<String, dynamic>>(
+        path,
+        data: data,
+        options: _withIdempotency(options, idempotencyKey),
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> delete(String path, {bool idempotent = false}) {
+    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    return _request(
+      (options) => _dio.delete<Map<String, dynamic>>(
+        path,
+        options: _withIdempotency(options, idempotencyKey),
+      ),
+    );
+  }
+
+  Future<void> deleteWithoutResponse(
+    String path, {
+    bool idempotent = false,
+  }) async {
+    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    await _voidRequest(
+      (options) => _dio.delete<void>(
+        path,
+        options: _withIdempotency(options, idempotencyKey),
       ),
     );
   }
@@ -90,6 +140,39 @@ class AuthenticatedApiClient {
       }
       throw ApiFailure.fromDio(error);
     }
+  }
+
+  Future<void> _voidRequest(
+    Future<Response<void>> Function(Options options) send, {
+    bool retried = false,
+  }) async {
+    final session = await loadSession(forceRefresh: false);
+    if (session == null) {
+      throw const ApiFailure(
+        message: '登录状态已失效，请重新登录',
+        code: 'AUTH_REQUIRED',
+        statusCode: 401,
+      );
+    }
+
+    try {
+      await send(_options(session));
+    } on DioException catch (error) {
+      if (!retried && error.response?.statusCode == 401) {
+        final refreshed = await loadSession(forceRefresh: true);
+        if (refreshed != null) {
+          return _voidRequest(send, retried: true);
+        }
+      }
+      throw ApiFailure.fromDio(error);
+    }
+  }
+
+  Options _withIdempotency(Options options, String? idempotencyKey) {
+    if (idempotencyKey == null) return options;
+    return options.copyWith(
+      headers: {...?options.headers, 'idempotency-key': idempotencyKey},
+    );
   }
 
   Options _options(AuthSession session) {

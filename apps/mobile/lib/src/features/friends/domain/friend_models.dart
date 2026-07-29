@@ -83,6 +83,23 @@ class FriendContact {
     final remark = remarkName?.trim();
     return remark == null || remark.isEmpty ? displayName : remark;
   }
+
+  FriendContact copyWith({
+    String? remarkName,
+    bool clearRemark = false,
+    bool? canViewMyPosts,
+    bool? pinned,
+  }) {
+    return FriendContact(
+      userId: userId,
+      displayName: displayName,
+      nickname: nickname,
+      remarkName: clearRemark ? null : remarkName ?? this.remarkName,
+      canViewMyPosts: canViewMyPosts ?? this.canViewMyPosts,
+      pinned: pinned ?? this.pinned,
+      directConversationId: directConversationId,
+    );
+  }
 }
 
 class FriendDecision {
@@ -106,6 +123,63 @@ class FriendDecision {
   final String? friendshipId;
   final String? friendUserId;
   final String? directConversationId;
+}
+
+class FriendSettings {
+  const FriendSettings({
+    required this.friendUserId,
+    required this.remarkName,
+    required this.canViewMyPosts,
+    required this.pinned,
+  });
+
+  factory FriendSettings.fromJson(Map<String, dynamic> json) {
+    return FriendSettings(
+      friendUserId: json['friendUserId'] as String,
+      remarkName: json['remarkName'] as String?,
+      canViewMyPosts: json['canViewMyPosts'] as bool,
+      pinned: json['pinned'] as bool,
+    );
+  }
+
+  final String friendUserId;
+  final String? remarkName;
+  final bool canViewMyPosts;
+  final bool pinned;
+}
+
+enum BlockState { blocked, unblocked }
+
+enum PriorRelation { friend, stranger }
+
+class BlockedUser {
+  const BlockedUser({
+    required this.target,
+    required this.state,
+    required this.priorRelation,
+    required this.directMessagingAllowed,
+    this.restoredRelation,
+  });
+
+  factory BlockedUser.fromJson(Map<String, dynamic> json) {
+    return BlockedUser(
+      target: UserSummary.fromJson(json['target'] as Map<String, dynamic>),
+      state: BlockState.values.byName(json['state'] as String),
+      priorRelation: PriorRelation.values.byName(
+        json['priorRelation'] as String,
+      ),
+      restoredRelation: json['restoredRelation'] == null
+          ? null
+          : PriorRelation.values.byName(json['restoredRelation'] as String),
+      directMessagingAllowed: json['directMessagingAllowed'] as bool? ?? false,
+    );
+  }
+
+  final UserSummary target;
+  final BlockState state;
+  final PriorRelation priorRelation;
+  final PriorRelation? restoredRelation;
+  final bool directMessagingAllowed;
 }
 
 class PageResult<T> {

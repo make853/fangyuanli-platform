@@ -8,6 +8,16 @@ import 'package:flutter_test/flutter_test.dart';
 class _FakeRelationshipRepository implements RelationshipRepository {
   var status = FriendRequestStatus.pending;
 
+  @override
+  Future<BlockedUser> blockUser(String targetUserId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteFriend(String friendUserId) {
+    throw UnimplementedError();
+  }
+
   FriendRequest get request => FriendRequest(
     requestId: 'request-1',
     sender: const UserSummary(userId: 'remote-user', displayName: '远山'),
@@ -34,8 +44,29 @@ class _FakeRelationshipRepository implements RelationshipRepository {
   }
 
   @override
+  Future<PageResult<BlockedUser>> loadBlocks() async {
+    return const PageResult(items: [], hasMore: false);
+  }
+
+  @override
   Future<PageResult<FriendRequest>> loadReceivedRequests() async {
     return PageResult(items: [request], hasMore: false);
+  }
+
+  @override
+  Future<BlockedUser> unblockUser(String targetUserId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<FriendSettings> updateFriendSettings({
+    required String friendUserId,
+    String? remarkName,
+    bool clearRemark = false,
+    bool? canViewMyPosts,
+    bool? pinned,
+  }) {
+    throw UnimplementedError();
   }
 }
 
