@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/application/auth_controller.dart';
+import '../../conversations/presentation/direct_chat_screen.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 
@@ -21,6 +23,14 @@ class FriendProfileScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
           _ProfileHeader(contact: contact),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: contact.directConversationId.isEmpty
+                ? null
+                : () => _openChat(context, ref, contact),
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+            label: const Text('发消息'),
+          ),
           const SizedBox(height: 14),
           _SettingsCard(
             children: [
@@ -94,6 +104,17 @@ class FriendProfileScreen extends ConsumerWidget {
       if (contact.userId == initialContact.userId) return contact;
     }
     return initialContact;
+  }
+
+  void _openChat(BuildContext context, WidgetRef ref, FriendContact contact) {
+    final userId = ref.read(authControllerProvider).session?.userId;
+    if (userId == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            DirectChatScreen(contact: contact, currentUserId: userId),
+      ),
+    );
   }
 
   Future<void> _editRemark(
