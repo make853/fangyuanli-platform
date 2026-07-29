@@ -9,6 +9,12 @@
 - 第一条业务纵切：双账号好友申请、私聊、未读、拉黑与恢复
 - 生产环境：尚未启用
 
+重装、换设备或由新的 AI/开发者接手时，先阅读：
+
+- `docs/runbooks/AI_HANDOFF.md`
+- `docs/runbooks/PROJECT_STATUS.md`
+- `AGENTS.md`
+
 ## 仓库结构
 
 ```text

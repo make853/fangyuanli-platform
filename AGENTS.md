@@ -7,6 +7,7 @@
 - 实时事件：`packages/contracts/asyncapi-v1.yaml`
 - 数据模型：`database/model.dbml`
 - 技术方案：`docs/architecture/TECHNICAL_PLAN.md`
+- AI与开发交接：`docs/runbooks/AI_HANDOFF.md`
 
 冲突时先报告，不要自行猜测或让实现悄悄偏离规格。
 
@@ -23,3 +24,5 @@
 ## 首条开发链路
 
 账号登录 → 好友申请 → 同意/拒绝 → 联系人同步 → 私聊 → 未读 → 拉黑 → 解除拉黑并恢复正确关系。
+
+新 AI 或新开发者接手时，先读取交接指南和项目状态，检查 Git 工作区并运行现有验证，再提出本次最小变更计划。

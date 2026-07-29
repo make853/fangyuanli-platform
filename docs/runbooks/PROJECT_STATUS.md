@@ -10,11 +10,13 @@
 - NestJS + Fastify健康检查可运行；
 - PostgreSQL + PostGIS、Redis本地编排已定义；
 - 本地结构检查、API测试和TypeScript编译通过；
-- GitHub CI基础检查已定义。
+- GitHub CI基础检查已定义；
+- GitHub私有仓库已经建立并保存正式工程；
+- v0.73原型、正式DOCX规格和AI交接指南已纳入版本控制。
 
 ## 当前阶段
 
-建立GitHub私有仓库，并开发第一条真实A/B账号关系与私聊纵切。
+开发第一条真实A/B账号关系与私聊纵切。
 
 ## 下一批任务
 
