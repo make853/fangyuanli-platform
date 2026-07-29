@@ -10,6 +10,8 @@
     "verify": "node scripts/verify-layout.mjs",
     "test": "pnpm -r --if-present test",
     "build:api": "pnpm --filter @fangyuanli/api build",
+    "db:migrate": "pnpm --filter @fangyuanli/api db:migrate",
+    "db:seed:ab": "pnpm --filter @fangyuanli/api db:seed:ab",
     "dev:api": "pnpm --filter @fangyuanli/api dev",
     "start:api": "pnpm --filter @fangyuanli/api start",
     "start:api:prod": "pnpm --filter @fangyuanli/api start:prod"

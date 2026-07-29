@@ -169,6 +169,23 @@ Table user_devices {
   }
 }
 
+Table auth_sessions {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  device_id uuid [not null, ref: > user_devices.id]
+  refresh_token_hash varchar(128) [not null, unique]
+  token_version int [not null, default: 1]
+  expires_at timestamptz [not null]
+  last_refreshed_at timestamptz
+  revoked_at timestamptz
+  created_at timestamptz [not null]
+
+  Indexes {
+    (user_id, revoked_at)
+    (device_id, revoked_at)
+  }
+}
+
 Table user_hobbies {
   user_id uuid [not null, ref: > users.id]
   hobby_key varchar(64) [not null]

@@ -8,18 +8,22 @@
     "start": "tsx src/main.ts",
     "start:prod": "node dist/main.js",
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "db:migrate": "tsx src/database/migrate.ts",
+    "db:seed:ab": "tsx src/database/seed-ab.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",
     "@nestjs/platform-fastify": "^11.1.6",
     "fastify": "^5.6.1",
+    "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
+    "@types/pg": "^8.15.6",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }
