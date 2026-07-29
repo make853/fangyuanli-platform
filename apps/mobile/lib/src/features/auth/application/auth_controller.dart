@@ -49,6 +49,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   final AuthRepository _repository;
+  Future<AuthSession?>? _pendingValidation;
 
   Future<void> restore() async {
     try {
@@ -109,6 +110,39 @@ class AuthController extends StateNotifier<AuthState> {
       message = '已退出本机登录；服务器会话稍后自动失效';
     }
     state = AuthState(status: AuthStatus.signedOut, message: message);
+  }
+
+  Future<AuthSession?> validSession({bool forceRefresh = false}) async {
+    final pending = _pendingValidation;
+    if (pending != null) return pending;
+
+    final validation = _validSession(forceRefresh: forceRefresh);
+    _pendingValidation = validation;
+    try {
+      return await validation;
+    } finally {
+      if (identical(_pendingValidation, validation)) {
+        _pendingValidation = null;
+      }
+    }
+  }
+
+  Future<AuthSession?> _validSession({required bool forceRefresh}) async {
+    final current = state.session;
+    if (current == null) return null;
+
+    final session = await _repository.ensureValid(
+      current,
+      forceRefresh: forceRefresh,
+    );
+    if (session == null) {
+      state = const AuthState(status: AuthStatus.signedOut);
+      return null;
+    }
+    if (!identical(session, current)) {
+      state = AuthState(status: AuthStatus.signedIn, session: session);
+    }
+    return session;
   }
 }
 

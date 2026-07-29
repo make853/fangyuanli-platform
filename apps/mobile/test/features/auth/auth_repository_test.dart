@@ -48,4 +48,27 @@ void main() {
     expect(restored, isNull);
     expect(store.value, isNull);
   });
+
+  test('有效访问令牌无需刷新即可继续使用', () async {
+    final session = AuthSession(
+      accessToken: 'access',
+      accessTokenExpiresAt: DateTime.utc(2026, 7, 29, 12),
+      refreshToken: 'refresh',
+      refreshTokenExpiresAt: DateTime.utc(2026, 8, 29),
+      deviceId: 'device',
+      userId: 'user',
+      isNewUser: false,
+    );
+    final store = _MemorySessionStore()..value = session;
+    final repository = AuthRepository(
+      api: AuthApi(environment: environment, dio: Dio()),
+      sessionStore: store,
+      clock: () => DateTime.utc(2026, 7, 29, 10),
+    );
+
+    final restored = await repository.ensureValid(session);
+
+    expect(restored, same(session));
+    expect(store.value, same(session));
+  });
 }

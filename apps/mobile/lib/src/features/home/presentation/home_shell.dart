@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_controller.dart';
+import '../../friends/presentation/friends_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -41,10 +42,13 @@ class _HomeShellState extends State<HomeShell> {
       ),
       body: IndexedStack(
         index: _index,
-        children: List.generate(
-          _destinations.length,
-          (index) => _SectionPlaceholder(destination: _destinations[index]),
-        ),
+        children: [
+          for (var index = 0; index < _destinations.length; index++)
+            if (_destinations[index].label == '好友')
+              const FriendsScreen()
+            else
+              _SectionPlaceholder(destination: _destinations[index]),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
