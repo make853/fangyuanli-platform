@@ -1,5 +1,6 @@
 process.env.DATABASE_URL ??=
   "postgresql://smoke:smoke@127.0.0.1:5432/fangyuanli_smoke";
+process.env.REALTIME_ENABLED ??= "false";
 
 const { createApp } = await import("../dist/bootstrap.js");
 const app = await createApp();
