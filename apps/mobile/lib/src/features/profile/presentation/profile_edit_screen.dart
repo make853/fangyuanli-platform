@@ -120,54 +120,41 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
           const SizedBox(height: 14),
           _EditorCard(
             children: [
-              TextField(
+              _LabeledTextField(
+                label: '昵称',
                 controller: _nickname,
                 maxLength: 64,
-                decoration: const InputDecoration(
-                  labelText: '昵称',
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.all(16),
-                ),
+                hintText: '请输入昵称',
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                child: Text(
-                  '性别',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-              ),
-              RadioGroup<ProfileGender>(
-                groupValue: _gender,
-                onChanged: (value) {
-                  if (value != null) setState(() => _gender = value);
-                },
-                child: const Column(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RadioListTile(
-                      value: ProfileGender.unspecified,
-                      title: Text('保密'),
+                    const Text(
+                      '性别',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    RadioListTile(value: ProfileGender.male, title: Text('男')),
-                    RadioListTile(
-                      value: ProfileGender.female,
-                      title: Text('女'),
+                    const SizedBox(height: 12),
+                    _GenderSelector(
+                      value: _gender,
+                      onChanged: (value) => setState(() => _gender = value),
                     ),
                   ],
                 ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
-              TextField(
+              _LabeledTextField(
+                label: '个人签名',
                 controller: _signature,
                 maxLength: 160,
                 minLines: 2,
                 maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: '个人签名',
-                  hintText: '介绍一下自己',
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.all(16),
-                ),
+                hintText: '介绍一下自己',
               ),
             ],
           ),
@@ -202,6 +189,158 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
 
   void _message(String value) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
+  }
+}
+
+class _LabeledTextField extends StatelessWidget {
+  const _LabeledTextField({
+    required this.label,
+    required this.controller,
+    required this.maxLength,
+    required this.hintText,
+    this.minLines = 1,
+    this.maxLines = 1,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final int maxLength;
+  final String hintText;
+  final int minLines;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: controller,
+            maxLength: maxLength,
+            minLines: minLines,
+            maxLines: maxLines,
+            decoration: InputDecoration(
+              hintText: hintText,
+              counterText: '',
+              filled: true,
+              fillColor: const Color(0xFFF5F7F4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 13,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(13),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(13),
+                borderSide: const BorderSide(color: Color(0xFFE1E7E3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(13),
+                borderSide: const BorderSide(
+                  color: Color(0xFF167A5B),
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, child) => Text(
+                '${value.text.characters.length}/$maxLength',
+                style: const TextStyle(color: Color(0xFF8B9690), fontSize: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  const _GenderSelector({required this.value, required this.onChanged});
+
+  final ProfileGender value;
+  final ValueChanged<ProfileGender> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [
+      (ProfileGender.unspecified, '保密'),
+      (ProfileGender.male, '男'),
+      (ProfileGender.female, '女'),
+    ];
+    return Row(
+      children: [
+        for (var index = 0; index < options.length; index++) ...[
+          Expanded(
+            child: _GenderOption(
+              label: options[index].$2,
+              selected: value == options[index].$1,
+              onTap: () => onChanged(options[index].$1),
+            ),
+          ),
+          if (index != options.length - 1) const SizedBox(width: 9),
+        ],
+      ],
+    );
+  }
+}
+
+class _GenderOption extends StatelessWidget {
+  const _GenderOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color(0xFFDDEEE7) : const Color(0xFFF5F7F4),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFF167A5B)
+                  : const Color(0xFFE1E7E3),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected
+                  ? const Color(0xFF167A5B)
+                  : const Color(0xFF3A4942),
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
