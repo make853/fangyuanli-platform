@@ -50,6 +50,19 @@ async function login(phoneNumber, deviceName) {
   return verified.data;
 }
 
+async function ensureUnblocked(token, targetUserId) {
+  const blocks = await api("/blocks?limit=100", { token });
+  if (
+    blocks.data.items.some((item) => item.target.userId === targetUserId)
+  ) {
+    await api(`/blocks/${targetUserId}`, {
+      method: "DELETE",
+      token,
+      key: randomUUID()
+    });
+  }
+}
+
 class Probe {
   constructor(socket) {
     this.socket = socket;
@@ -146,6 +159,8 @@ const b = await login(
 );
 assert(a.userId === userA && b.userId === userB, "A/B identity mismatch");
 
+await ensureUnblocked(a.accessToken, userB);
+await ensureUnblocked(b.accessToken, userA);
 const friends = await api("/friends", { token: a.accessToken });
 const friendB = friends.data.items.find((item) => item.userId === userB);
 assert(friendB, "A/B accounts must be friends before realtime acceptance");
@@ -289,28 +304,27 @@ await api(`/blocks/${userB}`, {
   key: randomUUID(),
   body: { reasonCode: "realtime_acceptance" }
 });
-const blockedClientMessageId = randomUUID();
-const blockedRequestId = bSocketTwo.probe.send("message.send", {
-  conversationId,
-  clientMessageId: blockedClientMessageId,
-  type: "text",
-  text: "拉黑后实时消息不应发送"
-});
-const rejected = await bSocketTwo.probe.waitFor(
-  (event) =>
-    event.event === "message.rejected" &&
-    event.requestId === blockedRequestId,
-  "blocked message.rejected"
-);
-assert(
-  rejected.payload.error.code === "DIRECT_MESSAGE_BLOCKED",
-  "blocked realtime message returned the wrong error"
-);
-await api(`/blocks/${userB}`, {
-  method: "DELETE",
-  token: a.accessToken,
-  key: randomUUID()
-});
+try {
+  const blockedClientMessageId = randomUUID();
+  const blockedRequestId = bSocketTwo.probe.send("message.send", {
+    conversationId,
+    clientMessageId: blockedClientMessageId,
+    type: "text",
+    text: "拉黑后实时消息不应发送"
+  });
+  const rejected = await bSocketTwo.probe.waitFor(
+    (event) =>
+      event.event === "message.rejected" &&
+      event.requestId === blockedRequestId,
+    "blocked message.rejected"
+  );
+  assert(
+    rejected.payload.error.code === "DIRECT_MESSAGE_BLOCKED",
+    "blocked realtime message returned the wrong error"
+  );
+} finally {
+  await ensureUnblocked(a.accessToken, userB);
+}
 
 for (const connection of [
   aSocket.probe,
