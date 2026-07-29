@@ -288,7 +288,10 @@ export class ConversationRepository implements OnApplicationShutdown {
            send_status, created_at
          ) VALUES (
            $1, $2, $3, $4, $5, 'text', $6, $7,
-           'direct_text_6m', $8 + interval '6 months', 'sent', $8
+           'direct_text_6m',
+           $8::timestamptz + interval '6 months',
+           'sent',
+           $8::timestamptz
          )`,
         [
           messageId,
