@@ -51,7 +51,7 @@ async function login(phoneNumber, deviceName) {
 }
 
 async function ensureUnblocked(token, targetUserId) {
-  const blocks = await api("/blocks?limit=100", { token });
+  const blocks = await api("/blocks?limit=20", { token });
   if (
     blocks.data.items.some((item) => item.target.userId === targetUserId)
   ) {
