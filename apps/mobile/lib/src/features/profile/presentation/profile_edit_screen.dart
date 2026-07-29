@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/presentation/feature_entry.dart';
 import '../application/profile_controller.dart';
 import '../domain/profile_models.dart';
 
@@ -60,6 +61,63 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
         children: [
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(17),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => showFeatureComingSoon(context, '更换头像'),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 58,
+                      height: 58,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDDEEE7),
+                        borderRadius: BorderRadius.circular(19),
+                      ),
+                      child: Text(
+                        widget.profile.initial,
+                        style: const TextStyle(
+                          color: Color(0xFF167A5B),
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '头像',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            '图片上传功能开发中',
+                            style: TextStyle(
+                              color: Color(0xFF78847E),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Color(0xFFA1AAA5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           _EditorCard(
             children: [
               TextField(

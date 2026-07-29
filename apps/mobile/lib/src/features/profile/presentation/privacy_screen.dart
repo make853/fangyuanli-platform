@@ -15,6 +15,17 @@ class PrivacyScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
         children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 9),
+            child: Text(
+              '资料与发现',
+              style: TextStyle(
+                color: Color(0xFF66736D),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
           if (privacy == null && state.isLoading)
             const Padding(
               padding: EdgeInsets.only(top: 120),
@@ -30,7 +41,7 @@ class PrivacyScreen extends ConsumerWidget {
           else
             Material(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(17),
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [

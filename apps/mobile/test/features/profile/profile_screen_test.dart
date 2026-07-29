@@ -116,7 +116,55 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('桃子同学'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('feature-entry-account_security')),
+      250,
+    );
     expect(find.text('账号与安全'), findsOneWidget);
+  });
+
+  testWidgets('开发中入口有统一反馈且不会进入空白页面', (tester) async {
+    final repository = _ProfileRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [profileRepositoryProvider.overrideWithValue(repository)],
+        child: const MaterialApp(home: Scaffold(body: MyScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('feature-entry-friend_posts')));
+    await tester.pump();
+    expect(find.text('好友动态功能开发中'), findsOneWidget);
+    expect(find.byType(MyScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('my-profile-qr')));
+    await tester.pump();
+    expect(find.text('我的二维码功能开发中'), findsOneWidget);
+    expect(find.byType(MyScreen), findsOneWidget);
+  });
+
+  testWidgets('消息通知与免打扰在当前页切换真实状态', (tester) async {
+    final repository = _ProfileRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [profileRepositoryProvider.overrideWithValue(repository)],
+        child: const MaterialApp(home: Scaffold(body: MyScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('feature-entry-notifications')),
+      250,
+    );
+    expect(find.text('未开启'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('feature-entry-notifications')));
+    await tester.pumpAndSettle();
+
+    expect(repository.privacy.globalGroupMuted, isTrue);
+    expect(find.text('已开启'), findsOneWidget);
+    expect(find.text('群消息免打扰已开启'), findsOneWidget);
   });
 
   testWidgets('账号与安全里的隐私开关保存真实状态', (tester) async {
@@ -129,7 +177,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('账号与安全'));
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('feature-entry-account_security')),
+      250,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('feature-entry-account_security')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('隐私'));
     await tester.pumpAndSettle();
