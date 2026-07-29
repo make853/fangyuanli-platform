@@ -1,0 +1,3579 @@
+openapi: 3.1.0
+info:
+  title: 方圆里 REST API
+  version: 0.1.0
+  description: |
+    方圆里 MVP v1.0 的前后端 REST 契约。
+    所有时间使用 RFC 3339 UTC，ID 使用 UUID 字符串，字段使用 lowerCamelCase。
+servers:
+  - url: https://api.fangyuanli.example/api/v1
+    description: 正式环境占位地址
+  - url: https://staging-api.fangyuanli.example/api/v1
+    description: 测试环境占位地址
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Geo
+  - name: Profiles
+  - name: Friends
+  - name: Conversations
+  - name: Media
+  - name: Places
+  - name: Activities
+  - name: Posts
+  - name: Search
+  - name: Sync
+
+paths:
+  /auth/sms/send:
+    post:
+      tags: [Auth]
+      summary: 请求短信验证码
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AppVersion'
+        - $ref: '#/components/parameters/Platform'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsSendRequest'
+      responses:
+        '200':
+          description: 已接受短信发送请求
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmsSendResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/sms/verify:
+    post:
+      tags: [Auth]
+      summary: 验证短信并登录或注册
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AppVersion'
+        - $ref: '#/components/parameters/Platform'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsVerifyRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: 刷新登录令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, refreshToken]
+              properties:
+                deviceId:
+                  type: string
+                  format: uuid
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: 刷新成功并轮换 Refresh Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 退出当前设备
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: 已退出
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /geo/context:
+    post:
+      tags: [Geo]
+      summary: 创建或刷新短期位置上下文
+      description: 精准位置只提交到本接口；后续地理业务使用返回的不透明令牌。
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeoContextRequest'
+      responses:
+        '200':
+          description: 位置上下文和四广场
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoContextResponse'
+        '422':
+          description: 定位精度或坐标系统不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /me:
+    get:
+      tags: [Profiles]
+      summary: 获取我的资料
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: 我的资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfileResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [Profiles]
+      summary: 修改我的资料
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: 修改后的资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfileResponse'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /me/privacy:
+    get:
+      tags: [Profiles]
+      summary: 获取隐私设置
+      responses:
+        '200':
+          description: 隐私设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettingsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [Profiles]
+      summary: 更新隐私设置
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivacySettingsUpdate'
+      responses:
+        '200':
+          description: 生效后的隐私设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettingsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /me/notification-settings:
+    patch:
+      tags: [Profiles]
+      summary: 更新全局通知设置
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [globalGroupMuted]
+              properties:
+                globalGroupMuted:
+                  type: boolean
+      responses:
+        '200':
+          description: 最终生效设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettingsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /users/{userId}:
+    get:
+      tags: [Profiles]
+      summary: 获取当前查看者视角下的他人资料
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: 按隐私与关系裁剪后的资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /users/{userId}/posts:
+    get:
+      tags: [Profiles, Posts]
+      summary: 获取该用户对当前账号可见的动态
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 动态列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /friend-requests:
+    get:
+      tags: [Friends]
+      summary: 获取好友申请，待处理优先
+      parameters:
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [received, sent, all]
+            default: received
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, accepted, rejected, all]
+            default: all
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 好友申请列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequestListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags: [Friends]
+      summary: 发送好友申请
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FriendRequestCreate'
+      responses:
+        '201':
+          description: 已创建好友申请
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequestResponse'
+        '409':
+          description: 已是好友或已有待处理申请
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /friend-requests/{requestId}/decision:
+    post:
+      tags: [Friends]
+      summary: 同意或拒绝好友申请
+      description: 同意后原子建立好友关系和私聊会话，不自动发送问候。
+      parameters:
+        - $ref: '#/components/parameters/FriendRequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [accept, reject]
+      responses:
+        '200':
+          description: 最终申请和关系状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendDecisionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /friends:
+    get:
+      tags: [Friends]
+      summary: 获取联系人
+      parameters:
+        - name: keyword
+          in: query
+          schema:
+            type: string
+            maxLength: 64
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 联系人列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /friends/{friendUserId}/settings:
+    patch:
+      tags: [Friends]
+      summary: 更新备注、动态权限和会话置顶
+      parameters:
+        - $ref: '#/components/parameters/FriendUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FriendSettingsUpdate'
+      responses:
+        '200':
+          description: 最终生效设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendSettingsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /friends/{friendUserId}:
+    delete:
+      tags: [Friends]
+      summary: 删除好友
+      parameters:
+        - $ref: '#/components/parameters/FriendUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: 已删除好友
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /blocks:
+    get:
+      tags: [Friends]
+      summary: 获取黑名单
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 黑名单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /blocks/{targetUserId}:
+    put:
+      tags: [Friends]
+      summary: 拉黑好友或陌生人
+      parameters:
+        - $ref: '#/components/parameters/TargetUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reasonCode:
+                  type: string
+                  maxLength: 32
+      responses:
+        '200':
+          description: 拉黑后的关系状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Friends]
+      summary: 解除拉黑并按拉黑前关系恢复
+      parameters:
+        - $ref: '#/components/parameters/TargetUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 解除后的关系状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: 获取好友消息页会话列表
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 私聊和系统会话；置顶优先
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /conversations/{conversationId}:
+    get:
+      tags: [Conversations]
+      summary: 获取会话详情、身份、规则和能力
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/LocationContext'
+      responses:
+        '200':
+          description: 会话详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetailResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /conversations/{conversationId}/messages:
+    get:
+      tags: [Conversations]
+      summary: 获取消息历史、增量或锚点上下文
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - name: beforeSequence
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: afterSequence
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: anchorSequence
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 按 sequence 排序的消息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags: [Conversations]
+      summary: HTTP 兜底发送消息
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/LocationContext'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageSendRequest'
+      responses:
+        '201':
+          description: 已持久化消息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '403':
+          description: 好友、拉黑、位置、禁言或群规则不允许
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /conversations/{conversationId}/read-cursor:
+    put:
+      tags: [Conversations]
+      summary: 单调推进服务端已读游标
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lastReadSequence]
+              properties:
+                lastReadSequence:
+                  type: integer
+                  format: int64
+                  minimum: 0
+      responses:
+        '200':
+          description: 最新已读和未读状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadCursorResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /conversations/{conversationId}/settings:
+    patch:
+      tags: [Conversations]
+      summary: 更新通知、置顶或公告关闭版本
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationSettingsUpdate'
+      responses:
+        '200':
+          description: 最终生效设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationSettingsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /conversations/{conversationId}/search:
+    get:
+      tags: [Conversations, Search]
+      summary: 查找指定会话聊天记录
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 带发送者头像、日期和定位序号的命中结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /media/uploads:
+    post:
+      tags: [Media]
+      summary: 申请直接上传媒体
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MediaUploadCreate'
+      responses:
+        '201':
+          description: 短期上传凭证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaUploadResponse'
+        '413':
+          description: 文件或视频时长超过限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /media/uploads/{uploadId}/complete:
+    post:
+      tags: [Media]
+      summary: 确认媒体已经上传
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [etag, bytes, sha256]
+              properties:
+                etag:
+                  type: string
+                bytes:
+                  type: integer
+                  format: int64
+                sha256:
+                  type: string
+      responses:
+        '202':
+          description: 已进入处理队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /media/{mediaId}:
+    get:
+      tags: [Media]
+      summary: 获取媒体处理状态
+      parameters:
+        - $ref: '#/components/parameters/MediaId'
+      responses:
+        '200':
+          description: 媒体状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/discover:
+    post:
+      tags: [Places]
+      summary: 发现和搜索当前范围内地点
+      parameters:
+        - $ref: '#/components/parameters/LocationContextRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceDiscoverRequest'
+      responses:
+        '200':
+          description: 地点卡片列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/{placeGroupId}:
+    get:
+      tags: [Places]
+      summary: 获取地点详情和当前用户能力
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/LocationContext'
+      responses:
+        '200':
+          description: 地点详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceDetailResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/{placeGroupId}/settings:
+    patch:
+      tags: [Places]
+      summary: 群主或管理员更新地点群规则
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceSettingsUpdate'
+      responses:
+        '200':
+          description: 最终生效规则
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceDetailResponse'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/{placeGroupId}/claims:
+    post:
+      tags: [Places]
+      summary: 提交商家认领申请
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceClaimCreate'
+      responses:
+        '201':
+          description: 已进入审核
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericActionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /me/managed-places:
+    get:
+      tags: [Places]
+      summary: 获取我作为群主或管理员管理的地点
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 不受当前距离限制的管理地点列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/{placeGroupId}/admins:
+    post:
+      tags: [Places]
+      summary: 地点群主任命管理员
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidateUserId, expectedPlaceVersion]
+              properties:
+                candidateUserId:
+                  type: string
+                  format: uuid
+                expectedPlaceVersion:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: 管理员和地点版本已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericActionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/{placeGroupId}/admins/{adminUserId}:
+    delete:
+      tags: [Places]
+      summary: 地点群主移除管理员
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/AdminUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: 已移除
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/{placeGroupId}/mutes/{mutedUserId}:
+    put:
+      tags: [Places]
+      summary: 禁言地点群用户
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/MutedUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mutedUntil:
+                  type: [string, 'null']
+                  format: date-time
+      responses:
+        '200':
+          description: 禁言已生效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericActionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Places]
+      summary: 解除地点群用户禁言
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/MutedUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: 已解除
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /places/{placeGroupId}/feedback:
+    post:
+      tags: [Places]
+      summary: 反馈地点资料或分类问题
+      parameters:
+        - $ref: '#/components/parameters/PlaceGroupId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackCreate'
+      responses:
+        '201':
+          description: 已创建反馈单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericActionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities:
+    post:
+      tags: [Activities]
+      summary: 创建活动
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivityCreateRequest'
+      responses:
+        '201':
+          description: 已创建活动和活动会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityDetailResponse'
+        '422':
+          description: 时间、人数、加入或发言规则冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities/discover:
+    post:
+      tags: [Activities]
+      summary: 发现、筛选和搜索活动
+      parameters:
+        - $ref: '#/components/parameters/LocationContext'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivityDiscoverRequest'
+      responses:
+        '200':
+          description: 活动卡片列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities/{activityId}:
+    get:
+      tags: [Activities]
+      summary: 获取活动详情
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/LocationContext'
+      responses:
+        '200':
+          description: 活动详情和当前用户能力
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityDetailResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [Activities]
+      summary: 按群主或管理员权限修改活动
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivityUpdateRequest'
+      responses:
+        '200':
+          description: 修改后的活动
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityDetailResponse'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '422':
+          description: 人数或规则不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities/{activityId}/join-requests:
+    post:
+      tags: [Activities]
+      summary: 申请加入或直接加入活动
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: 报名申请或成员结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityJoinResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    get:
+      tags: [Activities]
+      summary: 群主或管理员查看加入申请
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 加入申请列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityJoinRequestListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities/{activityId}/join-requests/{joinRequestId}/decision:
+    post:
+      tags: [Activities]
+      summary: 群主或管理员审批加入
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/JoinRequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, expectedActivityVersion]
+              properties:
+                decision:
+                  type: string
+                  enum: [accept, reject]
+                expectedActivityVersion:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: 审批后的申请和活动人数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityJoinResponse'
+        '409':
+          description: 活动已满或版本冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities/{activityId}/members:
+    get:
+      tags: [Activities]
+      summary: 查看全部活动成员
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 群主、管理员和成员列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityMemberListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities/{activityId}/members/{memberUserId}:
+    patch:
+      tags: [Activities]
+      summary: 任命管理员、禁言、解除禁言或移除成员
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/MemberUserId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivityMemberCommand'
+      responses:
+        '200':
+          description: 命令已执行并返回最终状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericActionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /activities/{activityId}/announcement:
+    put:
+      tags: [Activities]
+      summary: 发布或编辑活动置顶公告
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                expectedAnnouncementVersion:
+                  type: [integer, 'null']
+      responses:
+        '200':
+          description: 当前有效公告
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericActionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Activities]
+      summary: 群主或管理员关闭当前公告
+      parameters:
+        - $ref: '#/components/parameters/ActivityId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: 公告已关闭
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /me/activity-expectations:
+    get:
+      tags: [Activities]
+      summary: 获取我的活动期待关键词
+      responses:
+        '200':
+          description: 活动期待列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      tags: [Activities]
+      summary: 替换我的活动期待关键词
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: object
+                    required: [keyword, radiusMeters]
+                    properties:
+                      keyword:
+                        type: string
+                        minLength: 1
+                        maxLength: 64
+                      radiusMeters:
+                        type: integer
+                        minimum: 100
+                        maximum: 30000
+      responses:
+        '200':
+          description: 最终生效列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts:
+    post:
+      tags: [Posts]
+      summary: 发布动态
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/LocationContextRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreateRequest'
+      responses:
+        '201':
+          description: 已发布动态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetailResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts/discover:
+    post:
+      tags: [Posts]
+      summary: 获取附近最新或热门动态
+      parameters:
+        - $ref: '#/components/parameters/LocationContextRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostDiscoverRequest'
+      responses:
+        '200':
+          description: 动态列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /feeds/friends:
+    get:
+      tags: [Posts]
+      summary: 获取好友动态
+      description: 新到旧，不展示距离和“好友可见”文案。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 好友动态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts/{postId}:
+    get:
+      tags: [Posts]
+      summary: 获取统一动态详情
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: 正文、媒体、互动和评论
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [Posts]
+      summary: 在服务端编辑期限内修改自己的动态
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostUpdateRequest'
+      responses:
+        '200':
+          description: 修改后的动态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetailResponse'
+        '403':
+          description: 编辑窗口已过
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Posts]
+      summary: 删除自己的动态
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: 已删除
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts/{postId}/like:
+    put:
+      tags: [Posts]
+      summary: 点赞动态
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 最新点赞状态和数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Posts]
+      summary: 取消点赞动态
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 最新点赞状态和数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts/{postId}/comments:
+    post:
+      tags: [Posts]
+      summary: 评论动态或回复评论
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreateRequest'
+      responses:
+        '201':
+          description: 已创建评论
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /comments/{commentId}/like:
+    put:
+      tags: [Posts]
+      summary: 点赞评论
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 最新点赞状态和数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Posts]
+      summary: 取消点赞评论
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 最新点赞状态和数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts/{postId}/report:
+    post:
+      tags: [Posts]
+      summary: 举报动态
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+      responses:
+        '201':
+          description: 已创建举报
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericActionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /search:
+    post:
+      tags: [Search]
+      summary: 分类执行全局搜索
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: 每类最多返回指定数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /sync/events:
+    get:
+      tags: [Sync]
+      summary: WebSocket 断线或多设备场景的增量同步
+      parameters:
+        - name: afterCursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        '200':
+          description: 账号级增量事件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: access-token
+
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AppVersion:
+      name: X-App-Version
+      in: header
+      required: true
+      schema:
+        type: string
+    Platform:
+      name: X-Platform
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: [ios, android]
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    LocationContext:
+      name: X-Location-Context
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 512
+    LocationContextRequired:
+      name: X-Location-Context
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 512
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    FriendUserId:
+      name: friendUserId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TargetUserId:
+      name: targetUserId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    FriendRequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UploadId:
+      name: uploadId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MediaId:
+      name: mediaId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PlaceGroupId:
+      name: placeGroupId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ActivityId:
+      name: activityId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    JoinRequestId:
+      name: joinRequestId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AdminUserId:
+      name: adminUserId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MutedUserId:
+      name: mutedUserId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MemberUserId:
+      name: memberUserId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PostId:
+      name: postId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CommentId:
+      name: commentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ErrorResponse:
+      description: 业务或系统错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: 对象不存在或当前用户无权得知其存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    VersionConflict:
+      description: 资源已被其他设备或管理员修改
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: 操作过于频繁
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: 建议等待秒数
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    ResponseMeta:
+      type: object
+      required: [requestId, serverTime]
+      properties:
+        requestId:
+          type: string
+        serverTime:
+          type: string
+          format: date-time
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+              examples: [ACTIVITY_CAPACITY_BELOW_MEMBER_COUNT]
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+            requestId:
+              type: string
+
+    GenericActionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    GenericListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    SmsSendRequest:
+      type: object
+      required: [countryCode, phoneNumber, purpose]
+      properties:
+        countryCode:
+          type: string
+          examples: ['+86']
+        phoneNumber:
+          type: string
+          minLength: 6
+          maxLength: 24
+        purpose:
+          type: string
+          enum: [login]
+
+    SmsSendResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [verificationId, expiresAt, resendAfterSeconds]
+          properties:
+            verificationId:
+              type: string
+              format: uuid
+            expiresAt:
+              type: string
+              format: date-time
+            resendAfterSeconds:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    SmsVerifyRequest:
+      type: object
+      required: [verificationId, code, device]
+      properties:
+        verificationId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          minLength: 4
+          maxLength: 8
+        device:
+          type: object
+          required: [platform, deviceName]
+          properties:
+            platform:
+              type: string
+              enum: [ios, android]
+            deviceName:
+              type: string
+              maxLength: 128
+            pushToken:
+              type: string
+
+    AuthResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required:
+            [accessToken, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt, deviceId, userId]
+          properties:
+            accessToken:
+              type: string
+            accessTokenExpiresAt:
+              type: string
+              format: date-time
+            refreshToken:
+              type: string
+            refreshTokenExpiresAt:
+              type: string
+              format: date-time
+            deviceId:
+              type: string
+              format: uuid
+            userId:
+              type: string
+              format: uuid
+            isNewUser:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    GeoContextRequest:
+      type: object
+      required: [coordinateSystem, longitude, latitude, accuracyMeters, capturedAt]
+      properties:
+        coordinateSystem:
+          type: string
+          const: gcj02
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        accuracyMeters:
+          type: number
+          minimum: 0
+          maximum: 10000
+        capturedAt:
+          type: string
+          format: date-time
+        motionState:
+          type: string
+          enum: [stationary, walking, running, driving, unknown]
+          default: unknown
+
+    GeoAnchor:
+      type: object
+      required: [radiusMeters, isReused, recalculationPending]
+      properties:
+        radiusMeters:
+          type: integer
+        isReused:
+          type: boolean
+        recalculationPending:
+          type: boolean
+
+    UnreadState:
+      type: object
+      required: [count, appearance]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        appearance:
+          type: string
+          enum: [none, red, gray]
+        firstUnreadSequence:
+          type: [integer, 'null']
+          format: int64
+
+    PlazaSummary:
+      type: object
+      required: [plazaId, conversationId, name, relation, canView, canSpeak, unread]
+      properties:
+        plazaId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        relation:
+          type: string
+          enum: [main, adjacent]
+        canView:
+          type: boolean
+        canSpeak:
+          type: boolean
+        unread:
+          $ref: '#/components/schemas/UnreadState'
+
+    GeoContextResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [locationContextToken, expiresAt, anchor, plazas]
+          properties:
+            locationContextToken:
+              type: string
+            expiresAt:
+              type: string
+              format: date-time
+            anchor:
+              $ref: '#/components/schemas/GeoAnchor'
+            plazas:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items:
+                $ref: '#/components/schemas/PlazaSummary'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    MediaView:
+      type: object
+      required: [mediaId, mediaType, status]
+      properties:
+        mediaId:
+          type: string
+          format: uuid
+        mediaType:
+          type: string
+          enum: [image, voice, video, sticker]
+        status:
+          type: string
+          enum: [uploading, processing, ready, failed, expired]
+        url:
+          type: [string, 'null']
+          format: uri
+        thumbnailUrl:
+          type: [string, 'null']
+          format: uri
+        coverUrl:
+          type: [string, 'null']
+          format: uri
+        width:
+          type: [integer, 'null']
+        height:
+          type: [integer, 'null']
+        durationMs:
+          type: [integer, 'null']
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+
+    UserSummary:
+      type: object
+      required: [userId, displayName, avatar]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        avatar:
+          anyOf:
+            - $ref: '#/components/schemas/MediaView'
+            - type: 'null'
+
+    RelationshipView:
+      type: object
+      required: [state, canStartDirectChat, isBlockedByMe, hasBlockedMe]
+      properties:
+        state:
+          type: string
+          enum: [self, stranger, requestPending, friend, blocked]
+        canStartDirectChat:
+          type: boolean
+        isBlockedByMe:
+          type: boolean
+        hasBlockedMe:
+          type: boolean
+        canViewMyPosts:
+          type: boolean
+
+    UserProfile:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          required:
+            [fangyuanNumber, nickname, signature, profileVisibility, relationship, allowedActions]
+          properties:
+            fangyuanNumber:
+              type: string
+            nickname:
+              type: string
+            gender:
+              type: string
+              enum: [unspecified, male, female, custom, hidden]
+            signature:
+              type: string
+            background:
+              anyOf:
+                - $ref: '#/components/schemas/MediaView'
+                - type: 'null'
+            profileVisibility:
+              type: string
+              enum: [full, limited]
+            relationship:
+              $ref: '#/components/schemas/RelationshipView'
+            allowedActions:
+              type: array
+              items:
+                type: string
+
+    UserProfileResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/UserProfile'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    MyProfileResponse:
+      allOf:
+        - $ref: '#/components/schemas/UserProfileResponse'
+
+    ProfileUpdateRequest:
+      type: object
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 64
+        gender:
+          type: string
+          enum: [unspecified, male, female, custom]
+        customGender:
+          type: [string, 'null']
+          maxLength: 32
+        signature:
+          type: string
+          maxLength: 160
+        avatarMediaId:
+          type: [string, 'null']
+          format: uuid
+        backgroundMediaId:
+          type: [string, 'null']
+          format: uuid
+
+    PrivacySettings:
+      type: object
+      required:
+        [strangersCanViewProfile, searchableByFangyuanNumber, globalGroupMuted]
+      properties:
+        strangersCanViewProfile:
+          type: boolean
+        searchableByFangyuanNumber:
+          type: boolean
+        globalGroupMuted:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+
+    PrivacySettingsUpdate:
+      type: object
+      properties:
+        strangersCanViewProfile:
+          type: boolean
+        searchableByFangyuanNumber:
+          type: boolean
+        globalGroupMuted:
+          type: boolean
+      minProperties: 1
+
+    PrivacySettingsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/PrivacySettings'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    FriendRequestCreate:
+      type: object
+      required: [targetUserId, applicationNote]
+      properties:
+        targetUserId:
+          type: string
+          format: uuid
+        applicationNote:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    FriendRequest:
+      type: object
+      required: [requestId, sender, receiver, status, applicationNote, createdAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        sender:
+          $ref: '#/components/schemas/UserSummary'
+        receiver:
+          $ref: '#/components/schemas/UserSummary'
+        status:
+          type: string
+          enum: [pending, accepted, rejected, cancelled, expired]
+        applicationNote:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: [string, 'null']
+          format: date-time
+
+    FriendRequestResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/FriendRequest'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    FriendRequestListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/FriendRequest'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    FriendDecisionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [request]
+          properties:
+            request:
+              $ref: '#/components/schemas/FriendRequest'
+            friendshipId:
+              type: [string, 'null']
+              format: uuid
+            friendUserId:
+              type: [string, 'null']
+              format: uuid
+            directConversationId:
+              type: [string, 'null']
+              format: uuid
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    FriendView:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          required: [nickname, remarkName, canViewMyPosts, pinned, updatedAt]
+          properties:
+            nickname:
+              type: string
+            remarkName:
+              type: [string, 'null']
+            canViewMyPosts:
+              type: boolean
+            pinned:
+              type: boolean
+            directConversationId:
+              type: string
+              format: uuid
+            updatedAt:
+              type: string
+              format: date-time
+
+    FriendListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/FriendView'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    FriendSettingsUpdate:
+      type: object
+      properties:
+        remarkName:
+          type: [string, 'null']
+          maxLength: 64
+        canViewMyPosts:
+          type: boolean
+        pinned:
+          type: boolean
+      minProperties: 1
+
+    FriendSettingsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [friendUserId, canViewMyPosts, pinned, updatedAt]
+          properties:
+            friendUserId:
+              type: string
+              format: uuid
+            remarkName:
+              type: [string, 'null']
+            canViewMyPosts:
+              type: boolean
+            pinned:
+              type: boolean
+            updatedAt:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    BlockView:
+      type: object
+      required: [target, state, priorRelation, directMessagingAllowed, updatedAt]
+      properties:
+        target:
+          $ref: '#/components/schemas/UserSummary'
+        state:
+          type: string
+          enum: [blocked, unblocked]
+        priorRelation:
+          type: string
+          enum: [friend, stranger]
+        restoredRelation:
+          type: [string, 'null']
+          enum: [friend, stranger, null]
+        directMessagingAllowed:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+
+    BlockResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/BlockView'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    BlockListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/BlockView'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    MessagePreview:
+      type: object
+      required: [messageId, sequence, preview, createdAt]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          format: int64
+        preview:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ConversationSummary:
+      type: object
+      required:
+        [conversationId, type, title, unread, notificationMode, pinned, allowedActions]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [plaza, place, activity, direct, system]
+        title:
+          type: string
+        avatar:
+          anyOf:
+            - $ref: '#/components/schemas/MediaView'
+            - type: 'null'
+        lastMessage:
+          anyOf:
+            - $ref: '#/components/schemas/MessagePreview'
+            - type: 'null'
+        unread:
+          $ref: '#/components/schemas/UnreadState'
+        notificationMode:
+          type: string
+          enum: [normal, muted]
+        pinned:
+          type: boolean
+        allowedActions:
+          type: array
+          items:
+            type: string
+
+    ConversationListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore, navigationUnread]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ConversationSummary'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+            navigationUnread:
+              type: integer
+              minimum: 0
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ConversationDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/ConversationSummary'
+            - type: object
+              required: [latestSequence, currentRole]
+              properties:
+                latestSequence:
+                  type: integer
+                  format: int64
+                currentRole:
+                  type: string
+                rules:
+                  type: object
+                  additionalProperties: true
+                announcement:
+                  type: [object, 'null']
+                  additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    Message:
+      type: object
+      required:
+        [messageId, conversationId, sequence, type, media, mentions, deliveryState, createdAt]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        clientMessageId:
+          type: [string, 'null']
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          format: int64
+        sender:
+          anyOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        type:
+          type: string
+          enum: [text, image, voice, video, sticker, location, liveLocation, activityCard, systemEvent]
+        text:
+          type: [string, 'null']
+        payload:
+          type: [object, 'null']
+          additionalProperties: true
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/MediaView'
+        replyToMessageId:
+          type: [string, 'null']
+          format: uuid
+        mentions:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSummary'
+        deliveryState:
+          type: string
+          enum: [sent, expired, deleted, failed]
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+
+    MessageSendRequest:
+      type: object
+      required: [clientMessageId, type]
+      properties:
+        clientMessageId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [text, image, voice, video, sticker, location, activityCard]
+        text:
+          type: [string, 'null']
+          maxLength: 5000
+        payload:
+          type: [object, 'null']
+          additionalProperties: true
+        mediaIds:
+          type: array
+          uniqueItems: true
+          maxItems: 9
+          items:
+            type: string
+            format: uuid
+        replyToMessageId:
+          type: [string, 'null']
+          format: uuid
+        mentionedUserIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    MessageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Message'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    MessageListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasEarlier, hasLater]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+            hasEarlier:
+              type: boolean
+            hasLater:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ReadCursorResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [conversationId, lastReadSequence, unread, navigationUnreadDelta]
+          properties:
+            conversationId:
+              type: string
+              format: uuid
+            lastReadSequence:
+              type: integer
+              format: int64
+            unread:
+              $ref: '#/components/schemas/UnreadState'
+            navigationUnreadDelta:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ConversationSettingsUpdate:
+      type: object
+      properties:
+        notificationOverride:
+          type: string
+          enum: [inherit, normal, muted]
+        pinned:
+          type: boolean
+        announcementDismissedVersion:
+          type: integer
+          minimum: 0
+      minProperties: 1
+
+    ConversationSettingsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [conversationId, notificationOverride, pinned, updatedAt]
+          properties:
+            conversationId:
+              type: string
+              format: uuid
+            notificationOverride:
+              type: string
+              enum: [inherit, normal, muted]
+            pinned:
+              type: boolean
+            announcementDismissedVersion:
+              type: [integer, 'null']
+            updatedAt:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    MediaUploadCreate:
+      type: object
+      required: [purpose, mediaType, fileName, contentType, bytes, sha256]
+      properties:
+        purpose:
+          type: string
+          enum: [avatar, background, chat, post, report, placeClaim]
+        mediaType:
+          type: string
+          enum: [image, voice, video, sticker]
+        fileName:
+          type: string
+          maxLength: 200
+        contentType:
+          type: string
+          maxLength: 100
+        bytes:
+          type: integer
+          format: int64
+          minimum: 1
+        durationMs:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 20000
+        width:
+          type: [integer, 'null']
+        height:
+          type: [integer, 'null']
+        sha256:
+          type: string
+
+    MediaUploadResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [uploadId, method, uploadUrl, headers, expiresAt]
+          properties:
+            uploadId:
+              type: string
+              format: uuid
+            method:
+              type: string
+              enum: [PUT, POST]
+            uploadUrl:
+              type: string
+              format: uri
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+            expiresAt:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    MediaResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MediaView'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    PlaceCategory:
+      type: object
+      required: [key, name]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+
+    PlaceCard:
+      type: object
+      required:
+        [placeGroupId, conversationId, name, category, distance, certificationStatus, heat, unread, allowedActions]
+      properties:
+        placeGroupId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          $ref: '#/components/schemas/PlaceCategory'
+        distance:
+          type: object
+          required: [meters, display]
+          properties:
+            meters:
+              type: integer
+            display:
+              type: string
+        certificationStatus:
+          type: string
+          enum: [unverified, reviewPending, verified]
+        heat:
+          type: object
+          required: [level, display]
+          properties:
+            level:
+              type: string
+              enum: [quiet, neutral, active, veryActive, hot]
+            display:
+              type: string
+        unread:
+          $ref: '#/components/schemas/UnreadState'
+        allowedActions:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+
+    PlaceDiscoverRequest:
+      type: object
+      properties:
+        filters:
+          type: object
+          properties:
+            categoryKeys:
+              type: array
+              items:
+                type: string
+            distanceMeters:
+              type: integer
+              minimum: 100
+              maximum: 30000
+            heatLevels:
+              type: array
+              items:
+                type: string
+                enum: [quiet, neutral, active, veryActive, hot]
+            historyOnly:
+              type: boolean
+            keyword:
+              type: [string, 'null']
+              maxLength: 80
+        sort:
+          type: string
+          enum: [recommended, distance, heat]
+          default: recommended
+        cursor:
+          type: [string, 'null']
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+
+    PlaceListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlaceCard'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    PlaceDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/PlaceCard'
+            - type: object
+              properties:
+                address:
+                  type: string
+                currentRole:
+                  type: string
+                  enum: [owner, admin, resident, nearby, visitor]
+                visibilityRadiusMeters:
+                  type: [integer, 'null']
+                speakPolicy:
+                  type: string
+                  enum: [nearbyAndMembers, membersOnly, adminsOnly]
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    PlaceSettingsUpdate:
+      type: object
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        visibilityRadiusMeters:
+          type: integer
+          minimum: 100
+          maximum: 30000
+        speakPolicy:
+          type: string
+          enum: [nearbyAndMembers, membersOnly, adminsOnly]
+      minProperties: 2
+
+    PlaceClaimCreate:
+      type: object
+      required:
+        [businessName, unifiedCreditCode, contactName, contactPhone, evidenceMediaIds]
+      properties:
+        businessName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        unifiedCreditCode:
+          type: string
+          minLength: 10
+          maxLength: 32
+        contactName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        contactPhone:
+          type: string
+          minLength: 6
+          maxLength: 24
+        evidenceMediaIds:
+          type: array
+          minItems: 1
+          maxItems: 12
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    FeedbackCreate:
+      type: object
+      required: [reasonCode, description, evidenceMediaIds]
+      properties:
+        reasonCode:
+          type: string
+          maxLength: 32
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        evidenceMediaIds:
+          type: array
+          maxItems: 9
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    ActivityLocation:
+      type: object
+      required: [coordinateSystem, longitude, latitude, placeName]
+      properties:
+        coordinateSystem:
+          type: string
+          const: gcj02
+        longitude:
+          type: number
+        latitude:
+          type: number
+        placeName:
+          type: string
+          maxLength: 200
+
+    ActivityRules:
+      type: object
+      required: [joinPolicy, speakPolicy, nearbyAfterStartPolicy]
+      properties:
+        joinPolicy:
+          type: string
+          enum: [direct, approvalRequired]
+        speakPolicy:
+          type: string
+          enum: [nearbyAndMembers, membersOnly, adminsOnly]
+        nearbyAfterStartPolicy:
+          type: string
+          enum: [visibleAndSpeak, visibleReadOnly, hidden]
+
+    ActivityCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ActivityRules'
+        - type: object
+          required:
+            [name, description, activityType, location, startsAt, noFixedEnd, visibilityRadiusMeters]
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 120
+            description:
+              type: string
+              maxLength: 5000
+            activityType:
+              type: string
+            customTypeName:
+              type: [string, 'null']
+              maxLength: 64
+            location:
+              $ref: '#/components/schemas/ActivityLocation'
+            startsAt:
+              type: string
+              format: date-time
+            endsAt:
+              type: [string, 'null']
+              format: date-time
+            noFixedEnd:
+              type: boolean
+            visibilityRadiusMeters:
+              type: integer
+              enum: [500, 1000, 2000, 5000, 10000, 30000]
+            capacity:
+              type: [integer, 'null']
+              minimum: 1
+
+    ActivityUpdateRequest:
+      type: object
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 5000
+        activityType:
+          type: string
+        customTypeName:
+          type: [string, 'null']
+          maxLength: 64
+        location:
+          $ref: '#/components/schemas/ActivityLocation'
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: [string, 'null']
+          format: date-time
+        noFixedEnd:
+          type: boolean
+        visibilityRadiusMeters:
+          type: integer
+          enum: [500, 1000, 2000, 5000, 10000, 30000]
+        capacity:
+          type: [integer, 'null']
+          minimum: 1
+        joinPolicy:
+          type: string
+          enum: [direct, approvalRequired]
+        speakPolicy:
+          type: string
+          enum: [nearbyAndMembers, membersOnly, adminsOnly]
+        nearbyAfterStartPolicy:
+          type: string
+          enum: [visibleAndSpeak, visibleReadOnly, hidden]
+      minProperties: 2
+
+    ActivityCard:
+      type: object
+      required:
+        [activityId, conversationId, name, status, startsAt, noFixedEnd, memberCount, unread, allowedActions, version]
+      properties:
+        activityId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        activityType:
+          type: string
+        placeName:
+          type: string
+        distance:
+          type: [object, 'null']
+          additionalProperties: true
+        status:
+          type: string
+          enum: [publishedUpcoming, ongoing, ended, cancelled]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: [string, 'null']
+          format: date-time
+        noFixedEnd:
+          type: boolean
+        capacity:
+          type: [integer, 'null']
+        memberCount:
+          type: integer
+        currentRole:
+          type: string
+          enum: [owner, admin, member, nearby, none]
+        unread:
+          $ref: '#/components/schemas/UnreadState'
+        allowedActions:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+
+    ActivityDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/ActivityCard'
+            - $ref: '#/components/schemas/ActivityRules'
+            - type: object
+              properties:
+                description:
+                  type: string
+                location:
+                  $ref: '#/components/schemas/ActivityLocation'
+                announcement:
+                  type: [object, 'null']
+                  additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ActivityDiscoverRequest:
+      type: object
+      properties:
+        keyword:
+          type: [string, 'null']
+          maxLength: 80
+        distanceMeters:
+          type: integer
+          minimum: 100
+          maximum: 30000
+        activityType:
+          type: [string, 'null']
+        scope:
+          type: string
+          enum: [nearby, myHobbies, joined, ended]
+          default: nearby
+        cursor:
+          type: [string, 'null']
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+
+    ActivityListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ActivityCard'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ActivityJoinResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [activityId, status, memberCount, activityVersion]
+          properties:
+            activityId:
+              type: string
+              format: uuid
+            joinRequestId:
+              type: [string, 'null']
+              format: uuid
+            status:
+              type: string
+              enum: [pending, accepted, rejected]
+            memberCount:
+              type: integer
+            activityVersion:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ActivityJoinRequestView:
+      type: object
+      required: [joinRequestId, applicant, status, createdAt]
+      properties:
+        joinRequestId:
+          type: string
+          format: uuid
+        applicant:
+          $ref: '#/components/schemas/UserSummary'
+        status:
+          type: string
+          enum: [pending, accepted, rejected]
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: [string, 'null']
+          format: date-time
+
+    ActivityJoinRequestListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ActivityJoinRequestView'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ActivityMemberView:
+      type: object
+      required: [user, role, status, joinedAt]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        role:
+          type: string
+          enum: [owner, admin, member]
+        status:
+          type: string
+          enum: [active, muted, removed]
+        mutedUntil:
+          type: [string, 'null']
+          format: date-time
+        joinedAt:
+          type: string
+          format: date-time
+
+    ActivityMemberListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ActivityMemberView'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ActivityMemberCommand:
+      type: object
+      required: [command, expectedActivityVersion]
+      properties:
+        command:
+          type: string
+          enum: [appointAdmin, removeAdmin, mute, unmute, removeMember]
+        mutedUntil:
+          type: [string, 'null']
+          format: date-time
+        expectedActivityVersion:
+          type: integer
+          minimum: 1
+
+    PostCreateRequest:
+      type: object
+      required: [mediaIds, radiusMeters, showPlaceName]
+      properties:
+        body:
+          type: [string, 'null']
+          maxLength: 5000
+        mediaIds:
+          type: array
+          uniqueItems: true
+          maxItems: 9
+          items:
+            type: string
+            format: uuid
+        radiusMeters:
+          type: integer
+          minimum: 100
+          maximum: 30000
+        showPlaceName:
+          type: boolean
+        placeName:
+          type: [string, 'null']
+          maxLength: 200
+        visibleUntil:
+          type: [string, 'null']
+          format: date-time
+      anyOf:
+        - required: [body]
+          properties:
+            body:
+              type: string
+              minLength: 1
+        - properties:
+            mediaIds:
+              type: array
+              minItems: 1
+          required: [mediaIds]
+
+    PostUpdateRequest:
+      type: object
+      properties:
+        body:
+          type: [string, 'null']
+          maxLength: 5000
+        mediaIds:
+          type: array
+          uniqueItems: true
+          maxItems: 9
+          items:
+            type: string
+            format: uuid
+        radiusMeters:
+          type: integer
+          minimum: 100
+          maximum: 30000
+        showPlaceName:
+          type: boolean
+        placeName:
+          type: [string, 'null']
+        visibleUntil:
+          type: [string, 'null']
+          format: date-time
+      minProperties: 1
+
+    PostAuthor:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+
+    PostComment:
+      type: object
+      required: [commentId, author, body, likeCount, likedByMe, createdAt]
+      properties:
+        commentId:
+          type: string
+          format: uuid
+        author:
+          $ref: '#/components/schemas/UserSummary'
+        parentCommentId:
+          type: [string, 'null']
+          format: uuid
+        replyToUser:
+          anyOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        body:
+          type: string
+        likeCount:
+          type: integer
+        likedByMe:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    Post:
+      type: object
+      required:
+        [postId, author, body, media, radiusMeters, showPlaceName, likeCount, commentCount, likedByMe, createdAt, editableUntil, allowedActions]
+      properties:
+        postId:
+          type: string
+          format: uuid
+        author:
+          $ref: '#/components/schemas/PostAuthor'
+        body:
+          type: [string, 'null']
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/MediaView'
+        radiusMeters:
+          type: integer
+        distance:
+          type: [object, 'null']
+          description: 好友动态中必须为空
+          additionalProperties: true
+        showPlaceName:
+          type: boolean
+        placeName:
+          type: [string, 'null']
+        visibleUntil:
+          type: [string, 'null']
+          format: date-time
+        likeCount:
+          type: integer
+        commentCount:
+          type: integer
+        likedByMe:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        editableUntil:
+          type: string
+          format: date-time
+        allowedActions:
+          type: array
+          items:
+            type: string
+
+    PostDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/Post'
+            - type: object
+              required: [comments]
+              properties:
+                comments:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PostComment'
+                commentsNextCursor:
+                  type: [string, 'null']
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    PostDiscoverRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [latest, hot]
+          default: latest
+        radiusMeters:
+          type: integer
+          minimum: 100
+          maximum: 30000
+        localDate:
+          type: [string, 'null']
+          format: date
+        cursor:
+          type: [string, 'null']
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+
+    PostListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items, hasMore]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Post'
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+            generatedAt:
+              type: [string, 'null']
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    CommentCreateRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        parentCommentId:
+          type: [string, 'null']
+          format: uuid
+        replyToUserId:
+          type: [string, 'null']
+          format: uuid
+
+    CommentResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/PostComment'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ReactionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [likedByMe, likeCount]
+          properties:
+            likedByMe:
+              type: boolean
+            likeCount:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ReportCreate:
+      type: object
+      required: [reasonCode, evidenceMediaIds]
+      properties:
+        reasonCode:
+          type: string
+          maxLength: 32
+        description:
+          type: [string, 'null']
+          maxLength: 5000
+        evidenceMediaIds:
+          type: array
+          uniqueItems: true
+          maxItems: 9
+          items:
+            type: string
+            format: uuid
+
+    SearchRequest:
+      type: object
+      required: [query, categories, perCategoryLimit]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 80
+        locationContextToken:
+          type: [string, 'null']
+        categories:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [friends, plazaMessages, directMessages, places, activities, systemConversations]
+        perCategoryLimit:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 3
+
+    SearchResult:
+      type: object
+      required: [resultType, targetId, title, openTarget]
+      properties:
+        resultType:
+          type: string
+        targetId:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: [string, 'null']
+        highlight:
+          type: [string, 'null']
+        card:
+          type: [object, 'null']
+          additionalProperties: true
+        openTarget:
+          type: object
+          additionalProperties: true
+
+    SearchResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [groups]
+          properties:
+            groups:
+              type: array
+              items:
+                type: object
+                required: [category, items, hasMore]
+                properties:
+                  category:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SearchResult'
+                  hasMore:
+                    type: boolean
+                  moreCursor:
+                    type: [string, 'null']
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    SyncEvent:
+      type: object
+      required: [eventId, eventType, eventCursor, occurredAt, payload]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        eventCursor:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+
+    SyncResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [events, latestCursor, hasMore]
+          properties:
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/SyncEvent'
+            latestCursor:
+              type: string
+            hasMore:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'

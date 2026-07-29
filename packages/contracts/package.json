@@ -1,0 +1,9 @@
+{
+  "name": "@fangyuanli/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "openapi-v1.yaml",
+    "asyncapi-v1.yaml"
+  ]
+}

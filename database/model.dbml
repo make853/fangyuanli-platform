@@ -1,0 +1,840 @@
+// 方圆里 MVP v1.0 核心数据模型 v0.1
+// 技术建议：PostgreSQL + PostGIS
+// 说明：这是领域模型初稿，不是可直接部署的迁移脚本。
+
+Enum account_status {
+  active
+  suspended
+  deactivated
+  deleted
+}
+
+Enum gender_type {
+  unspecified
+  male
+  female
+  custom
+}
+
+Enum request_status {
+  pending
+  accepted
+  rejected
+  cancelled
+  expired
+}
+
+Enum friendship_status {
+  active
+  deleted
+}
+
+Enum conversation_type {
+  plaza
+  place
+  activity
+  direct
+  system
+}
+
+Enum message_type {
+  text
+  image
+  voice
+  video
+  sticker
+  location
+  live_location
+  activity_card
+  system_event
+}
+
+Enum notification_override_mode {
+  inherit
+  normal
+  muted
+}
+
+Enum place_certification_status {
+  unverified
+  review_pending
+  verified
+  rejected
+  revoked
+}
+
+Enum place_visibility_status {
+  active
+  hidden_inactive
+  hidden_by_platform
+}
+
+Enum group_role {
+  owner
+  admin
+  resident
+  member
+}
+
+Enum activity_role {
+  owner
+  admin
+  member
+}
+
+Enum activity_status {
+  draft
+  published_upcoming
+  ongoing
+  ended
+  cancelled
+}
+
+Enum join_policy {
+  direct
+  approval_required
+}
+
+Enum speak_policy {
+  nearby_and_members
+  members_only
+  admins_only
+}
+
+Enum nearby_after_start_policy {
+  visible_and_speak
+  visible_read_only
+  hidden
+}
+
+Enum post_status {
+  published
+  visibility_expired
+  deleted_by_author
+  removed_by_platform
+}
+
+Enum moderation_status {
+  pending
+  processing
+  approved
+  rejected
+  closed
+}
+
+Table users {
+  id uuid [pk, note: '推荐 UUIDv7']
+  fangyuan_number varchar(32) [not null, unique]
+  phone_ciphertext text [not null]
+  phone_hash varchar(128) [not null, unique]
+  password_hash text
+  status account_status [not null, default: 'active']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  deleted_at timestamptz
+}
+
+Table user_profiles {
+  user_id uuid [pk, ref: > users.id]
+  nickname varchar(64) [not null]
+  gender gender_type [not null, default: 'unspecified']
+  custom_gender varchar(32)
+  avatar_media_id uuid
+  background_media_id uuid
+  signature varchar(160)
+  profile_version int [not null, default: 1]
+  updated_at timestamptz [not null]
+}
+
+Table user_privacy_settings {
+  user_id uuid [pk, ref: > users.id]
+  strangers_can_view_profile bool [not null, default: true]
+  searchable_by_fangyuan_number bool [not null, default: true]
+  global_group_muted bool [not null, default: false]
+  updated_at timestamptz [not null]
+}
+
+Table user_devices {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  platform varchar(16) [not null]
+  device_name varchar(128)
+  push_token_ciphertext text
+  last_active_at timestamptz
+  revoked_at timestamptz
+  created_at timestamptz [not null]
+
+  Indexes {
+    (user_id, last_active_at)
+  }
+}
+
+Table user_hobbies {
+  user_id uuid [not null, ref: > users.id]
+  hobby_key varchar(64) [not null]
+  display_name varchar(64) [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (user_id, hobby_key) [pk]
+  }
+}
+
+Table friend_requests {
+  id uuid [pk]
+  sender_user_id uuid [not null, ref: > users.id]
+  receiver_user_id uuid [not null, ref: > users.id]
+  application_note varchar(200) [not null]
+  status request_status [not null, default: 'pending']
+  decided_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (receiver_user_id, status, created_at)
+    (sender_user_id, receiver_user_id, status)
+  }
+}
+
+Table friendships {
+  id uuid [pk]
+  user_low_id uuid [not null, ref: > users.id, note: '两位用户 ID 排序后的较小值']
+  user_high_id uuid [not null, ref: > users.id]
+  status friendship_status [not null, default: 'active']
+  established_from_request_id uuid [ref: > friend_requests.id]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (user_low_id, user_high_id) [unique]
+    (user_high_id, status)
+  }
+}
+
+Table friend_settings {
+  friendship_id uuid [not null, ref: > friendships.id]
+  owner_user_id uuid [not null, ref: > users.id, note: '设置发起方']
+  remark_name varchar(64)
+  can_view_owner_posts bool [not null, default: true]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (friendship_id, owner_user_id) [pk]
+  }
+}
+
+Table block_relations {
+  blocker_user_id uuid [not null, ref: > users.id]
+  blocked_user_id uuid [not null, ref: > users.id]
+  prior_relation varchar(24) [not null, note: 'friend 或 stranger']
+  prior_friendship_id uuid [ref: > friendships.id]
+  reason_code varchar(32)
+  created_at timestamptz [not null]
+  removed_at timestamptz
+
+  Indexes {
+    (blocker_user_id, blocked_user_id) [pk]
+    (blocked_user_id, removed_at)
+  }
+}
+
+Table conversations {
+  id uuid [pk]
+  type conversation_type [not null]
+  latest_sequence bigint [not null, default: 0]
+  status varchar(24) [not null, default: 'active']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table direct_conversations {
+  conversation_id uuid [pk, ref: > conversations.id]
+  friendship_id uuid [not null, unique, ref: > friendships.id]
+  user_low_id uuid [not null, ref: > users.id]
+  user_high_id uuid [not null, ref: > users.id]
+  created_at timestamptz [not null]
+}
+
+Table system_conversations {
+  conversation_id uuid [pk, ref: > conversations.id]
+  user_id uuid [not null, ref: > users.id]
+  system_channel varchar(32) [not null, note: 'friend_request/activity/post/expected_activity']
+  created_at timestamptz [not null]
+
+  Indexes {
+    (user_id, system_channel) [unique]
+  }
+}
+
+Table messages {
+  id uuid [pk]
+  conversation_id uuid [not null, ref: > conversations.id]
+  sequence bigint [not null]
+  sender_user_id uuid [ref: > users.id]
+  client_message_id uuid
+  type message_type [not null]
+  body_text text
+  payload jsonb [note: '位置、活动卡片、系统事件等结构化内容']
+  reply_to_message_id uuid [ref: > messages.id]
+  retention_policy varchar(32) [not null]
+  expires_at timestamptz
+  send_status varchar(24) [not null, default: 'sent']
+  created_at timestamptz [not null]
+  edited_at timestamptz
+  deleted_at timestamptz
+
+  Indexes {
+    (conversation_id, sequence) [unique]
+    (sender_user_id, client_message_id) [unique]
+    (expires_at)
+  }
+}
+
+Table message_media {
+  id uuid [pk]
+  message_id uuid [not null, ref: > messages.id]
+  media_asset_id uuid [not null]
+  sort_order int [not null, default: 0]
+  expires_at timestamptz
+
+  Indexes {
+    (message_id, sort_order) [unique]
+  }
+}
+
+Table message_mentions {
+  message_id uuid [not null, ref: > messages.id]
+  mentioned_user_id uuid [not null, ref: > users.id]
+  start_offset int
+  end_offset int
+
+  Indexes {
+    (message_id, mentioned_user_id) [pk]
+    (mentioned_user_id, message_id)
+  }
+}
+
+Table conversation_read_cursors {
+  conversation_id uuid [not null, ref: > conversations.id]
+  user_id uuid [not null, ref: > users.id]
+  last_read_sequence bigint [not null, default: 0]
+  first_unread_sequence bigint
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (conversation_id, user_id) [pk]
+    (user_id, updated_at)
+  }
+}
+
+Table conversation_notification_settings {
+  conversation_id uuid [not null, ref: > conversations.id]
+  user_id uuid [not null, ref: > users.id]
+  notification_override notification_override_mode [not null, default: 'inherit']
+  pinned bool [not null, default: false]
+  announcement_dismissed_version int
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (conversation_id, user_id) [pk]
+    (user_id, pinned)
+  }
+}
+
+Table media_assets {
+  id uuid [pk]
+  owner_user_id uuid [ref: > users.id]
+  purpose varchar(32) [not null]
+  media_type varchar(16) [not null]
+  object_key text [not null, unique]
+  thumbnail_object_key text
+  cover_object_key text
+  width int
+  height int
+  duration_ms int
+  bytes bigint
+  processing_status varchar(24) [not null]
+  expires_at timestamptz
+  compliance_hold bool [not null, default: false]
+  created_at timestamptz [not null]
+  deleted_at timestamptz
+
+  Indexes {
+    (expires_at, compliance_hold)
+  }
+}
+
+Ref: user_profiles.avatar_media_id > media_assets.id
+Ref: user_profiles.background_media_id > media_assets.id
+Ref: message_media.media_asset_id > media_assets.id
+
+Table plaza_grid_versions {
+  id uuid [pk]
+  version_number int [not null, unique]
+  side_meters int [not null]
+  projection_definition text [not null]
+  status varchar(16) [not null]
+  activated_at timestamptz
+  created_at timestamptz [not null]
+}
+
+Table plaza_grids {
+  id uuid [pk]
+  grid_version_id uuid [not null, ref: > plaza_grid_versions.id]
+  grid_x bigint [not null]
+  grid_y bigint [not null]
+  center_point geometry [not null, note: '具体 SRID 待地理技术验证']
+  boundary geometry
+  display_name varchar(80) [not null]
+  naming_source varchar(32)
+  naming_source_id varchar(128)
+  conversation_id uuid [not null, unique, ref: > conversations.id]
+  status varchar(16) [not null, default: 'active']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (grid_version_id, grid_x, grid_y) [unique]
+    center_point [type: gist]
+  }
+}
+
+Table user_plaza_anchors {
+  user_id uuid [pk, ref: > users.id]
+  grid_version_id uuid [not null, ref: > plaza_grid_versions.id]
+  main_plaza_id uuid [not null, ref: > plaza_grids.id]
+  neighbor_plaza_ids jsonb [not null, note: '固定顺序的三个相邻广场 ID']
+  anchor_point geometry [not null]
+  anchor_radius_meters int [not null]
+  last_accuracy_meters int
+  policy_version int [not null]
+  created_at timestamptz [not null]
+  last_confirmed_at timestamptz [not null]
+  expires_at timestamptz
+}
+
+Table place_categories {
+  key varchar(64) [pk]
+  parent_key varchar(64) [ref: > place_categories.key]
+  display_name varchar(64) [not null]
+  sort_order int [not null]
+  active bool [not null, default: true]
+}
+
+Table place_pois {
+  id uuid [pk]
+  amap_poi_id varchar(128) [not null, unique]
+  name varchar(160) [not null]
+  address varchar(300)
+  map_point geometry [not null]
+  amap_category_code varchar(64)
+  amap_category_name varchar(160)
+  display_category_key varchar(64) [not null, ref: > place_categories.key]
+  source_updated_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    map_point [type: gist]
+    (display_category_key, name)
+  }
+}
+
+Table place_groups {
+  id uuid [pk]
+  poi_id uuid [not null, unique, ref: > place_pois.id]
+  conversation_id uuid [not null, unique, ref: > conversations.id]
+  certification_status place_certification_status [not null, default: 'unverified']
+  visibility_status place_visibility_status [not null, default: 'active']
+  visibility_radius_meters int
+  speak_policy speak_policy [not null, default: 'nearby_and_members']
+  last_effective_activity_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table place_group_members {
+  place_group_id uuid [not null, ref: > place_groups.id]
+  user_id uuid [not null, ref: > users.id]
+  role group_role [not null]
+  status varchar(16) [not null, default: 'active']
+  appointed_by_user_id uuid [ref: > users.id]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (place_group_id, user_id) [pk]
+    (user_id, role, status)
+  }
+}
+
+Table place_group_mutes {
+  place_group_id uuid [not null, ref: > place_groups.id]
+  user_id uuid [not null, ref: > users.id]
+  muted_by_user_id uuid [not null, ref: > users.id]
+  muted_until timestamptz
+  active bool [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (place_group_id, user_id) [pk]
+  }
+}
+
+Table place_claims {
+  id uuid [pk]
+  place_group_id uuid [not null, ref: > place_groups.id]
+  applicant_user_id uuid [not null, ref: > users.id]
+  business_name varchar(200) [not null]
+  unified_credit_code_ciphertext text [not null]
+  contact_name_ciphertext text [not null]
+  contact_phone_ciphertext text [not null]
+  status moderation_status [not null, default: 'pending']
+  decision_reason text
+  decided_by_user_id uuid [ref: > users.id]
+  decided_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (place_group_id, status)
+    (applicant_user_id, created_at)
+  }
+}
+
+Table place_claim_evidence {
+  id uuid [pk]
+  claim_id uuid [not null, ref: > place_claims.id]
+  media_asset_id uuid [not null, ref: > media_assets.id]
+  evidence_type varchar(32) [not null]
+  created_at timestamptz [not null]
+}
+
+Table place_presence_days {
+  place_group_id uuid [not null, ref: > place_groups.id]
+  user_id uuid [not null, ref: > users.id]
+  local_date date [not null]
+  qualification_met bool [not null]
+  evidence_version int [not null]
+  expires_at timestamptz [not null]
+
+  Indexes {
+    (place_group_id, user_id, local_date) [pk]
+    (user_id, local_date)
+  }
+}
+
+Table community_admin_elections {
+  id uuid [pk]
+  place_group_id uuid [not null, ref: > place_groups.id]
+  candidate_user_id uuid [not null, ref: > users.id]
+  election_type varchar(16) [not null, note: 'appoint 或 revoke']
+  status varchar(24) [not null]
+  starts_at timestamptz [not null]
+  ends_at timestamptz [not null]
+  result_snapshot jsonb
+  created_by_user_id uuid [not null, ref: > users.id]
+  created_at timestamptz [not null]
+}
+
+Table community_admin_votes {
+  election_id uuid [not null, ref: > community_admin_elections.id]
+  voter_user_id uuid [not null, ref: > users.id]
+  vote varchar(16) [not null, note: 'support/oppose/abstain']
+  eligibility_snapshot jsonb [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (election_id, voter_user_id) [pk]
+  }
+}
+
+Table place_heat_snapshots {
+  place_group_id uuid [not null, ref: > place_groups.id]
+  calculated_at timestamptz [not null]
+  score decimal(10,4) [not null]
+  level varchar(16) [not null, note: 'quiet/neutral/active/very_active/hot']
+  unique_speakers int [not null]
+  effective_messages int [not null]
+  interaction_score decimal(10,4) [not null]
+  decay_factor decimal(10,6) [not null]
+  formula_version int [not null]
+
+  Indexes {
+    (place_group_id, calculated_at) [pk]
+    (level, calculated_at)
+  }
+}
+
+Table activities {
+  id uuid [pk]
+  owner_user_id uuid [not null, ref: > users.id]
+  conversation_id uuid [not null, unique, ref: > conversations.id]
+  name varchar(120) [not null]
+  description text
+  activity_type_key varchar(64) [not null]
+  custom_type_name varchar(64)
+  map_point geometry [not null]
+  place_name varchar(200) [not null]
+  starts_at timestamptz [not null]
+  ends_at timestamptz
+  no_fixed_end bool [not null, default: false]
+  visibility_radius_meters int [not null]
+  capacity int
+  join_policy join_policy [not null]
+  speak_policy speak_policy [not null]
+  nearby_after_start_policy nearby_after_start_policy [not null]
+  status activity_status [not null, default: 'draft']
+  version int [not null, default: 1]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    map_point [type: gist]
+    (status, starts_at)
+    (activity_type_key, starts_at)
+  }
+}
+
+Table activity_memberships {
+  activity_id uuid [not null, ref: > activities.id]
+  user_id uuid [not null, ref: > users.id]
+  role activity_role [not null]
+  status varchar(16) [not null, default: 'active']
+  joined_at timestamptz [not null]
+  removed_at timestamptz
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (activity_id, user_id) [pk]
+    (user_id, status, joined_at)
+  }
+}
+
+Table activity_join_requests {
+  id uuid [pk]
+  activity_id uuid [not null, ref: > activities.id]
+  applicant_user_id uuid [not null, ref: > users.id]
+  status request_status [not null, default: 'pending']
+  decided_by_user_id uuid [ref: > users.id]
+  decided_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (activity_id, status, created_at)
+    (applicant_user_id, activity_id, status)
+  }
+}
+
+Table activity_mutes {
+  activity_id uuid [not null, ref: > activities.id]
+  user_id uuid [not null, ref: > users.id]
+  muted_by_user_id uuid [not null, ref: > users.id]
+  muted_until timestamptz
+  active bool [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (activity_id, user_id) [pk]
+  }
+}
+
+Table activity_expectations {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  keyword varchar(64) [not null]
+  radius_meters int [not null]
+  active bool [not null, default: true]
+  last_notified_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (user_id, keyword, radius_meters) [unique]
+  }
+}
+
+Table group_announcements {
+  id uuid [pk]
+  conversation_id uuid [not null, ref: > conversations.id]
+  author_user_id uuid [not null, ref: > users.id]
+  body text [not null]
+  version int [not null]
+  active bool [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (conversation_id, active, version)
+  }
+}
+
+Table posts {
+  id uuid [pk]
+  author_user_id uuid [not null, ref: > users.id]
+  body text
+  distribution_center geometry [not null]
+  radius_meters int [not null]
+  place_name varchar(200)
+  show_place_name bool [not null, default: false]
+  visible_until timestamptz
+  editable_until timestamptz [not null]
+  status post_status [not null, default: 'published']
+  like_count int [not null, default: 0]
+  comment_count int [not null, default: 0]
+  hot_score decimal(12,4) [not null, default: 0]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  deleted_at timestamptz
+
+  Indexes {
+    distribution_center [type: gist]
+    (author_user_id, created_at)
+    (status, created_at)
+    (status, hot_score)
+  }
+}
+
+Table post_media {
+  post_id uuid [not null, ref: > posts.id]
+  media_asset_id uuid [not null, ref: > media_assets.id]
+  sort_order int [not null]
+
+  Indexes {
+    (post_id, sort_order) [pk]
+    (post_id, media_asset_id) [unique]
+  }
+}
+
+Table post_reactions {
+  post_id uuid [not null, ref: > posts.id]
+  user_id uuid [not null, ref: > users.id]
+  reaction_type varchar(16) [not null, default: 'like']
+  created_at timestamptz [not null]
+
+  Indexes {
+    (post_id, user_id) [pk]
+    (user_id, created_at)
+  }
+}
+
+Table post_comments {
+  id uuid [pk]
+  post_id uuid [not null, ref: > posts.id]
+  author_user_id uuid [not null, ref: > users.id]
+  parent_comment_id uuid [ref: > post_comments.id]
+  reply_to_user_id uuid [ref: > users.id]
+  body text [not null]
+  like_count int [not null, default: 0]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  deleted_at timestamptz
+
+  Indexes {
+    (post_id, created_at)
+    (parent_comment_id, created_at)
+  }
+}
+
+Table comment_reactions {
+  comment_id uuid [not null, ref: > post_comments.id]
+  user_id uuid [not null, ref: > users.id]
+  reaction_type varchar(16) [not null, default: 'like']
+  created_at timestamptz [not null]
+
+  Indexes {
+    (comment_id, user_id) [pk]
+  }
+}
+
+Table saved_stickers {
+  user_id uuid [not null, ref: > users.id]
+  media_asset_id uuid [not null, ref: > media_assets.id]
+  sort_order int [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (user_id, media_asset_id) [pk]
+    (user_id, sort_order)
+  }
+}
+
+Table user_chat_history_entries {
+  user_id uuid [not null, ref: > users.id]
+  conversation_id uuid [not null, ref: > conversations.id]
+  last_entered_at timestamptz [not null]
+  entry_count int [not null, default: 1]
+
+  Indexes {
+    (user_id, conversation_id) [pk]
+    (user_id, last_entered_at)
+  }
+}
+
+Table reports {
+  id uuid [pk]
+  reporter_user_id uuid [not null, ref: > users.id]
+  target_type varchar(32) [not null]
+  target_id uuid [not null]
+  reason_code varchar(32) [not null]
+  description text
+  status moderation_status [not null, default: 'pending']
+  assigned_reviewer_user_id uuid [ref: > users.id]
+  decided_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (status, created_at)
+    (target_type, target_id)
+  }
+}
+
+Table report_evidence {
+  id uuid [pk]
+  report_id uuid [not null, ref: > reports.id]
+  media_asset_id uuid [not null, ref: > media_assets.id]
+  created_at timestamptz [not null]
+}
+
+Table audit_logs {
+  id uuid [pk]
+  actor_user_id uuid [ref: > users.id]
+  actor_type varchar(24) [not null]
+  action varchar(80) [not null]
+  target_type varchar(40) [not null]
+  target_id varchar(128) [not null]
+  before_data jsonb
+  after_data jsonb
+  result varchar(24) [not null]
+  device_id uuid [ref: > user_devices.id]
+  request_id varchar(128) [not null]
+  ip_hash varchar(128)
+  created_at timestamptz [not null]
+
+  Indexes {
+    (target_type, target_id, created_at)
+    (actor_user_id, created_at)
+    request_id
+  }
+}
+
+Table idempotency_records {
+  user_id uuid [not null, ref: > users.id]
+  idempotency_key varchar(128) [not null]
+  operation varchar(80) [not null]
+  request_hash varchar(128) [not null]
+  response_status int [not null]
+  response_body jsonb
+  expires_at timestamptz [not null]
+  created_at timestamptz [not null]
+
+  Indexes {
+    (user_id, idempotency_key, operation) [pk]
+    expires_at
+  }
+}

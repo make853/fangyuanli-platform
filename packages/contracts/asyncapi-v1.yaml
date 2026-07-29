@@ -1,0 +1,783 @@
+asyncapi: 2.6.0
+info:
+  title: 方圆里实时事件 API
+  version: 0.1.0
+  description: |
+    方圆里 MVP v1.0 WebSocket 契约。
+    本文档中的 publish 表示客户端发送给服务端，subscribe 表示客户端接收服务端事件。
+defaultContentType: application/json
+
+servers:
+  production:
+    url: wss://realtime.fangyuanli.example/ws/v1
+    protocol: wss
+    description: 正式环境占位地址
+    security:
+      - bearerAuth: []
+  staging:
+    url: wss://staging-realtime.fangyuanli.example/ws/v1
+    protocol: wss
+    description: 测试环境占位地址
+    security:
+      - bearerAuth: []
+
+channels:
+  /ws/v1:
+    description: 每个登录设备的一条账号级实时连接
+    publish:
+      operationId: clientSendsEvent
+      summary: 客户端发送会话恢复、消息、已读和临时输入状态
+      message:
+        oneOf:
+          - $ref: '#/components/messages/SessionResume'
+          - $ref: '#/components/messages/MessageSend'
+          - $ref: '#/components/messages/ConversationRead'
+          - $ref: '#/components/messages/TypingSet'
+          - $ref: '#/components/messages/HeartbeatPong'
+    subscribe:
+      operationId: clientReceivesEvent
+      summary: 客户端接收确认、消息、未读、关系和业务变化
+      message:
+        oneOf:
+          - $ref: '#/components/messages/SessionReady'
+          - $ref: '#/components/messages/SessionResyncRequired'
+          - $ref: '#/components/messages/MessageAccepted'
+          - $ref: '#/components/messages/MessageRejected'
+          - $ref: '#/components/messages/MessageCreated'
+          - $ref: '#/components/messages/ConversationUnreadChanged'
+          - $ref: '#/components/messages/FriendshipChanged'
+          - $ref: '#/components/messages/BlockRelationChanged'
+          - $ref: '#/components/messages/ActivityJoinRequestChanged'
+          - $ref: '#/components/messages/ActivityChanged'
+          - $ref: '#/components/messages/PostInteractionCreated'
+          - $ref: '#/components/messages/PermissionChanged'
+          - $ref: '#/components/messages/SystemNotificationCreated'
+          - $ref: '#/components/messages/TypingChanged'
+          - $ref: '#/components/messages/HeartbeatPing'
+          - $ref: '#/components/messages/RealtimeError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: httpApiKey
+      name: Authorization
+      in: header
+
+  messages:
+    SessionResume:
+      name: session.resume
+      title: 恢复或建立会话
+      payload:
+        $ref: '#/components/schemas/SessionResumeEvent'
+    MessageSend:
+      name: message.send
+      title: 发送消息
+      payload:
+        $ref: '#/components/schemas/MessageSendEvent'
+    ConversationRead:
+      name: conversation.read
+      title: 推进已读游标
+      payload:
+        $ref: '#/components/schemas/ConversationReadEvent'
+    TypingSet:
+      name: typing.set
+      title: 更新短期输入状态
+      payload:
+        $ref: '#/components/schemas/TypingSetEvent'
+    HeartbeatPong:
+      name: heartbeat.pong
+      title: 客户端心跳响应
+      payload:
+        $ref: '#/components/schemas/HeartbeatPongEvent'
+
+    SessionReady:
+      name: session.ready
+      title: 实时会话已经可用
+      payload:
+        $ref: '#/components/schemas/SessionReadyEvent'
+    SessionResyncRequired:
+      name: session.resync_required
+      title: 无法增量恢复，需要调用 REST 同步
+      payload:
+        $ref: '#/components/schemas/SessionResyncRequiredEvent'
+    MessageAccepted:
+      name: message.accepted
+      title: 消息已经持久化
+      payload:
+        $ref: '#/components/schemas/MessageAcceptedEvent'
+    MessageRejected:
+      name: message.rejected
+      title: 消息发送失败
+      payload:
+        $ref: '#/components/schemas/MessageRejectedEvent'
+    MessageCreated:
+      name: message.created
+      title: 会话产生新消息
+      payload:
+        $ref: '#/components/schemas/MessageCreatedEvent'
+    ConversationUnreadChanged:
+      name: conversation.unread.changed
+      title: 会话未读或底部导航计数变化
+      payload:
+        $ref: '#/components/schemas/ConversationUnreadChangedEvent'
+    FriendshipChanged:
+      name: friendship.changed
+      title: 好友关系变化
+      payload:
+        $ref: '#/components/schemas/FriendshipChangedEvent'
+    BlockRelationChanged:
+      name: block_relation.changed
+      title: 拉黑状态或恢复关系变化
+      payload:
+        $ref: '#/components/schemas/BlockRelationChangedEvent'
+    ActivityJoinRequestChanged:
+      name: activity.join_request.changed
+      title: 活动申请或审批变化
+      payload:
+        $ref: '#/components/schemas/ActivityJoinRequestChangedEvent'
+    ActivityChanged:
+      name: activity.changed
+      title: 活动规则、人数、时间或状态变化
+      payload:
+        $ref: '#/components/schemas/ActivityChangedEvent'
+    PostInteractionCreated:
+      name: post.interaction.created
+      title: 当前用户动态收到点赞或评论
+      payload:
+        $ref: '#/components/schemas/PostInteractionCreatedEvent'
+    PermissionChanged:
+      name: permission.changed
+      title: 群角色、禁言或内容权限变化
+      payload:
+        $ref: '#/components/schemas/PermissionChangedEvent'
+    SystemNotificationCreated:
+      name: system_notification.created
+      title: 系统会话产生新卡片
+      payload:
+        $ref: '#/components/schemas/SystemNotificationCreatedEvent'
+    TypingChanged:
+      name: typing.changed
+      title: 对方输入状态变化
+      payload:
+        $ref: '#/components/schemas/TypingChangedEvent'
+    HeartbeatPing:
+      name: heartbeat.ping
+      title: 服务端心跳
+      payload:
+        $ref: '#/components/schemas/HeartbeatPingEvent'
+    RealtimeError:
+      name: realtime.error
+      title: 与具体请求无关的实时错误
+      payload:
+        $ref: '#/components/schemas/RealtimeErrorEvent'
+
+  schemas:
+    ClientEventBase:
+      type: object
+      required: [event, requestId, payload]
+      properties:
+        event:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        payload:
+          type: object
+
+    ServerEventBase:
+      type: object
+      required: [event, eventId, eventCursor, serverTime, payload]
+      properties:
+        event:
+          type: string
+        requestId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        eventCursor:
+          type: string
+        serverTime:
+          type: string
+          format: date-time
+        payload:
+          type: object
+
+    ErrorView:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    UnreadState:
+      type: object
+      required: [count, appearance]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        appearance:
+          type: string
+          enum: [none, red, gray]
+        firstUnreadSequence:
+          type:
+            - integer
+            - 'null'
+          format: int64
+
+    UserSummary:
+      type: object
+      required: [userId, displayName]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        avatar:
+          type:
+            - object
+            - 'null'
+          additionalProperties: true
+
+    MessageView:
+      type: object
+      required:
+        - messageId
+        - conversationId
+        - sequence
+        - type
+        - createdAt
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        clientMessageId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          format: int64
+        sender:
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        type:
+          type: string
+          enum:
+            [text, image, voice, video, sticker, location, activityCard, systemEvent]
+        text:
+          type:
+            - string
+            - 'null'
+        payload:
+          type:
+            - object
+            - 'null'
+          additionalProperties: true
+        media:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        replyToMessageId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+
+    SessionResumeEvent:
+      allOf:
+        - $ref: '#/components/schemas/ClientEventBase'
+        - type: object
+          properties:
+            event:
+              const: session.resume
+            payload:
+              type: object
+              required: [resumeCursor]
+              properties:
+                resumeCursor:
+                  type:
+                    - string
+                    - 'null'
+
+    MessageSendEvent:
+      allOf:
+        - $ref: '#/components/schemas/ClientEventBase'
+        - type: object
+          properties:
+            event:
+              const: message.send
+            payload:
+              type: object
+              required: [conversationId, clientMessageId, type]
+              properties:
+                conversationId:
+                  type: string
+                  format: uuid
+                clientMessageId:
+                  type: string
+                  format: uuid
+                locationContextToken:
+                  type:
+                    - string
+                    - 'null'
+                type:
+                  type: string
+                  enum: [text, image, voice, video, sticker, location, activityCard]
+                text:
+                  type:
+                    - string
+                    - 'null'
+                  maxLength: 5000
+                payload:
+                  type:
+                    - object
+                    - 'null'
+                  additionalProperties: true
+                mediaIds:
+                  type: array
+                  uniqueItems: true
+                  maxItems: 9
+                  items:
+                    type: string
+                    format: uuid
+                replyToMessageId:
+                  type:
+                    - string
+                    - 'null'
+                  format: uuid
+                mentionedUserIds:
+                  type: array
+                  uniqueItems: true
+                  items:
+                    type: string
+                    format: uuid
+
+    ConversationReadEvent:
+      allOf:
+        - $ref: '#/components/schemas/ClientEventBase'
+        - type: object
+          properties:
+            event:
+              const: conversation.read
+            payload:
+              type: object
+              required: [conversationId, lastReadSequence]
+              properties:
+                conversationId:
+                  type: string
+                  format: uuid
+                lastReadSequence:
+                  type: integer
+                  format: int64
+                  minimum: 0
+
+    TypingSetEvent:
+      allOf:
+        - $ref: '#/components/schemas/ClientEventBase'
+        - type: object
+          properties:
+            event:
+              const: typing.set
+            payload:
+              type: object
+              required: [conversationId, state]
+              properties:
+                conversationId:
+                  type: string
+                  format: uuid
+                state:
+                  type: string
+                  enum: [typing, recordingVoice, idle]
+
+    HeartbeatPongEvent:
+      allOf:
+        - $ref: '#/components/schemas/ClientEventBase'
+        - type: object
+          properties:
+            event:
+              const: heartbeat.pong
+            payload:
+              type: object
+              required: [pingId]
+              properties:
+                pingId:
+                  type: string
+
+    SessionReadyEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: session.ready
+            payload:
+              type: object
+              required: [resumed, heartbeatIntervalSeconds, latestCursor]
+              properties:
+                resumed:
+                  type: boolean
+                heartbeatIntervalSeconds:
+                  type: integer
+                  minimum: 10
+                latestCursor:
+                  type: string
+
+    SessionResyncRequiredEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: session.resync_required
+            payload:
+              type: object
+              required: [reason, syncEndpoint]
+              properties:
+                reason:
+                  type: string
+                  enum: [cursorExpired, eventGap, serverRestart]
+                syncEndpoint:
+                  type: string
+                  const: /api/v1/sync/events
+
+    MessageAcceptedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          required: [requestId]
+          properties:
+            event:
+              const: message.accepted
+            requestId:
+              type: string
+              format: uuid
+            payload:
+              type: object
+              required:
+                [clientMessageId, messageId, conversationId, sequence, createdAt]
+              properties:
+                clientMessageId:
+                  type: string
+                  format: uuid
+                messageId:
+                  type: string
+                  format: uuid
+                conversationId:
+                  type: string
+                  format: uuid
+                sequence:
+                  type: integer
+                  format: int64
+                createdAt:
+                  type: string
+                  format: date-time
+
+    MessageRejectedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          required: [requestId]
+          properties:
+            event:
+              const: message.rejected
+            requestId:
+              type: string
+              format: uuid
+            payload:
+              type: object
+              required: [clientMessageId, error]
+              properties:
+                clientMessageId:
+                  type: string
+                  format: uuid
+                error:
+                  $ref: '#/components/schemas/ErrorView'
+
+    MessageCreatedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: message.created
+            payload:
+              $ref: '#/components/schemas/MessageView'
+
+    ConversationUnreadChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: conversation.unread.changed
+            payload:
+              type: object
+              required:
+                [conversationId, unread, navigationKey, navigationUnreadCount]
+              properties:
+                conversationId:
+                  type: string
+                  format: uuid
+                unread:
+                  $ref: '#/components/schemas/UnreadState'
+                navigationKey:
+                  type: string
+                  enum: [plaza, place, activity, friends, none]
+                navigationUnreadCount:
+                  type: integer
+                  minimum: 0
+
+    FriendshipChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: friendship.changed
+            payload:
+              type: object
+              required: [otherUserId, state]
+              properties:
+                otherUserId:
+                  type: string
+                  format: uuid
+                state:
+                  type: string
+                  enum: [friend, stranger]
+                friendshipId:
+                  type:
+                    - string
+                    - 'null'
+                  format: uuid
+                directConversationId:
+                  type:
+                    - string
+                    - 'null'
+                  format: uuid
+
+    BlockRelationChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: block_relation.changed
+            payload:
+              type: object
+              required: [otherUserId, state, directMessagingAllowed]
+              properties:
+                otherUserId:
+                  type: string
+                  format: uuid
+                state:
+                  type: string
+                  enum: [blocked, unblocked]
+                restoredRelation:
+                  type:
+                    - string
+                    - 'null'
+                  enum: [friend, stranger, null]
+                directMessagingAllowed:
+                  type: boolean
+
+    ActivityJoinRequestChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: activity.join_request.changed
+            payload:
+              type: object
+              required: [activityId, joinRequestId, applicant, status]
+              properties:
+                activityId:
+                  type: string
+                  format: uuid
+                joinRequestId:
+                  type: string
+                  format: uuid
+                applicant:
+                  $ref: '#/components/schemas/UserSummary'
+                status:
+                  type: string
+                  enum: [pending, accepted, rejected]
+                memberCount:
+                  type: integer
+
+    ActivityChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: activity.changed
+            payload:
+              type: object
+              required: [activityId, version, changedFields]
+              properties:
+                activityId:
+                  type: string
+                  format: uuid
+                version:
+                  type: integer
+                changedFields:
+                  type: array
+                  items:
+                    type: string
+                activity:
+                  type: object
+                  additionalProperties: true
+
+    PostInteractionCreatedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: post.interaction.created
+            payload:
+              type: object
+              required: [interactionType, actor, postId]
+              properties:
+                interactionType:
+                  type: string
+                  enum: [like, comment, commentReply, commentLike]
+                actor:
+                  $ref: '#/components/schemas/UserSummary'
+                postId:
+                  type: string
+                  format: uuid
+                commentId:
+                  type:
+                    - string
+                    - 'null'
+                  format: uuid
+                preview:
+                  type:
+                    - string
+                    - 'null'
+
+    PermissionChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: permission.changed
+            payload:
+              type: object
+              required: [targetType, targetId, role, allowedActions]
+              properties:
+                targetType:
+                  type: string
+                  enum: [place, activity, conversation, postVisibility]
+                targetId:
+                  type: string
+                role:
+                  type: string
+                allowedActions:
+                  type: array
+                  items:
+                    type: string
+                mute:
+                  type:
+                    - object
+                    - 'null'
+                  additionalProperties: true
+
+    SystemNotificationCreatedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: system_notification.created
+            payload:
+              type: object
+              required: [conversationId, message, unread]
+              properties:
+                conversationId:
+                  type: string
+                  format: uuid
+                message:
+                  $ref: '#/components/schemas/MessageView'
+                unread:
+                  $ref: '#/components/schemas/UnreadState'
+
+    TypingChangedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: typing.changed
+            payload:
+              type: object
+              required: [conversationId, userId, state, expiresInMs]
+              properties:
+                conversationId:
+                  type: string
+                  format: uuid
+                userId:
+                  type: string
+                  format: uuid
+                state:
+                  type: string
+                  enum: [typing, recordingVoice, idle]
+                expiresInMs:
+                  type: integer
+                  minimum: 0
+
+    HeartbeatPingEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: heartbeat.ping
+            payload:
+              type: object
+              required: [pingId]
+              properties:
+                pingId:
+                  type: string
+
+    RealtimeErrorEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: realtime.error
+            payload:
+              type: object
+              required: [error]
+              properties:
+                error:
+                  $ref: '#/components/schemas/ErrorView'
