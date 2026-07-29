@@ -16,11 +16,20 @@ class AuthRepository {
   Future<AuthSession?> restore() async {
     final session = await sessionStore.read();
     if (session == null) return null;
+    return ensureValid(session);
+  }
+
+  Future<AuthSession?> ensureValid(
+    AuthSession session, {
+    bool forceRefresh = false,
+  }) async {
     if (session.refreshTokenExpired(_clock())) {
       await sessionStore.clear();
       return null;
     }
-    if (!session.accessTokenNeedsRefresh(_clock())) return session;
+    if (!forceRefresh && !session.accessTokenNeedsRefresh(_clock())) {
+      return session;
+    }
 
     try {
       final refreshed = await api.refresh(session);
