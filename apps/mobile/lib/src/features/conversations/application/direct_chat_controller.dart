@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/realtime/realtime_controller.dart';
+import '../../../core/realtime/realtime_event.dart';
 import '../data/conversation_repository.dart';
 import '../domain/direct_message.dart';
 
@@ -39,13 +41,18 @@ class DirectChatState {
 }
 
 class DirectChatController extends StateNotifier<DirectChatState> {
-  DirectChatController(this._repository, this._conversationId)
-    : super(const DirectChatState()) {
+  DirectChatController(
+    this._repository,
+    this._conversationId,
+    Stream<RealtimeEvent> realtimeEvents,
+  ) : super(const DirectChatState()) {
+    _subscription = realtimeEvents.listen(_onRealtimeEvent);
     unawaited(load());
   }
 
   final ConversationRepository _repository;
   final String _conversationId;
+  late final StreamSubscription<RealtimeEvent> _subscription;
 
   Future<void> load() async {
     if (_conversationId.isEmpty) {
@@ -94,6 +101,22 @@ class DirectChatController extends StateNotifier<DirectChatState> {
     }
   }
 
+  void _onRealtimeEvent(RealtimeEvent event) {
+    if (event.name != 'message.created') return;
+    final conversationId = event.payload['conversationId'];
+    if (conversationId != _conversationId) return;
+    try {
+      final message = DirectMessage.fromJson(event.payload);
+      state = state.copyWith(
+        messages: _mergeMessage(state.messages, message),
+        clearError: true,
+      );
+      unawaited(_markRead(message.sequence));
+    } catch (_) {
+      unawaited(load());
+    }
+  }
+
   List<DirectMessage> _mergeMessage(
     List<DirectMessage> messages,
     DirectMessage message,
@@ -105,12 +128,23 @@ class DirectChatController extends StateNotifier<DirectChatState> {
     ]..sort((left, right) => left.sequence.compareTo(right.sequence));
     return merged;
   }
+
+  @override
+  void dispose() {
+    unawaited(_subscription.cancel());
+    super.dispose();
+  }
 }
 
 final directChatControllerProvider = StateNotifierProvider.autoDispose
-    .family<DirectChatController, DirectChatState, String>(
-      (ref, conversationId) => DirectChatController(
+    .family<DirectChatController, DirectChatState, String>((
+      ref,
+      conversationId,
+    ) {
+      final realtime = ref.watch(realtimeControllerProvider.notifier);
+      return DirectChatController(
         ref.watch(conversationRepositoryProvider),
         conversationId,
-      ),
-    );
+        realtime.events,
+      );
+    });

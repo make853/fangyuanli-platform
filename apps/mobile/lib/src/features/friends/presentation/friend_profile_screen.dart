@@ -111,8 +111,11 @@ class FriendProfileScreen extends ConsumerWidget {
     if (userId == null) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            DirectChatScreen(contact: contact, currentUserId: userId),
+        builder: (_) => DirectChatScreen(
+          conversationId: contact.directConversationId,
+          title: contact.visibleName,
+          currentUserId: userId,
+        ),
       ),
     );
   }

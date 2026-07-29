@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../friends/domain/friend_models.dart';
 import '../application/direct_chat_controller.dart';
 import '../domain/direct_message.dart';
 
 class DirectChatScreen extends ConsumerStatefulWidget {
   const DirectChatScreen({
-    required this.contact,
+    required this.conversationId,
+    required this.title,
     required this.currentUserId,
     super.key,
   });
 
-  final FriendContact contact;
+  final String conversationId;
+  final String title;
   final String currentUserId;
 
   @override
@@ -33,11 +34,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
   Future<void> _send() async {
     final value = _textController.text;
     final succeeded = await ref
-        .read(
-          directChatControllerProvider(
-            widget.contact.directConversationId,
-          ).notifier,
-        )
+        .read(directChatControllerProvider(widget.conversationId).notifier)
         .send(value);
     if (!mounted) return;
     if (succeeded) {
@@ -48,9 +45,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final provider = directChatControllerProvider(
-      widget.contact.directConversationId,
-    );
+    final provider = directChatControllerProvider(widget.conversationId);
     final state = ref.watch(provider);
 
     ref.listen(provider, (previous, next) {
@@ -64,7 +59,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.contact.visibleName),
+        title: Text(widget.title),
         actions: [
           IconButton(
             tooltip: '刷新消息',
