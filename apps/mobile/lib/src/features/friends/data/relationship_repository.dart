@@ -44,7 +44,7 @@ class HttpRelationshipRepository implements RelationshipRepository {
       queryParameters: const {
         'direction': 'received',
         'status': 'all',
-        'limit': 100,
+        'limit': 50,
       },
     );
     return _parsePage(envelope, FriendRequest.fromJson);
@@ -54,7 +54,7 @@ class HttpRelationshipRepository implements RelationshipRepository {
   Future<PageResult<FriendContact>> loadFriends() async {
     final envelope = await _client.get(
       '/friends',
-      queryParameters: const {'limit': 100},
+      queryParameters: const {'limit': 50},
     );
     return _parsePage(envelope, FriendContact.fromJson);
   }
@@ -125,7 +125,7 @@ class HttpRelationshipRepository implements RelationshipRepository {
   Future<PageResult<BlockedUser>> loadBlocks() async {
     final envelope = await _client.get(
       '/blocks',
-      queryParameters: const {'limit': 100},
+      queryParameters: const {'limit': 50},
     );
     return _parsePage(envelope, BlockedUser.fromJson);
   }
