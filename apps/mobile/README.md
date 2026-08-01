@@ -38,3 +38,21 @@ flutter build web
 ```
 
 运行 iPhone 模拟器或真机前，Mac 必须安装完整 Xcode，并完成 iOS 开发环境配置。
+
+### staging 媒体上传验收
+
+`integration_test/media_upload_staging_test.dart` 不进入正式 App。它会在 iOS
+模拟器内生成一张大图，复用产品代码完成压缩、短期凭证申请、COS 直传、完成确认
+和媒体状态查询，用来验证移动端到 staging 的真实上传链路。
+
+先把 staging API 安全转发到本机 `127.0.0.1:3000`，再在本机终端执行：
+
+```bash
+flutter test integration_test/media_upload_staging_test.dart \
+  -d "iPhone 16e" \
+  --dart-define=API_BASE_URL=http://127.0.0.1:3000 \
+  --dart-define=STAGING_TEST_PHONE="$STAGING_TEST_PHONE" \
+  --dart-define=STAGING_TEST_CODE="$STAGING_TEST_CODE"
+```
+
+测试号码和验证码只通过本机环境变量传入，不写入源码、测试报告或 Git。
