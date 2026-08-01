@@ -145,7 +145,7 @@ export class CosObjectStorageAdapter extends ObjectStorageAdapter {
   }): Promise<ObjectUploadTicket> {
     const { bucket, region } = this.configuration();
     const url = await new Promise<string>((resolve, reject) => {
-      this.cos().getObjectUrl(
+      this.signingCos().getObjectUrl(
         {
           Bucket: bucket,
           Region: region,
@@ -246,7 +246,7 @@ export class CosObjectStorageAdapter extends ObjectStorageAdapter {
   }): Promise<ObjectReadTicket> {
     const { bucket, region } = this.configuration();
     const url = await new Promise<string>((resolve, reject) => {
-      this.cos().getObjectUrl(
+      this.signingCos().getObjectUrl(
         {
           Bucket: bucket,
           Region: region,
@@ -282,13 +282,29 @@ export class CosObjectStorageAdapter extends ObjectStorageAdapter {
 
   private cos(): COS {
     if (this.client) return this.client;
+    this.client = this.createClient();
+    return this.client;
+  }
+
+  /**
+   * A presigned URL must start at the time it is issued. The COS SDK caches
+   * temporary credentials together with their original StartTime, then uses
+   * that StartTime when an `Expires` duration is supplied to getObjectUrl.
+   * Reusing the long-lived service client would therefore make newly issued
+   * URLs expire once the service has been alive longer than that duration.
+   */
+  private signingCos(): COS {
+    return this.createClient();
+  }
+
+  private createClient(): COS {
     const roleName = this.environment.TENCENT_COS_CVM_ROLE?.trim();
     if (roleName) {
       const credentialSource = new CvmRoleCredentialSource(
         roleName,
         this.credentialFetcher
       );
-      this.client = new COS({
+      return new COS({
         getAuthorization: (_options, callback) => {
           void credentialSource
             .load()
@@ -296,7 +312,6 @@ export class CosObjectStorageAdapter extends ObjectStorageAdapter {
             .catch(() => callback(""));
         }
       });
-      return this.client;
     }
     const secretId = this.environment.TENCENT_COS_SECRET_ID?.trim();
     const secretKey = this.environment.TENCENT_COS_SECRET_KEY?.trim();
@@ -305,8 +320,7 @@ export class CosObjectStorageAdapter extends ObjectStorageAdapter {
         "TENCENT_COS_CVM_ROLE or COS SecretId/SecretKey is required"
       );
     }
-    this.client = new COS({ SecretId: secretId, SecretKey: secretKey });
-    return this.client;
+    return new COS({ SecretId: secretId, SecretKey: secretKey });
   }
 
   private configuration(): { bucket: string; region: string } {

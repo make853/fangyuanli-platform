@@ -138,7 +138,15 @@ class DioObjectUploader implements ObjectUploader {
       }
       return etag;
     } on DioException catch (error) {
-      throw ApiFailure.fromDio(error);
+      final failure = ApiFailure.fromDio(error);
+      if (failure.statusCode == HttpStatus.forbidden) {
+        throw const ApiFailure(
+          message: '上传凭证已失效，请稍后重试',
+          code: 'MEDIA_UPLOAD_TICKET_REJECTED',
+          statusCode: HttpStatus.forbidden,
+        );
+      }
+      throw failure;
     }
   }
 }

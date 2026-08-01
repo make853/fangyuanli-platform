@@ -118,3 +118,37 @@ test("creates a short-lived signed GET URL without making the bucket public", as
   assert.equal(url.searchParams.get("x-cos-security-token"), "temporary-token");
   assert.ok(ticket.expiresAt.getTime() > Date.now());
 });
+
+test("uses a fresh temporary credential snapshot for every signed URL", async () => {
+  const expiresAt = Math.floor(Date.now() / 1000) + 1_800;
+  let credentialRequests = 0;
+  const storage = new CosObjectStorageAdapter({
+    environment: {
+      TENCENT_COS_BUCKET: "fangyuanli-staging-1234567890",
+      TENCENT_COS_REGION: "ap-shanghai",
+      TENCENT_COS_CVM_ROLE: "fangyuanli-staging-media"
+    },
+    credentialFetcher: async () => {
+      credentialRequests += 1;
+      return Response.json({
+        Code: "Success",
+        TmpSecretId: "temporary-id",
+        TmpSecretKey: "temporary-key",
+        Token: "temporary-token",
+        ExpiredTime: expiresAt
+      });
+    }
+  });
+
+  await storage.createUploadTicket({
+    objectKey: "temporary/user-1/upload-1/example.jpg",
+    contentType: "image/jpeg",
+    expiresInSeconds: 120
+  });
+  await storage.createReadTicket({
+    objectKey: "processed/user-1/media-1/avatar-128.webp",
+    expiresInSeconds: 600
+  });
+
+  assert.equal(credentialRequests, 2);
+});

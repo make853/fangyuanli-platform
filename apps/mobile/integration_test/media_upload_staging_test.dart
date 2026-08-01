@@ -90,7 +90,11 @@ void main() {
           image: prepared,
         );
 
-        expect(uploaded.status, MediaUploadStatus.processing);
+        expect(
+          uploaded.status,
+          MediaUploadStatus.processing,
+          reason: uploaded.errorMessage,
+        );
         expect(uploaded.mediaId, isNotNull);
         expect(await File(prepared.localPath).exists(), isFalse);
 
