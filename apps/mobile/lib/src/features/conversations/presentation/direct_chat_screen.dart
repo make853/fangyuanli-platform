@@ -279,7 +279,8 @@ class _MessageList extends StatelessWidget {
     return KeyedSubtree(
       key: keyForSequence(message.sequence),
       child: ChatMessageBubble(
-        message: message,
+        text: message.text,
+        deliveryState: message.deliveryState,
         isMine: isMine,
         avatar: isMine ? ownAvatar : peerAvatar,
         avatarInitial: isMine ? ownInitial : _initial(message.senderName),

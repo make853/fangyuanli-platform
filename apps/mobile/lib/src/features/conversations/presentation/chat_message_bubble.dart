@@ -2,23 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../../media/domain/media_upload_models.dart';
 import '../../profile/presentation/profile_media_widgets.dart';
-import '../domain/direct_message.dart';
 
 class ChatMessageBubble extends StatelessWidget {
   const ChatMessageBubble({
-    required this.message,
+    required this.text,
+    required this.deliveryState,
     required this.isMine,
     required this.avatarInitial,
     this.avatar,
     this.onAvatarTap,
+    this.senderLabel,
     super.key,
   });
 
-  final DirectMessage message;
+  final String text;
+  final String deliveryState;
   final bool isMine;
   final String avatarInitial;
   final MediaAsset? avatar;
   final VoidCallback? onAvatarTap;
+  final String? senderLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +37,15 @@ class ChatMessageBubble extends StatelessWidget {
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: [
+          if (!isMine && senderLabel != null) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 2, bottom: 4),
+              child: Text(
+                senderLabel!,
+                style: const TextStyle(color: Color(0xFF78847E), fontSize: 11),
+              ),
+            ),
+          ],
           DecoratedBox(
             key: const ValueKey('message-bubble'),
             decoration: BoxDecoration(
@@ -42,10 +54,10 @@ class ChatMessageBubble extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-              child: Text(message.text),
+              child: Text(text),
             ),
           ),
-          if (message.deliveryState == 'failed') ...[
+          if (deliveryState == 'failed') ...[
             const SizedBox(height: 4),
             const Text(
               '发送失败',

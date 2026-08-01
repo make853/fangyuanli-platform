@@ -11,7 +11,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ChatMessageBubble(
-            message: _message(senderUserId: 'user-a', text: '收到'),
+            text: '收到',
+            deliveryState: 'sent',
             isMine: true,
             avatarInitial: '桃',
             onAvatarTap: () {},
