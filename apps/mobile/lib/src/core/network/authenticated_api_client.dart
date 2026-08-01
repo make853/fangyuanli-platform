@@ -47,13 +47,17 @@ class AuthenticatedApiClient {
     String path, {
     Object? data,
     bool idempotent = false,
+    String? idempotencyKey,
   }) {
-    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    final resolvedIdempotencyKey = _resolveIdempotencyKey(
+      idempotent: idempotent,
+      explicitKey: idempotencyKey,
+    );
     return _request(
       (options) => _dio.post<Map<String, dynamic>>(
         path,
         data: data,
-        options: _withIdempotency(options, idempotencyKey),
+        options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
     );
   }
@@ -62,13 +66,17 @@ class AuthenticatedApiClient {
     String path, {
     Object? data,
     bool idempotent = false,
+    String? idempotencyKey,
   }) {
-    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    final resolvedIdempotencyKey = _resolveIdempotencyKey(
+      idempotent: idempotent,
+      explicitKey: idempotencyKey,
+    );
     return _request(
       (options) => _dio.patch<Map<String, dynamic>>(
         path,
         data: data,
-        options: _withIdempotency(options, idempotencyKey),
+        options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
     );
   }
@@ -77,23 +85,34 @@ class AuthenticatedApiClient {
     String path, {
     Object? data,
     bool idempotent = false,
+    String? idempotencyKey,
   }) {
-    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    final resolvedIdempotencyKey = _resolveIdempotencyKey(
+      idempotent: idempotent,
+      explicitKey: idempotencyKey,
+    );
     return _request(
       (options) => _dio.put<Map<String, dynamic>>(
         path,
         data: data,
-        options: _withIdempotency(options, idempotencyKey),
+        options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
     );
   }
 
-  Future<Map<String, dynamic>> delete(String path, {bool idempotent = false}) {
-    final idempotencyKey = idempotent ? _uuid.v4() : null;
+  Future<Map<String, dynamic>> delete(
+    String path, {
+    bool idempotent = false,
+    String? idempotencyKey,
+  }) {
+    final resolvedIdempotencyKey = _resolveIdempotencyKey(
+      idempotent: idempotent,
+      explicitKey: idempotencyKey,
+    );
     return _request(
       (options) => _dio.delete<Map<String, dynamic>>(
         path,
-        options: _withIdempotency(options, idempotencyKey),
+        options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
     );
   }
@@ -101,12 +120,16 @@ class AuthenticatedApiClient {
   Future<void> deleteWithoutResponse(
     String path, {
     bool idempotent = false,
+    String? idempotencyKey,
   }) async {
-    final idempotencyKey = idempotent ? _uuid.v4() : null;
+    final resolvedIdempotencyKey = _resolveIdempotencyKey(
+      idempotent: idempotent,
+      explicitKey: idempotencyKey,
+    );
     await _voidRequest(
       (options) => _dio.delete<void>(
         path,
-        options: _withIdempotency(options, idempotencyKey),
+        options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
     );
   }
@@ -173,6 +196,15 @@ class AuthenticatedApiClient {
     return options.copyWith(
       headers: {...?options.headers, 'idempotency-key': idempotencyKey},
     );
+  }
+
+  String? _resolveIdempotencyKey({
+    required bool idempotent,
+    required String? explicitKey,
+  }) {
+    final trimmed = explicitKey?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    return idempotent ? _uuid.v4() : null;
   }
 
   Options _options(AuthSession session) {

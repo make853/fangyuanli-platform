@@ -1,0 +1,67 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+import 'package:fangyuanli_mobile/src/core/config/app_environment.dart';
+import 'package:fangyuanli_mobile/src/core/network/authenticated_api_client.dart';
+import 'package:fangyuanli_mobile/src/features/auth/domain/auth_session.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('uses an explicit idempotency key for restart-safe writes', () async {
+    final adapter = _RecordingAdapter();
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'))
+      ..httpClientAdapter = adapter;
+    final client = AuthenticatedApiClient(
+      environment: const AppEnvironment(
+        flavor: AppFlavor.staging,
+        apiBaseUrl: 'https://api.example.test',
+        realtimeUrl: 'wss://api.example.test/ws/v1',
+      ),
+      loadSession: ({bool forceRefresh = false}) async => _session,
+      dio: dio,
+    );
+
+    await client.post(
+      '/media/uploads',
+      data: const {'fileName': 'avatar.jpg'},
+      idempotencyKey: 'stable-upload-key',
+    );
+
+    expect(adapter.options.headers['idempotency-key'], 'stable-upload-key');
+    expect(adapter.options.headers['authorization'], 'Bearer access-token');
+    expect(adapter.options.headers['x-device-id'], 'device-1');
+  });
+}
+
+final _session = AuthSession(
+  accessToken: 'access-token',
+  accessTokenExpiresAt: DateTime.utc(2026, 8, 1, 11),
+  refreshToken: 'refresh-token',
+  refreshTokenExpiresAt: DateTime.utc(2026, 8, 2, 10),
+  deviceId: 'device-1',
+  userId: 'user-1',
+  isNewUser: false,
+);
+
+class _RecordingAdapter implements HttpClientAdapter {
+  late RequestOptions options;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    this.options = options;
+    return ResponseBody.fromString(
+      '{"data":{"ok":true}}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}

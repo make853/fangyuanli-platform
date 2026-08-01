@@ -406,6 +406,9 @@ Table media_assets {
   purpose varchar(32) [not null]
   media_type varchar(16) [not null]
   object_key text [not null, unique]
+  content_type varchar(100)
+  sha256 char(64)
+  original_file_name varchar(200)
   thumbnail_object_key text
   cover_object_key text
   width int
@@ -420,6 +423,38 @@ Table media_assets {
 
   Indexes {
     (expires_at, compliance_hold)
+  }
+}
+
+Table media_upload_sessions {
+  id uuid [pk]
+  owner_user_id uuid [not null, ref: > users.id]
+  purpose varchar(32) [not null]
+  media_type varchar(16) [not null]
+  original_file_name varchar(200) [not null]
+  content_type varchar(100) [not null]
+  expected_bytes bigint [not null]
+  expected_sha256 char(64) [not null]
+  duration_ms int
+  width int
+  height int
+  object_key text [not null, unique]
+  status varchar(24) [not null, default: 'pending']
+  create_idempotency_hash char(64) [not null]
+  create_request_hash char(64) [not null]
+  complete_idempotency_hash char(64)
+  complete_request_hash char(64)
+  media_asset_id uuid [ref: > media_assets.id]
+  etag varchar(256)
+  failure_code varchar(64)
+  expires_at timestamptz [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  Indexes {
+    (owner_user_id, create_idempotency_hash) [unique]
+    (owner_user_id, status, created_at)
+    (status, expires_at)
   }
 }
 

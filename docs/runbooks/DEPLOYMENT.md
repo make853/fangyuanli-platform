@@ -43,3 +43,20 @@ curl --fail http://127.0.0.1:3000/health
 systemctl status fangyuanli-api.service --no-pager
 journalctl -u fangyuanli-api.service -n 100 --no-pager
 ```
+
+## 媒体上传环境
+
+媒体接口使用私有腾讯云COS桶和短期预签名URL。以下值只写入服务器
+`/srv/fangyuanli/.env` 或受控密钥系统，不得提交到Git：
+
+```text
+TENCENT_COS_REGION
+TENCENT_COS_BUCKET
+TENCENT_COS_SECRET_ID
+TENCENT_COS_SECRET_KEY
+```
+
+密钥仅授予指定桶临时目录所需的上传、查询和删除权限。COS桶保持私有，
+并为移动端直传配置有限的 `PUT`/`HEAD` 跨域规则。未配置这些值时，健康
+检查仍可运行，但申请媒体上传会返回存储暂不可用，不会退化为公开桶或把
+文件写进数据库。
