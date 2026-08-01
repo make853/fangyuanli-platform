@@ -9,8 +9,10 @@ import '../../profile/application/profile_controller.dart';
 import '../../profile/data/profile_repository.dart';
 import '../../profile/presentation/profile_detail_screen.dart';
 import '../application/direct_chat_controller.dart';
+import '../domain/direct_message.dart';
 import 'chat_composer.dart';
 import 'chat_message_bubble.dart';
+import 'direct_chat_settings_screen.dart';
 
 class DirectChatScreen extends ConsumerStatefulWidget {
   const DirectChatScreen({
@@ -33,6 +35,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
   final _composerController = ChatComposerController();
+  final _messageKeys = <int, GlobalKey>{};
 
   @override
   void dispose() {
@@ -100,6 +103,37 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
     );
   }
 
+  Future<void> _openSettings(String title, DirectChatState state) async {
+    final result = await Navigator.of(context).push<DirectChatSettingsResult>(
+      MaterialPageRoute<DirectChatSettingsResult>(
+        builder: (_) => DirectChatSettingsScreen(
+          conversationId: widget.conversationId,
+          title: title,
+          messages: state.messages,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    if (result.closeConversation) {
+      Navigator.pop(context);
+      return;
+    }
+    final sequence = result.sequence;
+    if (sequence == null) return;
+    final target = _messageKeys[sequence]?.currentContext;
+    if (target == null) {
+      _showUnavailableAction('该条聊天记录定位');
+      return;
+    }
+    if (!target.mounted) return;
+    await Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+      alignment: 0.25,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = directChatControllerProvider(widget.conversationId);
@@ -116,6 +150,14 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
     final peerProfile = peerUserId == null
         ? null
         : ref.watch(userProfileProvider(peerUserId)).asData?.value;
+    FriendContact? currentContact;
+    for (final contact in ref.watch(friendsControllerProvider).contacts) {
+      if (contact.directConversationId == widget.conversationId) {
+        currentContact = contact;
+        break;
+      }
+    }
+    final currentTitle = currentContact?.visibleName ?? widget.title;
 
     ref.listen(provider, (previous, next) {
       if (next.errorMessage != null &&
@@ -128,14 +170,12 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(currentTitle),
         actions: [
           IconButton(
-            tooltip: '刷新消息',
-            onPressed: state.isLoading
-                ? null
-                : ref.read(provider.notifier).load,
-            icon: const Icon(Icons.refresh_rounded),
+            tooltip: '聊天设置',
+            onPressed: () => _openSettings(currentTitle, state),
+            icon: const Icon(Icons.more_horiz_rounded),
           ),
         ],
       ),
@@ -153,6 +193,8 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
                 ownInitial: ownProfile?.initial ?? '我',
                 peerAvatar: peerProfile?.avatar,
                 onAvatarTap: _openProfile,
+                keyForSequence: (sequence) =>
+                    _messageKeys.putIfAbsent(sequence, GlobalKey.new),
               ),
             ),
           ),
@@ -177,6 +219,7 @@ class _MessageList extends StatelessWidget {
     required this.controller,
     required this.ownInitial,
     required this.onAvatarTap,
+    required this.keyForSequence,
     this.ownAvatar,
     this.peerAvatar,
   });
@@ -188,6 +231,7 @@ class _MessageList extends StatelessWidget {
   final String ownInitial;
   final MediaAsset? peerAvatar;
   final ValueChanged<String?> onAvatarTap;
+  final Key Function(int sequence) keyForSequence;
 
   @override
   Widget build(BuildContext context) {
@@ -199,22 +243,27 @@ class _MessageList extends StatelessWidget {
         child: Text('还没有消息，打个招呼吧', style: TextStyle(color: Color(0xFF78847E))),
       );
     }
-    return ListView.builder(
+    return ListView(
       controller: controller,
       reverse: true,
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
-      itemCount: state.messages.length,
-      itemBuilder: (context, index) {
-        final message = state.messages[state.messages.length - 1 - index];
-        final isMine = message.senderUserId == userId;
-        return ChatMessageBubble(
-          message: message,
-          isMine: isMine,
-          avatar: isMine ? ownAvatar : peerAvatar,
-          avatarInitial: isMine ? ownInitial : _initial(message.senderName),
-          onAvatarTap: () => onAvatarTap(message.senderUserId),
-        );
-      },
+      children: [
+        for (final message in state.messages.reversed) _message(message),
+      ],
+    );
+  }
+
+  Widget _message(DirectMessage message) {
+    final isMine = message.senderUserId == userId;
+    return KeyedSubtree(
+      key: keyForSequence(message.sequence),
+      child: ChatMessageBubble(
+        message: message,
+        isMine: isMine,
+        avatar: isMine ? ownAvatar : peerAvatar,
+        avatarInitial: isMine ? ownInitial : _initial(message.senderName),
+        onAvatarTap: () => onAvatarTap(message.senderUserId),
+      ),
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_composer.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_message_bubble.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/presentation/direct_chat_settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -81,13 +82,58 @@ void main() {
     textController.dispose();
     focusNode.dispose();
   });
+
+  testWidgets('查找聊天记录后返回选中的消息序号', (tester) async {
+    int? selectedSequence;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                selectedSequence = await Navigator.of(context).push<int>(
+                  MaterialPageRoute<int>(
+                    builder: (_) => ChatHistorySearchScreen(
+                      conversationTitle: '小桃子',
+                      messages: [
+                        _message(sequence: 1, text: '今天喝咖啡吗'),
+                        _message(sequence: 2, text: '周六一起打羽毛球'),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              child: const Text('打开查找'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开查找'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '羽毛球');
+    await tester.pump();
+
+    expect(find.text('周六一起打羽毛球'), findsOneWidget);
+    expect(find.text('今天喝咖啡吗'), findsNothing);
+
+    await tester.tap(find.text('周六一起打羽毛球'));
+    await tester.pumpAndSettle();
+    expect(selectedSequence, 2);
+  });
 }
 
-DirectMessage _message({required String senderUserId, required String text}) {
+DirectMessage _message({
+  String senderUserId = 'user-a',
+  required String text,
+  int sequence = 1,
+}) {
   return DirectMessage(
-    messageId: 'message-1',
+    messageId: 'message-$sequence',
     conversationId: 'conversation-1',
-    sequence: 1,
+    sequence: sequence,
     senderUserId: senderUserId,
     senderName: '小桃子',
     text: text,
