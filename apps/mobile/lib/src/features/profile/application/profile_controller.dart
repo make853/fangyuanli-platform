@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../media/application/media_upload_coordinator.dart';
 import '../../media/data/image_pipeline.dart';
+import '../../media/data/image_cropper.dart';
 import '../../media/domain/media_upload_models.dart';
 import '../data/profile_repository.dart';
 import '../domain/profile_models.dart';
@@ -57,13 +58,14 @@ class ProfileState {
 }
 
 class ProfileController extends StateNotifier<ProfileState> {
-  ProfileController(this._repository, this._mediaUploads)
+  ProfileController(this._repository, this._mediaUploads, this._imageCropper)
     : super(const ProfileState()) {
     unawaited(load());
   }
 
   final ProfileRepository _repository;
-  final MediaUploadCoordinator Function() _mediaUploads;
+  final MediaUploadWorkflow Function() _mediaUploads;
+  final MediaImageCropper Function() _imageCropper;
 
   Future<void> load({bool silent = false}) async {
     if (!silent) {
@@ -129,17 +131,29 @@ class ProfileController extends StateNotifier<ProfileState> {
     );
     try {
       final uploads = _mediaUploads();
-      var task = await uploads.pickAndUpload(
-        purpose: slot == ProfileMediaSlot.avatar
-            ? MediaPurpose.avatar
-            : MediaPurpose.background,
-        source: source,
-      );
-      if (task == null) {
+      var selected = await uploads.pickImage(source);
+      if (selected == null) {
         state = state.copyWith(isUpdatingMedia: false, clearMediaStatus: true);
         return ProfileMediaAction.cancelled;
       }
+      if (slot == ProfileMediaSlot.avatar) {
+        state = state.copyWith(mediaStatusMessage: '请调整头像范围…');
+        selected = await _imageCropper().cropAvatar(selected);
+        if (selected == null) {
+          state = state.copyWith(
+            isUpdatingMedia: false,
+            clearMediaStatus: true,
+          );
+          return ProfileMediaAction.cancelled;
+        }
+      }
       state = state.copyWith(mediaStatusMessage: '正在处理图片…');
+      var task = await uploads.uploadImage(
+        purpose: slot == ProfileMediaSlot.avatar
+            ? MediaPurpose.avatar
+            : MediaPurpose.background,
+        source: selected,
+      );
       task = await uploads.waitUntilReady(task);
       if (task.status != MediaUploadStatus.ready || task.mediaId == null) {
         final message = task.errorMessage ?? '图片尚未处理完成，请稍后重试';
@@ -242,5 +256,6 @@ final profileControllerProvider =
       (ref) => ProfileController(
         ref.watch(profileRepositoryProvider),
         () => ref.read(mediaUploadCoordinatorProvider),
+        () => ref.read(mediaImageCropperProvider),
       ),
     );

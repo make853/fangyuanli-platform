@@ -22,14 +22,15 @@ const _apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: 'http://127.0.0.1:3000',
 );
-const _testPhone = String.fromEnvironment('STAGING_TEST_PHONE');
+const _testPhoneA = String.fromEnvironment('STAGING_TEST_PHONE_A');
+const _testPhoneB = String.fromEnvironment('STAGING_TEST_PHONE_B');
 const _testCode = String.fromEnvironment('STAGING_TEST_CODE');
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'uploads to staging COS and recovers from interruption and expiry',
+    'uploads, binds and enforces A/B profile media visibility on staging',
     (_) async {
       _requireStagingDefines();
       final environment = AppEnvironment(
@@ -46,9 +47,13 @@ void main() {
       await workingDirectory.create(recursive: true);
 
       AuthenticatedApiClient? client;
+      AuthenticatedApiClient? viewerClient;
       HttpProfileRepository? profileRepository;
       UserProfile? boundProfile;
       String? originalAvatarMediaId;
+      String? originalBackgroundMediaId;
+      String? viewerUserId;
+      var blockedViewer = false;
       try {
         final prepared = await _prepareImage(workingDirectory, name: 'normal');
 
@@ -58,7 +63,7 @@ void main() {
         expect(prepared.height, lessThanOrEqualTo(1600));
 
         final authApi = AuthApi(environment: environment);
-        final challenge = await authApi.sendLoginCode(_testPhone);
+        final challenge = await authApi.sendLoginCode(_testPhoneA);
         final session = await authApi.verifyLoginCode(
           challenge: challenge,
           code: _testCode,
@@ -99,6 +104,7 @@ void main() {
         final resumableImage = await _prepareImage(
           workingDirectory,
           name: 'resumable',
+          purpose: MediaPurpose.background,
         );
         final failOnceUploader = _FailOnceUploader(DioObjectUploader());
         final resumableCoordinator = MediaUploadCoordinator(
@@ -112,7 +118,7 @@ void main() {
           ),
         );
         final paused = await resumableCoordinator.enqueuePrepared(
-          purpose: MediaPurpose.avatar,
+          purpose: MediaPurpose.background,
           image: resumableImage,
         );
 
@@ -168,22 +174,71 @@ void main() {
         );
         expect(ready.status, MediaUploadStatus.ready);
         expect(ready.mediaId, isNotNull);
+        final readyBackground = await resumableCoordinator.waitUntilReady(
+          resumed,
+          timeout: const Duration(minutes: 2),
+          pollInterval: const Duration(seconds: 1),
+        );
+        expect(readyBackground.status, MediaUploadStatus.ready);
+        expect(readyBackground.mediaId, isNotNull);
 
         final beforeBinding = await profileRepository.loadMine();
         originalAvatarMediaId = beforeBinding.avatar?.mediaId;
+        originalBackgroundMediaId = beforeBinding.background?.mediaId;
         boundProfile = await profileRepository.updateMine(
           ownerUserId: session.userId,
           expectedVersion: beforeBinding.profileVersion,
           avatar: ProfileMediaChange.set(ready.mediaId),
+          background: ProfileMediaChange.set(readyBackground.mediaId),
         );
         expect(boundProfile.avatar?.mediaId, ready.mediaId);
+        expect(boundProfile.background?.mediaId, readyBackground.mediaId);
         expect(boundProfile.avatar?.url, isNotNull);
         expect(boundProfile.avatar?.thumbnailUrl, isNotNull);
         expect(
           await _downloadStatus(boundProfile.avatar!.thumbnailUrl!),
           HttpStatus.ok,
         );
+
+        final viewerChallenge = await authApi.sendLoginCode(_testPhoneB);
+        final viewerSession = await authApi.verifyLoginCode(
+          challenge: viewerChallenge,
+          code: _testCode,
+        );
+        viewerUserId = viewerSession.userId;
+        viewerClient = AuthenticatedApiClient(
+          environment: environment,
+          loadSession: ({bool forceRefresh = false}) async => viewerSession,
+        );
+        final viewerProfiles = HttpProfileRepository(viewerClient);
+        final friendView = await viewerProfiles.loadUser(session.userId);
+        expect(friendView.visibility, ProfileVisibility.full);
+        expect(friendView.avatar?.mediaId, ready.mediaId);
+        expect(friendView.background?.mediaId, readyBackground.mediaId);
+
+        await client.put(
+          '/blocks/$viewerUserId',
+          idempotent: true,
+          expectedUserId: session.userId,
+          data: const {'reasonCode': 'profile_media_acceptance'},
+        );
+        blockedViewer = true;
+        final limitedView = await viewerProfiles.loadUser(session.userId);
+        expect(limitedView.visibility, ProfileVisibility.limited);
+        expect(limitedView.avatar?.mediaId, ready.mediaId);
+        expect(limitedView.background, isNull);
       } finally {
+        if (blockedViewer && client != null && viewerUserId != null) {
+          try {
+            await client.delete(
+              '/blocks/$viewerUserId',
+              idempotent: true,
+              expectedUserId: boundProfile?.userId,
+            );
+          } on Object {
+            // Relationship cleanup is independent from the original failure.
+          }
+        }
         if (profileRepository != null && boundProfile != null) {
           try {
             await profileRepository.updateMine(
@@ -192,12 +247,16 @@ void main() {
               avatar: originalAvatarMediaId == null
                   ? const ProfileMediaChange.remove()
                   : ProfileMediaChange.set(originalAvatarMediaId),
+              background: originalBackgroundMediaId == null
+                  ? const ProfileMediaChange.remove()
+                  : ProfileMediaChange.set(originalBackgroundMediaId),
             );
           } on Object {
             // The acceptance result must retain the original failure; staging
             // cleanup can be retried independently when a concurrent edit wins.
           }
         }
+        viewerClient?.close();
         client?.close();
         if (await workingDirectory.exists()) {
           await workingDirectory.delete(recursive: true);
@@ -223,20 +282,18 @@ Future<int> _downloadStatus(Uri url) async {
 Future<PreparedImage> _prepareImage(
   Directory workingDirectory, {
   required String name,
+  MediaPurpose purpose = MediaPurpose.avatar,
 }) async {
   final source = File('${workingDirectory.path}/$name.png');
   await _writeLargePng(source);
-  return DefaultMediaImagePreparer().prepare(
-    XFile(source.path),
-    MediaPurpose.avatar,
-  );
+  return DefaultMediaImagePreparer().prepare(XFile(source.path), purpose);
 }
 
 void _requireStagingDefines() {
-  if (_testPhone.trim().isEmpty || _testCode.trim().isEmpty) {
-    throw StateError(
-      '请通过 --dart-define 提供 STAGING_TEST_PHONE 和 STAGING_TEST_CODE',
-    );
+  if (_testPhoneA.trim().isEmpty ||
+      _testPhoneB.trim().isEmpty ||
+      _testCode.trim().isEmpty) {
+    throw StateError('请通过 --dart-define 提供 A/B 测试手机号和 STAGING_TEST_CODE');
   }
   if (_testCode.length != 6 || int.tryParse(_testCode) == null) {
     throw StateError('STAGING_TEST_CODE 必须是6位数字');

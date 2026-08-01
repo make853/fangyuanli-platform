@@ -42,9 +42,9 @@ flutter build web
 ### staging 媒体上传验收
 
 `integration_test/media_upload_staging_test.dart` 不进入正式 App。它会在 iOS
-模拟器内生成一张大图，复用产品代码完成压缩、短期凭证申请、COS 直传、完成确认
-和媒体状态查询；同一次验收还会模拟上传中断后续传，以及过期凭证自动换新，
-用来验证移动端到 staging 的真实上传与恢复链路。
+模拟器内生成测试图片，复用产品代码完成压缩、短期凭证申请、COS 直传、完成确认、
+媒体状态查询和资料绑定；同一次验收还会模拟上传中断后续传、过期凭证自动换新，
+并使用 A/B 账号验证好友可见头像与背景墙、拉黑后只保留最小头像资料。
 
 先把 staging API 安全转发到本机 `127.0.0.1:3000`，再在本机终端执行：
 
@@ -52,7 +52,8 @@ flutter build web
 flutter test integration_test/media_upload_staging_test.dart \
   -d "iPhone 16e" \
   --dart-define=API_BASE_URL=http://127.0.0.1:3000 \
-  --dart-define=STAGING_TEST_PHONE="$STAGING_TEST_PHONE" \
+  --dart-define=STAGING_TEST_PHONE_A="$STAGING_TEST_PHONE_A" \
+  --dart-define=STAGING_TEST_PHONE_B="$STAGING_TEST_PHONE_B" \
   --dart-define=STAGING_TEST_CODE="$STAGING_TEST_CODE"
 ```
 

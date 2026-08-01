@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/network/api_failure.dart';
@@ -11,7 +12,22 @@ import '../data/media_upload_api.dart';
 import '../data/media_upload_task_store.dart';
 import '../domain/media_upload_models.dart';
 
-class MediaUploadCoordinator {
+abstract interface class MediaUploadWorkflow {
+  Future<XFile?> pickImage(MediaImageSource source);
+
+  Future<MediaUploadTask> uploadImage({
+    required MediaPurpose purpose,
+    required XFile source,
+  });
+
+  Future<MediaUploadTask> waitUntilReady(
+    MediaUploadTask task, {
+    Duration timeout = const Duration(seconds: 45),
+    Duration pollInterval = const Duration(milliseconds: 600),
+  });
+}
+
+class MediaUploadCoordinator implements MediaUploadWorkflow {
   MediaUploadCoordinator(
     this.ownerUserId,
     this._picker,
@@ -38,9 +54,20 @@ class MediaUploadCoordinator {
     required MediaPurpose purpose,
     required MediaImageSource source,
   }) async {
-    final selected = await _picker.pick(source);
+    final selected = await pickImage(source);
     if (selected == null) return null;
-    final image = await _preparer.prepare(selected, purpose);
+    return uploadImage(purpose: purpose, source: selected);
+  }
+
+  @override
+  Future<XFile?> pickImage(MediaImageSource source) => _picker.pick(source);
+
+  @override
+  Future<MediaUploadTask> uploadImage({
+    required MediaPurpose purpose,
+    required XFile source,
+  }) async {
+    final image = await _preparer.prepare(source, purpose);
     return enqueuePrepared(purpose: purpose, image: image);
   }
 
@@ -111,6 +138,7 @@ class MediaUploadCoordinator {
     }
   }
 
+  @override
   Future<MediaUploadTask> waitUntilReady(
     MediaUploadTask task, {
     Duration timeout = const Duration(seconds: 45),
