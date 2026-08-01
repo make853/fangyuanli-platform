@@ -4,7 +4,7 @@
 
 ## 已完成
 
-- iPhone交互原型 v0.73 已冻结为视觉基线；
+- iPhone交互原型 v0.73 已冻结为交互基线；当前 Flutter App 作为视觉基线；
 - 产品规格、技术方案、OpenAPI、AsyncAPI和DBML已导入；
 - 正式monorepo目录已建立；
 - NestJS + Fastify健康检查可运行；

@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../friends/application/friends_controller.dart';
+import '../../friends/domain/friend_models.dart';
+import '../../friends/presentation/friend_profile_screen.dart';
+import '../../media/domain/media_upload_models.dart';
+import '../../profile/application/profile_controller.dart';
+import '../../profile/data/profile_repository.dart';
+import '../../profile/presentation/profile_detail_screen.dart';
 import '../application/direct_chat_controller.dart';
-import '../domain/direct_message.dart';
+import 'chat_composer.dart';
+import 'chat_message_bubble.dart';
 
 class DirectChatScreen extends ConsumerStatefulWidget {
   const DirectChatScreen({
@@ -23,11 +31,15 @@ class DirectChatScreen extends ConsumerStatefulWidget {
 class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
+  final _scrollController = ScrollController();
+  final _composerController = ChatComposerController();
 
   @override
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
+    _composerController.dispose();
     super.dispose();
   }
 
@@ -40,13 +52,70 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
     if (succeeded) {
       _textController.clear();
       _focusNode.requestFocus();
+      _scrollToLatest();
     }
+  }
+
+  void _scrollToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  void _showUnavailableAction(String action) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('$action将在聊天媒体链路中接入')));
+  }
+
+  void _openProfile(String? userId) {
+    if (userId == null) return;
+    if (userId == widget.currentUserId) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const MyProfileDetailScreen()),
+      );
+      return;
+    }
+    final contacts = ref.read(friendsControllerProvider).contacts;
+    FriendContact? contact;
+    for (final item in contacts) {
+      if (item.userId == userId) {
+        contact = item;
+        break;
+      }
+    }
+    if (contact == null) {
+      _showUnavailableAction('用户资料');
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FriendProfileScreen(initialContact: contact!),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = directChatControllerProvider(widget.conversationId);
     final state = ref.watch(provider);
+    final ownProfile = ref.watch(profileControllerProvider).profile;
+    String? peerUserId;
+    for (final message in state.messages) {
+      if (message.senderUserId != null &&
+          message.senderUserId != widget.currentUserId) {
+        peerUserId = message.senderUserId;
+        break;
+      }
+    }
+    final peerProfile = peerUserId == null
+        ? null
+        : ref.watch(userProfileProvider(peerUserId)).asData?.value;
 
     ref.listen(provider, (previous, next) {
       if (next.errorMessage != null &&
@@ -73,13 +142,27 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _MessageList(state: state, userId: widget.currentUserId),
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => _composerController.dismiss(_focusNode),
+              child: _MessageList(
+                state: state,
+                userId: widget.currentUserId,
+                controller: _scrollController,
+                ownAvatar: ownProfile?.avatar,
+                ownInitial: ownProfile?.initial ?? '我',
+                peerAvatar: peerProfile?.avatar,
+                onAvatarTap: _openProfile,
+              ),
+            ),
           ),
-          _Composer(
-            controller: _textController,
+          ChatComposer(
+            controller: _composerController,
+            textController: _textController,
             focusNode: _focusNode,
             isSending: state.isSending,
             onSend: _send,
+            onUnavailableAction: _showUnavailableAction,
           ),
         ],
       ),
@@ -88,10 +171,23 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
 }
 
 class _MessageList extends StatelessWidget {
-  const _MessageList({required this.state, required this.userId});
+  const _MessageList({
+    required this.state,
+    required this.userId,
+    required this.controller,
+    required this.ownInitial,
+    required this.onAvatarTap,
+    this.ownAvatar,
+    this.peerAvatar,
+  });
 
   final DirectChatState state;
   final String userId;
+  final ScrollController controller;
+  final MediaAsset? ownAvatar;
+  final String ownInitial;
+  final MediaAsset? peerAvatar;
+  final ValueChanged<String?> onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -104,135 +200,26 @@ class _MessageList extends StatelessWidget {
       );
     }
     return ListView.builder(
+      controller: controller,
       reverse: true,
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
       itemCount: state.messages.length,
       itemBuilder: (context, index) {
         final message = state.messages[state.messages.length - 1 - index];
-        return _MessageBubble(
+        final isMine = message.senderUserId == userId;
+        return ChatMessageBubble(
           message: message,
-          isMine: message.senderUserId == userId,
+          isMine: isMine,
+          avatar: isMine ? ownAvatar : peerAvatar,
+          avatarInitial: isMine ? ownInitial : _initial(message.senderName),
+          onAvatarTap: () => onAvatarTap(message.senderUserId),
         );
       },
     );
   }
-}
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, required this.isMine});
-
-  final DirectMessage message;
-  final bool isMine;
-
-  @override
-  Widget build(BuildContext context) {
-    final bubbleColor = isMine
-        ? const Color(0xFFBDE9D6)
-        : const Color(0xFFFFFFFF);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        mainAxisAlignment: isMine
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isMine) ...[
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: const Color(0xFFDDEEE7),
-              child: Text(
-                message.senderName.trim().isEmpty
-                    ? '友'
-                    : message.senderName.trim().characters.first,
-                style: const TextStyle(
-                  color: Color(0xFF167A5B),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: bubbleColor,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 10,
-                ),
-                child: Text(message.text),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Composer extends StatelessWidget {
-  const _Composer({
-    required this.controller,
-    required this.focusNode,
-    required this.isSending,
-    required this.onSend,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final bool isSending;
-  final VoidCallback onSend;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Material(
-        color: const Color(0xFFF5F7F6),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-          child: Row(
-            children: [
-              const Icon(Icons.mic_none_rounded, color: Color(0xFF35433D)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: isSending ? null : (_) => onSend(),
-                  decoration: const InputDecoration(
-                    hintText: '输入消息',
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: '发送',
-                onPressed: isSending ? null : onSend,
-                icon: isSending
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send_rounded),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  String _initial(String value) {
+    final normalized = value.trim();
+    return normalized.isEmpty ? '友' : normalized.characters.first;
   }
 }
