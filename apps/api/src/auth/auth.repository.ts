@@ -1,7 +1,6 @@
-import { Injectable, OnApplicationShutdown } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Pool, type PoolClient } from "pg";
-import { requireDatabaseUrl } from "../database/environment.js";
+import { DatabaseService } from "../database/database.service.js";
 import { AuthDomainError, type DeviceInput } from "./auth.types.js";
 import type { PhoneIdentity } from "./phone-identity.js";
 import type { AccessClaims } from "./token-service.js";
@@ -29,22 +28,11 @@ export type SessionResult = {
 };
 
 @Injectable()
-export class AuthRepository implements OnApplicationShutdown {
-  private readonly pool: Pool;
-
-  constructor() {
-    this.pool = new Pool({
-      connectionString: requireDatabaseUrl(process.env),
-      max: 10
-    });
-  }
-
-  async onApplicationShutdown(): Promise<void> {
-    await this.pool.end();
-  }
+export class AuthRepository {
+  constructor(private readonly database: DatabaseService) {}
 
   async findLatestVerification(phoneHash: string): Promise<{ resendAfter: Date } | null> {
-    const result = await this.pool.query<{ resend_after: Date }>(
+    const result = await this.database.query<{ resend_after: Date }>(
       `SELECT resend_after
          FROM sms_verifications
         WHERE phone_hash = $1
@@ -63,7 +51,7 @@ export class AuthRepository implements OnApplicationShutdown {
   ): Promise<{ id: string; expiresAt: Date; resendAfter: Date }> {
     const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
     const resendAfter = new Date(now.getTime() + 60 * 1000);
-    await this.pool.query(
+    await this.database.query(
       `INSERT INTO sms_verifications (
          id, country_code, phone_ciphertext, phone_hash, phone_last_four,
          purpose, code_hash, expires_at, resend_after, created_at
@@ -92,7 +80,7 @@ export class AuthRepository implements OnApplicationShutdown {
     now: Date;
   }): Promise<SessionResult> {
     try {
-      return await this.transaction(async (client) => {
+      return await this.database.transaction(async (client) => {
       const verificationResult = await client.query<VerificationRow>(
         `SELECT *
            FROM sms_verifications
@@ -239,7 +227,7 @@ export class AuthRepository implements OnApplicationShutdown {
       });
     } catch (error) {
       if (error instanceof AuthDomainError && error.code === "AUTH_CODE_INVALID") {
-        await this.pool.query(
+        await this.database.query(
           `UPDATE sms_verifications
               SET attempts = attempts + 1
             WHERE id = $1 AND consumed_at IS NULL`,
@@ -256,7 +244,7 @@ export class AuthRepository implements OnApplicationShutdown {
     newRefreshTokenHash: string;
     now: Date;
   }): Promise<SessionResult> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       const result = await client.query<{
         id: string;
         user_id: string;
@@ -312,7 +300,7 @@ export class AuthRepository implements OnApplicationShutdown {
     tokenVersion: number;
     now: Date;
   }): Promise<void> {
-    const result = await this.pool.query(
+    const result = await this.database.query(
       `UPDATE auth_sessions
           SET revoked_at = $5
         WHERE id = $1
@@ -329,7 +317,7 @@ export class AuthRepository implements OnApplicationShutdown {
       ]
     );
     if (result.rowCount !== 1) {
-      const existing = await this.pool.query(
+      const existing = await this.database.query(
         `SELECT 1
            FROM auth_sessions
           WHERE id = $1
@@ -351,7 +339,7 @@ export class AuthRepository implements OnApplicationShutdown {
   }
 
   async isSessionActive(claims: AccessClaims, now = new Date()): Promise<boolean> {
-    const result = await this.pool.query(
+    const result = await this.database.query(
       `SELECT 1
          FROM auth_sessions
         WHERE id = $1
@@ -371,18 +359,4 @@ export class AuthRepository implements OnApplicationShutdown {
     return result.rowCount === 1;
   }
 
-  private async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      const result = await work(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 }

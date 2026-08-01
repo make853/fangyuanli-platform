@@ -1,6 +1,6 @@
-import { Injectable, OnApplicationShutdown } from "@nestjs/common";
-import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { requireDatabaseUrl } from "../database/environment.js";
+import { Injectable } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service.js";
+import type { QueryExecutor } from "../database/database.types.js";
 import {
   ProfileDomainError,
   type Gender,
@@ -10,13 +10,6 @@ import {
   type ProfileView,
   type RelationshipState
 } from "./profile.types.js";
-
-type QueryClient = {
-  query<R extends QueryResultRow = QueryResultRow>(
-    text: string,
-    values?: unknown[]
-  ): Promise<QueryResult<R>>;
-};
 
 type ProfileRow = {
   user_id: string;
@@ -42,18 +35,11 @@ type PrivacyRow = {
 };
 
 @Injectable()
-export class ProfileRepository implements OnApplicationShutdown {
-  private readonly pool = new Pool({
-    connectionString: requireDatabaseUrl(process.env),
-    max: 10
-  });
-
-  async onApplicationShutdown(): Promise<void> {
-    await this.pool.end();
-  }
+export class ProfileRepository {
+  constructor(private readonly database: DatabaseService) {}
 
   async getProfile(viewerUserId: string, targetUserId: string): Promise<ProfileView> {
-    return this.loadProfile(this.pool, viewerUserId, targetUserId);
+    return this.loadProfile(this.database, viewerUserId, targetUserId);
   }
 
   async updateProfile(
@@ -61,7 +47,7 @@ export class ProfileRepository implements OnApplicationShutdown {
     patch: ProfilePatch,
     now: Date
   ): Promise<ProfileView> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       const locked = await client.query<{
         nickname: string;
         gender: Gender;
@@ -124,7 +110,7 @@ export class ProfileRepository implements OnApplicationShutdown {
   }
 
   async getPrivacy(userId: string): Promise<PrivacySettingsView> {
-    const result = await this.pool.query<PrivacyRow>(
+    const result = await this.database.query<PrivacyRow>(
       `SELECT strangers_can_view_profile, searchable_by_fangyuan_number,
               global_group_muted, updated_at
          FROM user_privacy_settings
@@ -147,7 +133,7 @@ export class ProfileRepository implements OnApplicationShutdown {
     patch: PrivacyPatch,
     now: Date
   ): Promise<PrivacySettingsView> {
-    const result = await this.pool.query<PrivacyRow>(
+    const result = await this.database.query<PrivacyRow>(
       `UPDATE user_privacy_settings
           SET strangers_can_view_profile =
                 COALESCE($2, strangers_can_view_profile),
@@ -179,7 +165,7 @@ export class ProfileRepository implements OnApplicationShutdown {
   }
 
   private async loadProfile(
-    client: QueryClient,
+    client: QueryExecutor,
     viewerUserId: string,
     targetUserId: string
   ): Promise<ProfileView> {
@@ -314,20 +300,4 @@ export class ProfileRepository implements OnApplicationShutdown {
     };
   }
 
-  private async transaction<T>(
-    action: (client: PoolClient) => Promise<T>
-  ): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      const result = await action(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 }

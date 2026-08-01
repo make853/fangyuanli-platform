@@ -1,7 +1,7 @@
-import { Injectable, OnApplicationShutdown } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { requireDatabaseUrl } from "../database/environment.js";
+import { DatabaseService } from "../database/database.service.js";
+import type { QueryExecutor } from "../database/database.types.js";
 import {
   MediaDomainError,
   type MediaType,
@@ -9,13 +9,6 @@ import {
   type MediaUploadSpec,
   type MediaView
 } from "./media.types.js";
-
-type QueryClient = {
-  query<R extends QueryResultRow = QueryResultRow>(
-    text: string,
-    values?: unknown[]
-  ): Promise<QueryResult<R>>;
-};
 
 type UploadRow = {
   id: string;
@@ -54,15 +47,8 @@ type MediaRow = {
 };
 
 @Injectable()
-export class MediaRepository implements OnApplicationShutdown {
-  private readonly pool = new Pool({
-    connectionString: requireDatabaseUrl(process.env),
-    max: 10
-  });
-
-  async onApplicationShutdown(): Promise<void> {
-    await this.pool.end();
-  }
+export class MediaRepository {
+  constructor(private readonly database: DatabaseService) {}
 
   async createUpload(input: {
     uploadId: string;
@@ -74,7 +60,7 @@ export class MediaRepository implements OnApplicationShutdown {
     expiresAt: Date;
     now: Date;
   }): Promise<MediaUploadSession> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       await client.query(
         `INSERT INTO media_upload_sessions (
            id, owner_user_id, purpose, media_type, original_file_name,
@@ -127,7 +113,7 @@ export class MediaRepository implements OnApplicationShutdown {
     ownerUserId: string,
     uploadId: string
   ): Promise<MediaUploadSession> {
-    const result = await this.pool.query<UploadRow>(
+    const result = await this.database.query<UploadRow>(
       `SELECT id, owner_user_id, purpose, media_type, original_file_name,
               content_type, expected_bytes, expected_sha256, duration_ms,
               width, height, object_key, status, create_request_hash,
@@ -156,7 +142,7 @@ export class MediaRepository implements OnApplicationShutdown {
     etag: string;
     now: Date;
   }): Promise<MediaView> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       const locked = await client.query<UploadRow>(
         `SELECT id, owner_user_id, purpose, media_type, original_file_name,
                 content_type, expected_bytes, expected_sha256, duration_ms,
@@ -240,11 +226,11 @@ export class MediaRepository implements OnApplicationShutdown {
   }
 
   async getMedia(ownerUserId: string, mediaId: string): Promise<MediaView> {
-    return this.loadMedia(this.pool, ownerUserId, mediaId);
+    return this.loadMedia(this.database, ownerUserId, mediaId);
   }
 
   private async loadMedia(
-    client: QueryClient,
+    client: QueryExecutor,
     ownerUserId: string,
     mediaId: string
   ): Promise<MediaView> {
@@ -300,20 +286,4 @@ export class MediaRepository implements OnApplicationShutdown {
     };
   }
 
-  private async transaction<T>(
-    action: (client: PoolClient) => Promise<T>
-  ): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      const result = await action(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 }

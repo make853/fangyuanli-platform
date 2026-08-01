@@ -20,3 +20,16 @@ export function requireDatabaseUrl(
 
   return databaseUrl;
 }
+
+export function resolveDatabasePoolMax(
+  environment: NodeJS.ProcessEnv
+): number {
+  const rawValue = environment.DATABASE_POOL_MAX?.trim() || "20";
+  const value = Number(rawValue);
+
+  if (!Number.isInteger(value) || value < 1 || value > 100) {
+    throw new Error(`Invalid DATABASE_POOL_MAX value: ${rawValue}`);
+  }
+
+  return value;
+}
