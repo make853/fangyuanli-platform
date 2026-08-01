@@ -1,4 +1,6 @@
 import { Injectable } from "@nestjs/common";
+import { MediaDeliveryService } from "../media/media-delivery.service.js";
+import { MediaDeliveryError } from "../media/media.types.js";
 import { ProfileRepository } from "./profile.repository.js";
 import {
   ProfileDomainError,
@@ -6,6 +8,7 @@ import {
   type PrivacyPatch,
   type PrivacySettingsView,
   type ProfilePatch,
+  type ProfileProjection,
   type ProfileView
 } from "./profile.types.js";
 
@@ -15,20 +18,28 @@ const GENDERS = new Set<Gender>(["unspecified", "male", "female", "custom"]);
 
 @Injectable()
 export class ProfileService {
-  constructor(private readonly repository: ProfileRepository) {}
+  constructor(
+    private readonly repository: ProfileRepository,
+    private readonly mediaDelivery: MediaDeliveryService
+  ) {}
 
-  getMine(userId: string): Promise<ProfileView> {
-    return this.repository.getProfile(userId, userId);
+  async getMine(userId: string): Promise<ProfileView> {
+    return this.deliver(await this.repository.getProfile(userId, userId));
   }
 
-  getUser(viewerUserId: string, targetUserId: unknown): Promise<ProfileView> {
-    return this.repository.getProfile(
-      viewerUserId,
-      this.uuid(targetUserId, "USER_ID_INVALID")
+  async getUser(
+    viewerUserId: string,
+    targetUserId: unknown
+  ): Promise<ProfileView> {
+    return this.deliver(
+      await this.repository.getProfile(
+        viewerUserId,
+        this.uuid(targetUserId, "USER_ID_INVALID")
+      )
     );
   }
 
-  updateMine(input: {
+  async updateMine(input: {
     userId: string;
     body: Record<string, unknown>;
     idempotencyKey?: string;
@@ -108,15 +119,19 @@ export class ProfileService {
       patch.signature = body.signature.trim();
       changed = true;
     }
-    if (
-      Object.hasOwn(body, "avatarMediaId") ||
-      Object.hasOwn(body, "backgroundMediaId")
-    ) {
-      throw new ProfileDomainError(
-        "PROFILE_MEDIA_NOT_READY",
-        "头像和背景墙将在媒体上传功能完成后开放",
-        422
+    if (Object.hasOwn(body, "avatarMediaId")) {
+      patch.avatarMediaId = this.optionalUuid(
+        body.avatarMediaId,
+        "PROFILE_AVATAR_MEDIA_ID_INVALID"
       );
+      changed = true;
+    }
+    if (Object.hasOwn(body, "backgroundMediaId")) {
+      patch.backgroundMediaId = this.optionalUuid(
+        body.backgroundMediaId,
+        "PROFILE_BACKGROUND_MEDIA_ID_INVALID"
+      );
+      changed = true;
     }
     if (!changed) {
       throw new ProfileDomainError(
@@ -135,7 +150,9 @@ export class ProfileService {
     if (patch.gender && patch.gender !== "custom") {
       patch.customGender = null;
     }
-    return this.repository.updateProfile(input.userId, patch, new Date());
+    return this.deliver(
+      await this.repository.updateProfile(input.userId, patch, new Date())
+    );
   }
 
   getPrivacy(userId: string): Promise<PrivacySettingsView> {
@@ -180,6 +197,32 @@ export class ProfileService {
       throw new ProfileDomainError(code, "标识格式无效", 400);
     }
     return value;
+  }
+
+  private optionalUuid(value: unknown, code: string): string | null {
+    if (value === null) return null;
+    return this.uuid(value, code);
+  }
+
+  private async deliver(projection: ProfileProjection): Promise<ProfileView> {
+    try {
+      const [avatar, background] = await Promise.all([
+        projection.avatarReference
+          ? this.mediaDelivery.createView(projection.avatarReference)
+          : null,
+        projection.backgroundReference
+          ? this.mediaDelivery.createView(projection.backgroundReference)
+          : null
+      ]);
+      const { avatarReference: _avatar, backgroundReference: _background, ...view } =
+        projection;
+      return { ...view, avatar, background };
+    } catch (error) {
+      if (error instanceof MediaDeliveryError) {
+        throw new ProfileDomainError(error.code, error.message, 503);
+      }
+      throw error;
+    }
   }
 
   private idempotencyKey(value?: string): void {

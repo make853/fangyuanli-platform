@@ -10,6 +10,8 @@ import 'package:fangyuanli_mobile/src/features/media/data/image_pipeline.dart';
 import 'package:fangyuanli_mobile/src/features/media/data/media_upload_api.dart';
 import 'package:fangyuanli_mobile/src/features/media/data/media_upload_task_store.dart';
 import 'package:fangyuanli_mobile/src/features/media/domain/media_upload_models.dart';
+import 'package:fangyuanli_mobile/src/features/profile/data/profile_repository.dart';
+import 'package:fangyuanli_mobile/src/features/profile/domain/profile_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -44,6 +46,9 @@ void main() {
       await workingDirectory.create(recursive: true);
 
       AuthenticatedApiClient? client;
+      HttpProfileRepository? profileRepository;
+      UserProfile? boundProfile;
+      String? originalAvatarMediaId;
       try {
         final prepared = await _prepareImage(workingDirectory, name: 'normal');
 
@@ -63,6 +68,7 @@ void main() {
           loadSession: ({bool forceRefresh = false}) async => session,
         );
         final mediaApi = HttpMediaUploadApi(client);
+        profileRepository = HttpProfileRepository(client);
         final coordinator = MediaUploadCoordinator(
           session.userId,
           const _UnusedPicker(),
@@ -154,7 +160,44 @@ void main() {
         expect(renewed.mediaId, isNotNull);
         expect(renewed.ticket?.uploadId, isNot('expired-ticket'));
         expect(await File(expiredImage.localPath).exists(), isFalse);
+
+        final ready = await coordinator.waitUntilReady(
+          uploaded,
+          timeout: const Duration(minutes: 2),
+          pollInterval: const Duration(seconds: 1),
+        );
+        expect(ready.status, MediaUploadStatus.ready);
+        expect(ready.mediaId, isNotNull);
+
+        final beforeBinding = await profileRepository.loadMine();
+        originalAvatarMediaId = beforeBinding.avatar?.mediaId;
+        boundProfile = await profileRepository.updateMine(
+          ownerUserId: session.userId,
+          expectedVersion: beforeBinding.profileVersion,
+          avatar: ProfileMediaChange.set(ready.mediaId),
+        );
+        expect(boundProfile.avatar?.mediaId, ready.mediaId);
+        expect(boundProfile.avatar?.url, isNotNull);
+        expect(boundProfile.avatar?.thumbnailUrl, isNotNull);
+        expect(
+          await _downloadStatus(boundProfile.avatar!.thumbnailUrl!),
+          HttpStatus.ok,
+        );
       } finally {
+        if (profileRepository != null && boundProfile != null) {
+          try {
+            await profileRepository.updateMine(
+              ownerUserId: boundProfile.userId,
+              expectedVersion: boundProfile.profileVersion,
+              avatar: originalAvatarMediaId == null
+                  ? const ProfileMediaChange.remove()
+                  : ProfileMediaChange.set(originalAvatarMediaId),
+            );
+          } on Object {
+            // The acceptance result must retain the original failure; staging
+            // cleanup can be retried independently when a concurrent edit wins.
+          }
+        }
         client?.close();
         if (await workingDirectory.exists()) {
           await workingDirectory.delete(recursive: true);
@@ -163,6 +206,18 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );
+}
+
+Future<int> _downloadStatus(Uri url) async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+  try {
+    final request = await client.getUrl(url);
+    final response = await request.close();
+    await response.drain<void>();
+    return response.statusCode;
+  } finally {
+    client.close(force: true);
+  }
 }
 
 Future<PreparedImage> _prepareImage(

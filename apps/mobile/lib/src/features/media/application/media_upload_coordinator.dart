@@ -91,18 +91,44 @@ class MediaUploadCoordinator {
         mediaId,
         ownerUserId: task.ownerUserId,
       );
+      final nextStatus = switch (asset.status) {
+        'ready' => MediaUploadStatus.ready,
+        'failed' || 'expired' => MediaUploadStatus.failed,
+        _ => MediaUploadStatus.processing,
+      };
       final updated = task.copyWith(
-        status: asset.status == 'ready'
-            ? MediaUploadStatus.ready
-            : MediaUploadStatus.processing,
+        status: nextStatus,
         updatedAt: _now(),
-        clearError: true,
+        errorMessage: nextStatus == MediaUploadStatus.failed
+            ? '图片处理失败，请重新选择'
+            : null,
+        clearError: nextStatus != MediaUploadStatus.failed,
       );
       await _store.write(updated);
       return updated;
     } catch (error) {
       return _pause(task, error);
     }
+  }
+
+  Future<MediaUploadTask> waitUntilReady(
+    MediaUploadTask task, {
+    Duration timeout = const Duration(seconds: 45),
+    Duration pollInterval = const Duration(milliseconds: 600),
+  }) async {
+    _requireOwner(task);
+    var current = task;
+    final pollCount = timeout.inMilliseconds ~/ pollInterval.inMilliseconds;
+    for (
+      var index = 0;
+      current.status == MediaUploadStatus.processing && index < pollCount;
+      index++
+    ) {
+      await Future<void>.delayed(pollInterval);
+      current = await refreshProcessing(current);
+    }
+    if (current.status != MediaUploadStatus.processing) return current;
+    return _pause(current, '图片处理时间较长，稍后可继续');
   }
 
   Future<MediaUploadTask> _process(

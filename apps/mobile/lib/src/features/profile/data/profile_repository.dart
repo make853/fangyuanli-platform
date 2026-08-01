@@ -11,10 +11,13 @@ abstract interface class ProfileRepository {
   Future<UserProfile> loadUser(String userId);
 
   Future<UserProfile> updateMine({
+    required String ownerUserId,
     required int expectedVersion,
     String? nickname,
     ProfileGender? gender,
     String? signature,
+    ProfileMediaChange avatar = const ProfileMediaChange.keep(),
+    ProfileMediaChange background = const ProfileMediaChange.keep(),
   });
 
   Future<PrivacySettings> loadPrivacy();
@@ -45,19 +48,25 @@ class HttpProfileRepository implements ProfileRepository {
 
   @override
   Future<UserProfile> updateMine({
+    required String ownerUserId,
     required int expectedVersion,
     String? nickname,
     ProfileGender? gender,
     String? signature,
+    ProfileMediaChange avatar = const ProfileMediaChange.keep(),
+    ProfileMediaChange background = const ProfileMediaChange.keep(),
   }) async {
     final envelope = await _client.patch(
       '/me',
       idempotent: true,
+      expectedUserId: ownerUserId,
       data: {
         'expectedVersion': expectedVersion,
         'nickname': ?nickname,
         if (gender != null) 'gender': gender.wireValue,
         'signature': ?signature,
+        if (avatar.isSpecified) 'avatarMediaId': avatar.mediaId,
+        if (background.isSpecified) 'backgroundMediaId': background.mediaId,
       },
     );
     return UserProfile.fromJson(_data(envelope));

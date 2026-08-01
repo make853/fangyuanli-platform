@@ -1,3 +1,8 @@
+import type {
+  MediaDeliveryReference,
+  MediaView
+} from "../media/media.types.js";
+
 export type Gender = "unspecified" | "male" | "female" | "custom";
 
 export type RelationshipState =
@@ -18,16 +23,21 @@ export type RelationshipView = {
 export type ProfileView = {
   userId: string;
   displayName: string;
-  avatar: null;
+  avatar: MediaView | null;
   fangyuanNumber: string | null;
   nickname: string | null;
   gender: Gender | "hidden";
   signature: string;
-  background: null;
+  background: MediaView | null;
   profileVisibility: "full" | "limited";
   profileVersion: number;
   relationship: RelationshipView;
   allowedActions: string[];
+};
+
+export type ProfileProjection = Omit<ProfileView, "avatar" | "background"> & {
+  avatarReference: MediaDeliveryReference | null;
+  backgroundReference: MediaDeliveryReference | null;
 };
 
 export type PrivacySettingsView = {
@@ -43,6 +53,8 @@ export type ProfilePatch = {
   gender?: Gender;
   customGender?: string | null;
   signature?: string;
+  avatarMediaId?: string | null;
+  backgroundMediaId?: string | null;
 };
 
 export type PrivacyPatch = {

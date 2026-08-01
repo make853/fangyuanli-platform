@@ -60,6 +60,27 @@ export type MediaView = {
   expiresAt: string | null;
 };
 
+export type MediaDeliveryReference = {
+  mediaId: string;
+  mediaType: MediaType;
+  status: MediaStatus;
+  displayObjectKey: string | null;
+  thumbnailObjectKey: string | null;
+  coverObjectKey: string | null;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+};
+
+export class MediaDeliveryError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
 export class MediaDomainError extends Error {
   constructor(
     public readonly code: string,

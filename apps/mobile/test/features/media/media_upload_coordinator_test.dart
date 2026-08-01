@@ -176,6 +176,60 @@ void main() {
     );
     expect(await coordinator.resumePending(), isEmpty);
   });
+
+  test('polls processing media until the worker marks it ready', () async {
+    final file = await _imageFile(temporary);
+    final api = _FakeMediaApi(loadStatuses: ['processing', 'ready']);
+    final coordinator = MediaUploadCoordinator(
+      _ownerUserId,
+      _UnusedPicker(),
+      _UnusedPreparer(),
+      api,
+      _FakeObjectUploader(),
+      _MemoryTaskStore(),
+      now: () => _now,
+    );
+    final processing = await coordinator.enqueuePrepared(
+      purpose: MediaPurpose.avatar,
+      image: _prepared(file),
+    );
+
+    final ready = await coordinator.waitUntilReady(
+      processing,
+      timeout: const Duration(milliseconds: 20),
+      pollInterval: const Duration(milliseconds: 1),
+    );
+
+    expect(ready.status, MediaUploadStatus.ready);
+    expect(api.loadCalls, 2);
+  });
+
+  test('preserves a permanent worker failure instead of pausing it', () async {
+    final file = await _imageFile(temporary);
+    final api = _FakeMediaApi(loadStatuses: ['failed']);
+    final coordinator = MediaUploadCoordinator(
+      _ownerUserId,
+      _UnusedPicker(),
+      _UnusedPreparer(),
+      api,
+      _FakeObjectUploader(),
+      _MemoryTaskStore(),
+      now: () => _now,
+    );
+    final processing = await coordinator.enqueuePrepared(
+      purpose: MediaPurpose.background,
+      image: _prepared(file),
+    );
+
+    final failed = await coordinator.waitUntilReady(
+      processing,
+      timeout: const Duration(milliseconds: 10),
+      pollInterval: const Duration(milliseconds: 1),
+    );
+
+    expect(failed.status, MediaUploadStatus.failed);
+    expect(failed.errorMessage, contains('重新选择'));
+  });
 }
 
 final _now = DateTime.utc(2026, 8, 1, 10);
@@ -210,8 +264,13 @@ class _UnusedPreparer implements MediaImagePreparer {
 }
 
 class _FakeMediaApi implements MediaUploadApi {
+  _FakeMediaApi({List<String>? loadStatuses})
+    : _loadStatuses = loadStatuses ?? ['ready'];
+
+  final List<String> _loadStatuses;
   final List<String> createKeys = [];
   final List<String> completeKeys = [];
+  int loadCalls = 0;
 
   @override
   Future<MediaUploadTicket> createUpload(
@@ -243,7 +302,13 @@ class _FakeMediaApi implements MediaUploadApi {
   Future<MediaAsset> loadMedia(
     String mediaId, {
     required String ownerUserId,
-  }) async => MediaAsset(mediaId: mediaId, status: 'ready');
+  }) async {
+    final index = loadCalls < _loadStatuses.length
+        ? loadCalls
+        : _loadStatuses.length - 1;
+    loadCalls += 1;
+    return MediaAsset(mediaId: mediaId, status: _loadStatuses[index]);
+  }
 }
 
 class _FakeObjectUploader implements ObjectUploader {

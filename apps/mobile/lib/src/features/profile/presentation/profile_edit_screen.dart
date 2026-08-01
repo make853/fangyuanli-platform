@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/presentation/feature_entry.dart';
+import '../../media/data/image_pipeline.dart';
 import '../application/profile_controller.dart';
 import '../domain/profile_models.dart';
+import 'profile_media_widgets.dart';
 
 class ProfileEditScreen extends ConsumerStatefulWidget {
   const ProfileEditScreen({required this.profile, super.key});
@@ -43,13 +44,15 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(profileControllerProvider);
+    final profile = state.profile ?? widget.profile;
+    final mediaBusy = state.isUpdatingMedia;
     return Scaffold(
       appBar: AppBar(
         title: const Text('编辑资料'),
         actions: [
           TextButton(
-            onPressed: state.isSaving ? null : _save,
-            child: state.isSaving
+            onPressed: state.isSaving || mediaBusy ? null : _save,
+            child: state.isSaving || mediaBusy
                 ? const SizedBox.square(
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
@@ -61,61 +64,55 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
         children: [
-          Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(17),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => showFeatureComingSoon(context, '更换头像'),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 58,
-                      height: 58,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDDEEE7),
-                        borderRadius: BorderRadius.circular(19),
-                      ),
-                      child: Text(
-                        widget.profile.initial,
-                        style: const TextStyle(
-                          color: Color(0xFF167A5B),
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '头像',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '图片上传功能开发中',
-                            style: TextStyle(
-                              color: Color(0xFF78847E),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Color(0xFFA1AAA5),
-                    ),
-                  ],
+          _EditorCard(
+            children: [
+              _ProfileMediaRow(
+                label: '头像',
+                description: '用于聊天、动态和个人资料',
+                enabled: !mediaBusy,
+                preview: ProfileAvatarImage(
+                  media: profile.avatar,
+                  initial: profile.initial,
+                  size: 58,
+                  borderRadius: 19,
+                ),
+                onTap: () => _chooseMedia(
+                  slot: ProfileMediaSlot.avatar,
+                  hasMedia: profile.avatar != null,
                 ),
               ),
-            ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              _ProfileMediaRow(
+                label: '背景墙',
+                description: '展示在完整个人资料顶部',
+                enabled: !mediaBusy,
+                preview: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 78,
+                    height: 52,
+                    child: ProfileBackgroundImage(media: profile.background),
+                  ),
+                ),
+                onTap: () => _chooseMedia(
+                  slot: ProfileMediaSlot.background,
+                  hasMedia: profile.background != null,
+                ),
+              ),
+              if (mediaBusy) ...[
+                const LinearProgressIndicator(minHeight: 2),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                  child: Text(
+                    state.mediaStatusMessage ?? '正在更新图片…',
+                    style: const TextStyle(
+                      color: Color(0xFF66736D),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 14),
           _EditorCard(
@@ -187,8 +184,129 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     }
   }
 
+  Future<void> _chooseMedia({
+    required ProfileMediaSlot slot,
+    required bool hasMedia,
+  }) async {
+    final choice = await showModalBottomSheet<_MediaChoice>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('从相册选择'),
+              onTap: () => Navigator.pop(context, _MediaChoice.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('拍摄'),
+              onTap: () => Navigator.pop(context, _MediaChoice.camera),
+            ),
+            if (hasMedia)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Color(0xFFC84B45),
+                ),
+                title: const Text(
+                  '移除当前图片',
+                  style: TextStyle(color: Color(0xFFC84B45)),
+                ),
+                onTap: () => Navigator.pop(context, _MediaChoice.remove),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+
+    final controller = ref.read(profileControllerProvider.notifier);
+    if (choice == _MediaChoice.remove) {
+      final succeeded = await controller.removeMedia(slot);
+      if (!mounted) return;
+      _message(succeeded ? '${_slotName(slot)}已移除' : _mediaFailureMessage());
+      return;
+    }
+
+    final result = await controller.pickAndBindMedia(
+      slot: slot,
+      source: choice == _MediaChoice.camera
+          ? MediaImageSource.camera
+          : MediaImageSource.gallery,
+    );
+    if (!mounted || result == ProfileMediaAction.cancelled) return;
+    _message(
+      result == ProfileMediaAction.updated
+          ? '${_slotName(slot)}已更新'
+          : _mediaFailureMessage(),
+    );
+  }
+
+  String _slotName(ProfileMediaSlot slot) =>
+      slot == ProfileMediaSlot.avatar ? '头像' : '背景墙';
+
+  String _mediaFailureMessage() =>
+      ref.read(profileControllerProvider).errorMessage ?? '图片更新失败，请稍后重试';
+
   void _message(String value) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
+  }
+}
+
+enum _MediaChoice { gallery, camera, remove }
+
+class _ProfileMediaRow extends StatelessWidget {
+  const _ProfileMediaRow({
+    required this.label,
+    required this.description,
+    required this.preview,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final String description;
+  final Widget preview;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            preview,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      color: Color(0xFF78847E),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFFA1AAA5)),
+          ],
+        ),
+      ),
+    );
   }
 }
 

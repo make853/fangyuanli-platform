@@ -98,33 +98,47 @@ class MediaAsset {
   const MediaAsset({
     required this.mediaId,
     required this.status,
+    this.mediaType,
     this.url,
     this.thumbnailUrl,
     this.coverUrl,
     this.width,
     this.height,
+    this.durationMs,
+    this.expiresAt,
   });
 
   final String mediaId;
   final String status;
+  final String? mediaType;
   final Uri? url;
   final Uri? thumbnailUrl;
   final Uri? coverUrl;
   final int? width;
   final int? height;
+  final int? durationMs;
+  final DateTime? expiresAt;
 
   factory MediaAsset.fromJson(Map<String, dynamic> json) => MediaAsset(
     mediaId: json['mediaId'] as String,
     status: json['status'] as String,
+    mediaType: json['mediaType'] as String?,
     url: _optionalUri(json['url']),
     thumbnailUrl: _optionalUri(json['thumbnailUrl']),
     coverUrl: _optionalUri(json['coverUrl']),
     width: json['width'] as int?,
     height: json['height'] as int?,
+    durationMs: json['durationMs'] as int?,
+    expiresAt: _optionalDateTime(json['expiresAt']),
   );
 
   static Uri? _optionalUri(Object? value) =>
       value is String && value.isNotEmpty ? Uri.parse(value) : null;
+
+  static DateTime? _optionalDateTime(Object? value) =>
+      value is String && value.isNotEmpty
+      ? DateTime.parse(value).toUtc()
+      : null;
 }
 
 class MediaUploadTask {
