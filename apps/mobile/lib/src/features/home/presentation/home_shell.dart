@@ -3,13 +3,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../auth/application/auth_controller.dart';
+import '../../../core/navigation/app_navigation.dart';
 import '../../../core/realtime/realtime_controller.dart';
+import '../../activities/presentation/activity_composer_screen.dart';
 import '../../conversations/application/conversation_list_controller.dart';
 import '../../friends/application/friends_controller.dart';
+import '../../friends/presentation/friend_scan_screen.dart';
 import '../../friends/presentation/friends_screen.dart';
+import '../../posts/presentation/post_composer_screen.dart';
 import '../../profile/application/profile_controller.dart';
 import '../../profile/presentation/my_screen.dart';
+import '../../search/presentation/global_search_screen.dart';
+import 'quick_create_sheet.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
@@ -62,6 +67,53 @@ class _HomeShellState extends ConsumerState<HomeShell>
     }
   }
 
+  AppSection get _currentSection => AppSection.values[_index];
+
+  void _openSearch() {
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.globalSearch,
+      source: AppNavigationSource(
+        section: _currentSection,
+        entryPoint: AppEntryPoint.tab,
+      ),
+      builder: (_) => GlobalSearchScreen(sourceSection: _currentSection),
+    );
+  }
+
+  Future<void> _openQuickCreate() async {
+    final sourceSection = _currentSection;
+    final action = await showQuickCreateSheet(context);
+    if (!mounted || action == null) return;
+    final source = AppNavigationSource(
+      section: sourceSection,
+      entryPoint: AppEntryPoint.quickCreate,
+    );
+    switch (action) {
+      case QuickCreateAction.post:
+        await AppNavigation.push<void>(
+          context,
+          destination: AppRouteId.postComposer,
+          source: source,
+          builder: (_) => const PostComposerScreen(),
+        );
+      case QuickCreateAction.activity:
+        await AppNavigation.push<void>(
+          context,
+          destination: AppRouteId.activityComposer,
+          source: source,
+          builder: (_) => const ActivityComposerScreen(),
+        );
+      case QuickCreateAction.scan:
+        await AppNavigation.push<void>(
+          context,
+          destination: AppRouteId.friendScan,
+          source: source,
+          builder: (_) => const FriendScanScreen(),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(realtimeControllerProvider);
@@ -75,12 +127,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
         actions: [
           IconButton(
             tooltip: '搜索',
-            onPressed: () {},
+            onPressed: _openSearch,
             icon: const Icon(Icons.search_rounded),
           ),
           IconButton(
             tooltip: '发布',
-            onPressed: () {},
+            onPressed: _openQuickCreate,
             icon: const Icon(Icons.add_rounded),
           ),
         ],
@@ -137,14 +189,13 @@ class _DestinationIcon extends StatelessWidget {
   }
 }
 
-class _SectionPlaceholder extends ConsumerWidget {
+class _SectionPlaceholder extends StatelessWidget {
   const _SectionPlaceholder({required this.destination});
 
   final _Destination destination;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isProfile = destination.label == '我的';
+  Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -166,15 +217,6 @@ class _SectionPlaceholder extends ConsumerWidget {
               '接下来接入真实数据与交互流程',
               style: TextStyle(color: Color(0xFF78847E)),
             ),
-            if (isProfile) ...[
-              const SizedBox(height: 26),
-              OutlinedButton(
-                onPressed: () {
-                  ref.read(authControllerProvider.notifier).logout();
-                },
-                child: const Text('退出登录'),
-              ),
-            ],
           ],
         ),
       ),

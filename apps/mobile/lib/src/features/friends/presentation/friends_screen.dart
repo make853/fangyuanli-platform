@@ -10,6 +10,7 @@ import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 import 'friend_profile_screen.dart';
 import 'friend_requests_screen.dart';
+import 'system_inbox_screen.dart';
 
 class FriendsScreen extends ConsumerStatefulWidget {
   const FriendsScreen({super.key});
@@ -170,7 +171,7 @@ class _MessagesTab extends ConsumerWidget {
         entryPoint: AppEntryPoint.messageList,
         entityId: title,
       ),
-      builder: (_) => _EmptyInboxScreen(title: title, message: message),
+      builder: (_) => SystemInboxScreen(title: title, emptyMessage: message),
     );
   }
 }
@@ -589,34 +590,6 @@ class _InlineError extends StatelessWidget {
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),
         ],
-      ),
-    );
-  }
-}
-
-class _EmptyInboxScreen extends StatelessWidget {
-  const _EmptyInboxScreen({required this.title, required this.message});
-
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.notifications_none_rounded,
-              size: 44,
-              color: Color(0xFFA1AAA5),
-            ),
-            const SizedBox(height: 12),
-            Text(message, style: const TextStyle(color: Color(0xFF78847E))),
-          ],
-        ),
       ),
     );
   }

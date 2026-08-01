@@ -7,12 +7,19 @@ enum AppEntryPoint {
   messageList,
   contactList,
   systemNotification,
+  globalSearch,
+  quickCreate,
   profile,
   settings,
   directChat,
 }
 
 enum AppRouteId {
+  globalSearch('/search'),
+  globalSearchCategory('/search/category'),
+  postComposer('/posts/compose'),
+  activityComposer('/activities/compose'),
+  friendScan('/friends/scan'),
   myProfile('/profile/me'),
   userProfile('/profile/user'),
   profileEdit('/profile/me/edit'),
