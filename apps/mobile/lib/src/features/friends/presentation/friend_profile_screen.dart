@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/presentation/direct_chat_screen.dart';
+import '../../profile/data/profile_repository.dart';
+import '../../profile/domain/profile_models.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 
@@ -16,13 +18,15 @@ class FriendProfileScreen extends ConsumerWidget {
     final state = ref.watch(friendsControllerProvider);
     final contact = _currentContact(state);
     final isProcessing = state.processingUserIds.contains(contact.userId);
+    final loadedProfile = ref.watch(userProfileProvider(contact.userId));
+    final profile = loadedProfile.asData?.value;
 
     return Scaffold(
       appBar: AppBar(title: const Text('好友资料')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
-          _ProfileHeader(contact: contact),
+          _ProfileHeader(contact: contact, profile: profile),
           const SizedBox(height: 14),
           FilledButton.icon(
             onPressed: contact.directConversationId.isEmpty
@@ -346,9 +350,10 @@ class _RemarkDialogState extends State<_RemarkDialog> {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.contact});
+  const _ProfileHeader({required this.contact, this.profile});
 
   final FriendContact contact;
+  final UserProfile? profile;
 
   @override
   Widget build(BuildContext context) {
@@ -390,9 +395,31 @@ class _ProfileHeader extends StatelessWidget {
                 if (contact.remarkName != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    '昵称：${contact.nickname}',
+                    '昵称：${profile?.nickname ?? contact.nickname}',
                     style: const TextStyle(color: Color(0xFF78847E)),
                   ),
+                ],
+                if (profile?.fangyuanNumber != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '方圆号：${profile!.fangyuanNumber}',
+                    style: const TextStyle(color: Color(0xFF78847E)),
+                  ),
+                ],
+                if (profile != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '性别：${profile!.gender.label}',
+                    style: const TextStyle(color: Color(0xFF78847E)),
+                  ),
+                  if (profile!.signature.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      profile!.signature,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ],
             ),
