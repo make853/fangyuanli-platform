@@ -16,7 +16,10 @@ import {
     MediaRepository,
     MediaService,
     RequestHasher,
-    { provide: ObjectStorageAdapter, useClass: CosObjectStorageAdapter }
+    {
+      provide: ObjectStorageAdapter,
+      useFactory: () => new CosObjectStorageAdapter()
+    }
   ]
 })
 export class MediaModule {}

@@ -1,4 +1,3 @@
-import { Injectable } from "@nestjs/common";
 import COS from "cos-nodejs-sdk-v5";
 
 const CVM_METADATA_BASE =
@@ -103,7 +102,6 @@ export type CosObjectStorageAdapterOptions = {
   credentialFetcher?: CredentialFetcher;
 };
 
-@Injectable()
 export class CosObjectStorageAdapter extends ObjectStorageAdapter {
   private client: COS | null = null;
   private readonly environment: NodeJS.ProcessEnv;
