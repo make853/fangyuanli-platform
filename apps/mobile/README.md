@@ -46,15 +46,14 @@ flutter build web
 媒体状态查询和资料绑定；同一次验收还会模拟上传中断后续传、过期凭证自动换新，
 并使用 A/B 账号验证好友可见头像与背景墙、拉黑后只保留最小头像资料。
 
-先把 staging API 安全转发到本机 `127.0.0.1:3000`，再在本机终端执行：
+先把 staging API 安全转发到本机 `127.0.0.1:3000`，并通过环境变量提供 A/B
+测试账号，再在本机终端执行受版本控制的验收入口：
 
 ```bash
-flutter test integration_test/media_upload_staging_test.dart \
-  -d "iPhone 16e" \
-  --dart-define=API_BASE_URL=http://127.0.0.1:3000 \
-  --dart-define=STAGING_TEST_PHONE_A="$STAGING_TEST_PHONE_A" \
-  --dart-define=STAGING_TEST_PHONE_B="$STAGING_TEST_PHONE_B" \
-  --dart-define=STAGING_TEST_CODE="$STAGING_TEST_CODE"
+zsh scripts/run-ios-media-acceptance.sh
 ```
 
-测试号码和验证码只通过本机环境变量传入，不写入源码、测试报告或 Git。
+默认设备为 `iPhone 17`，可用 `IOS_ACCEPTANCE_DEVICE` 覆盖。测试号码和验证码只通过
+本机环境变量传入，不写入源码、测试报告或 Git。开发机上的 `build/` 目录可以保留一层
+本地包装脚本，用于建立 SSH 隧道并读取 staging 配置，但核心验收逻辑必须留在
+`scripts/run-ios-media-acceptance.sh`。
