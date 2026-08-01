@@ -97,6 +97,7 @@ make853/fangyuanli-platform
 - 移动端网络与账号任务边界已记录在 `docs/architecture/decisions/0002-mobile-authenticated-client-and-account-scoped-tasks.md`。
 - COS 正式环境使用绑定 CVM 的专用 CAM 角色和自动轮换临时凭证，长期 SecretKey 只允许本地开发兼容；该决定记录在 `docs/architecture/decisions/0003-cos-cvm-role-credentials.md`；
 - COS 最小权限策略模板位于 `docs/security/tencent-cos-staging-policy.template.json`，部署后运行 `pnpm --filter @fangyuanli/api check:cos` 验证一次性 PUT、HEAD 和 DELETE。
+- staging 私有 COS、最小权限 CAM 角色和 CVM 实例角色已完成配置，真实 iPhone 模拟器上传验收已覆盖 iOS 压缩、COS 直传、上传中断后续传和过期凭证换新；测试入口位于 `apps/mobile/integration_test/media_upload_staging_test.dart`，不进入正式 App。
 
 好友关系、私聊文字消息、实时推送、断线补偿、多连接同步和个人资料第一阶段已经通过真实服务器 A/B 闭环；Flutter 已完成登录、好友申请、联系人、关系设置、私聊实时收发、昵称/性别/签名资料编辑以及可恢复图片上传底座。头像、背景墙、历史动态以及聊天媒体仍待后续接入。HTML 原型中的其余交互大部分仍是模拟状态。
 
@@ -120,11 +121,10 @@ make853/fangyuanli-platform
 
 好友关系、私聊文字消息、分页、未读游标、拉黑拦截、实时通道、断线补偿、多连接同步、个人资料第一阶段和媒体上传服务端底座已经完成。接下来固定按以下顺序继续：
 
-1. 创建私有COS测试桶，创建最小权限 CAM 角色并绑定 staging CVM，配置桶名、地域和角色环境变量；
-2. 在 iPhone 模拟器验证选图、压缩、COS直传、断网续传和凭证过期恢复；
-3. 增加图片处理Worker，接入头像与背景墙并完成 A/B 权限、替换和异常恢复验收；
-4. 接入个人历史动态并复用现有资料可见性；
-5. 聊天图片、语音和视频在个人资料图片链路稳定后复用同一媒体基础设施。
+1. 设计并实现图片处理 Worker 的任务领取、幂等处理、重试和原图/派生图生命周期；
+2. 接入头像与背景墙、私有媒体读取、替换和旧文件延迟清理，并完成 A/B 权限和异常恢复验收；
+3. 接入个人历史动态并复用现有资料可见性；
+4. 聊天图片、语音和视频在个人资料图片链路稳定后复用同一媒体基础设施。
 
 ## 5. 工程原则
 
