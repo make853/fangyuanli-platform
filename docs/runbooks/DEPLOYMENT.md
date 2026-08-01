@@ -32,8 +32,11 @@ pnpm test
 pnpm build:api
 sudo install -m 0644 deploy/systemd/fangyuanli-api.service \
   /etc/systemd/system/fangyuanli-api.service
+sudo install -m 0644 deploy/systemd/fangyuanli-worker.service \
+  /etc/systemd/system/fangyuanli-worker.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now fangyuanli-api.service
+sudo systemctl enable --now fangyuanli-worker.service
 curl --fail http://127.0.0.1:3000/health
 ```
 
@@ -42,6 +45,8 @@ curl --fail http://127.0.0.1:3000/health
 ```bash
 systemctl status fangyuanli-api.service --no-pager
 journalctl -u fangyuanli-api.service -n 100 --no-pager
+systemctl status fangyuanli-worker.service --no-pager
+journalctl -u fangyuanli-worker.service -n 100 --no-pager
 ```
 
 ## 媒体上传环境
@@ -62,8 +67,10 @@ Staging 和 production 首选给 CVM 绑定专用 CAM 角色，并只填写
 不在服务器保存永久 SecretKey。`TENCENT_COS_SECRET_ID/SECRET_KEY` 仅作为
 本地开发兼容入口，二者不得与 CVM 角色同时作为正式部署方案。
 
-角色只授予指定私有桶 `temporary/*` 前缀的 `PutObject`、`HeadObject` 和
-`DeleteObject`，策略模板见
+角色只授予指定私有桶 `temporary/*` 和 `processed/*` 前缀所需的
+`PutObject`、`GetObject`、`HeadObject` 和 `DeleteObject`。其中客户端仍只会
+获得 `temporary/*` 单对象 PUT 地址；GET 和派生图写入只由服务端 API/Worker
+使用。策略模板见
 `docs/security/tencent-cos-staging-policy.template.json`。桶名必须包含腾讯云
 APPID 后缀，地域创建后不可修改。iOS/Android 原生直传不受浏览器 CORS
 限制；只有未来启用 Flutter Web 直传时，才为确定的 Web 域名增加有限的

@@ -1,0 +1,23 @@
+[Unit]
+Description=Fangyuanli staging media worker
+After=network-online.target docker.service fangyuanli-api.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/srv/fangyuanli
+EnvironmentFile=/srv/fangyuanli/.env
+Environment=NODE_ENV=staging
+Environment=FANGYUANLI_PROCESS_ROLE=fangyuanli-worker
+ExecStart=/usr/bin/pnpm start:worker:prod
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

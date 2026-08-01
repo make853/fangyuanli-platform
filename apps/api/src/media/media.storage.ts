@@ -85,6 +85,18 @@ export type StoredObjectMetadata = {
   etag: string;
 };
 
+export type StoredObject = StoredObjectMetadata & {
+  body: Buffer;
+  contentType: string | null;
+};
+
+export type StoredObjectWriteResult = StoredObjectMetadata;
+
+export type ObjectReadTicket = {
+  url: string;
+  expiresAt: Date;
+};
+
 export abstract class ObjectStorageAdapter {
   abstract createUploadTicket(input: {
     objectKey: string;
@@ -93,6 +105,19 @@ export abstract class ObjectStorageAdapter {
   }): Promise<ObjectUploadTicket>;
 
   abstract headObject(objectKey: string): Promise<StoredObjectMetadata | null>;
+
+  abstract getObject(objectKey: string): Promise<StoredObject>;
+
+  abstract putObject(input: {
+    objectKey: string;
+    contentType: string;
+    body: Buffer;
+  }): Promise<StoredObjectWriteResult>;
+
+  abstract createReadTicket(input: {
+    objectKey: string;
+    expiresInSeconds: number;
+  }): Promise<ObjectReadTicket>;
 
   abstract deleteObject(objectKey: string): Promise<void>;
 }
@@ -172,6 +197,78 @@ export class CosObjectStorageAdapter extends ObjectStorageAdapter {
       }
       throw error;
     }
+  }
+
+  async getObject(objectKey: string): Promise<StoredObject> {
+    const { bucket, region } = this.configuration();
+    const result = await this.cos().getObject({
+      Bucket: bucket,
+      Region: region,
+      Key: objectKey
+    });
+    const body = Buffer.isBuffer(result.Body)
+      ? result.Body
+      : Buffer.from(result.Body ?? "");
+    const rawContentType =
+      result.headers?.["content-type"] ?? result.headers?.["Content-Type"];
+    return {
+      body,
+      bytes: body.byteLength,
+      etag: this.normalizeEtag(result.ETag),
+      contentType:
+        typeof rawContentType === "string" ? rawContentType : null
+    };
+  }
+
+  async putObject(input: {
+    objectKey: string;
+    contentType: string;
+    body: Buffer;
+  }): Promise<StoredObjectWriteResult> {
+    const { bucket, region } = this.configuration();
+    const result = await this.cos().putObject({
+      Bucket: bucket,
+      Region: region,
+      Key: input.objectKey,
+      Body: input.body,
+      ContentLength: input.body.byteLength,
+      ContentType: input.contentType
+    });
+    return {
+      bytes: input.body.byteLength,
+      etag: this.normalizeEtag(result.ETag)
+    };
+  }
+
+  async createReadTicket(input: {
+    objectKey: string;
+    expiresInSeconds: number;
+  }): Promise<ObjectReadTicket> {
+    const { bucket, region } = this.configuration();
+    const url = await new Promise<string>((resolve, reject) => {
+      this.cos().getObjectUrl(
+        {
+          Bucket: bucket,
+          Region: region,
+          Key: input.objectKey,
+          Method: "GET",
+          Sign: true,
+          Expires: input.expiresInSeconds,
+          Protocol: "https:"
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          if (!result?.Url) {
+            return reject(new Error("COS did not return a signed read URL"));
+          }
+          resolve(result.Url);
+        }
+      );
+    });
+    return {
+      url,
+      expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000)
+    };
   }
 
   async deleteObject(objectKey: string): Promise<void> {

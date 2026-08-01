@@ -13,7 +13,8 @@ import { DATABASE_POOL, DatabaseService } from "./database.service.js";
       provide: DATABASE_POOL,
       useFactory: () =>
         new Pool({
-          application_name: "fangyuanli-api",
+          application_name:
+            process.env.FANGYUANLI_PROCESS_ROLE?.trim() || "fangyuanli-api",
           connectionString: requireDatabaseUrl(process.env),
           max: resolveDatabasePoolMax(process.env)
         })

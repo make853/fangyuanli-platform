@@ -409,6 +409,7 @@ Table media_assets {
   content_type varchar(100)
   sha256 char(64)
   original_file_name varchar(200)
+  display_object_key text [unique]
   thumbnail_object_key text
   cover_object_key text
   width int
@@ -416,13 +417,35 @@ Table media_assets {
   duration_ms int
   bytes bigint
   processing_status varchar(24) [not null]
+  processing_failure_code varchar(64)
+  processing_completed_at timestamptz
   expires_at timestamptz
   compliance_hold bool [not null, default: false]
   created_at timestamptz [not null]
+  updated_at timestamptz [not null]
   deleted_at timestamptz
 
   Indexes {
     (expires_at, compliance_hold)
+  }
+}
+
+Table media_processing_jobs {
+  id uuid [pk]
+  media_asset_id uuid [not null, unique, ref: > media_assets.id]
+  status varchar(24) [not null, default: 'pending']
+  attempt_count int [not null, default: 0]
+  available_at timestamptz [not null]
+  lease_owner varchar(128)
+  lease_expires_at timestamptz
+  last_error_code varchar(64)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  completed_at timestamptz
+
+  Indexes {
+    (status, available_at, created_at)
+    (lease_expires_at)
   }
 }
 

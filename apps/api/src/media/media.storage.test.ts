@@ -88,3 +88,33 @@ test("waits for CVM role credentials before returning a signed upload URL", asyn
   assert.equal(url.searchParams.get("x-cos-security-token"), "temporary-token");
   assert.deepEqual(ticket.headers, { "Content-Type": "image/jpeg" });
 });
+
+test("creates a short-lived signed GET URL without making the bucket public", async () => {
+  const expiresAt = Math.floor(Date.now() / 1000) + 1_800;
+  const storage = new CosObjectStorageAdapter({
+    environment: {
+      TENCENT_COS_BUCKET: "fangyuanli-staging-1234567890",
+      TENCENT_COS_REGION: "ap-shanghai",
+      TENCENT_COS_CVM_ROLE: "fangyuanli-staging-media"
+    },
+    credentialFetcher: async () =>
+      Response.json({
+        Code: "Success",
+        TmpSecretId: "temporary-id",
+        TmpSecretKey: "temporary-key",
+        Token: "temporary-token",
+        ExpiredTime: expiresAt
+      })
+  });
+
+  const ticket = await storage.createReadTicket({
+    objectKey: "processed/user-1/media-1/avatar-128.webp",
+    expiresInSeconds: 600
+  });
+
+  const url = new URL(ticket.url);
+  assert.equal(url.protocol, "https:");
+  assert.match(url.search, /q-signature=/);
+  assert.equal(url.searchParams.get("x-cos-security-token"), "temporary-token");
+  assert.ok(ticket.expiresAt.getTime() > Date.now());
+});
