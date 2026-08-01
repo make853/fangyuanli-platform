@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:fangyuanli_mobile/src/core/config/app_environment.dart';
+import 'package:fangyuanli_mobile/src/core/network/api_failure.dart';
 import 'package:fangyuanli_mobile/src/core/network/authenticated_api_client.dart';
 import 'package:fangyuanli_mobile/src/features/auth/data/auth_api.dart';
 import 'package:fangyuanli_mobile/src/features/media/application/media_upload_coordinator.dart';
@@ -26,7 +27,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'compresses an avatar and completes a real staging COS upload',
+    'uploads to staging COS and recovers from interruption and expiry',
     (_) async {
       _requireStagingDefines();
       final environment = AppEnvironment(
@@ -44,12 +45,7 @@ void main() {
 
       AuthenticatedApiClient? client;
       try {
-        final source = File('${workingDirectory.path}/source.png');
-        await _writeLargePng(source);
-        final prepared = await DefaultMediaImagePreparer().prepare(
-          XFile(source.path),
-          MediaPurpose.avatar,
-        );
+        final prepared = await _prepareImage(workingDirectory, name: 'normal');
 
         expect(prepared.bytes, greaterThan(0));
         expect(prepared.bytes, lessThanOrEqualTo(6 * 1024 * 1024));
@@ -93,6 +89,71 @@ void main() {
         );
         expect(remote.mediaId, uploaded.mediaId);
         expect(remote.status, 'processing');
+
+        final resumableImage = await _prepareImage(
+          workingDirectory,
+          name: 'resumable',
+        );
+        final failOnceUploader = _FailOnceUploader(DioObjectUploader());
+        final resumableCoordinator = MediaUploadCoordinator(
+          session.userId,
+          const _UnusedPicker(),
+          const _UnusedPreparer(),
+          mediaApi,
+          failOnceUploader,
+          FileMediaUploadTaskStore(
+            directoryLoader: () async => workingDirectory,
+          ),
+        );
+        final paused = await resumableCoordinator.enqueuePrepared(
+          purpose: MediaPurpose.avatar,
+          image: resumableImage,
+        );
+
+        expect(paused.status, MediaUploadStatus.paused);
+        expect(paused.ticket, isNotNull);
+        expect(paused.mediaId, isNull);
+        expect(await File(resumableImage.localPath).exists(), isTrue);
+
+        final resumed = await resumableCoordinator.resume(paused);
+        expect(resumed.status, MediaUploadStatus.processing);
+        expect(resumed.mediaId, isNotNull);
+        expect(resumed.ticket?.uploadId, paused.ticket?.uploadId);
+        expect(resumed.attempts, 2);
+        expect(failOnceUploader.calls, 2);
+        expect(await File(resumableImage.localPath).exists(), isFalse);
+
+        final expiredImage = await _prepareImage(
+          workingDirectory,
+          name: 'expired-ticket',
+        );
+        final now = DateTime.now().toUtc();
+        final expired =
+            MediaUploadTask.fromPrepared(
+              taskId: 'expired-${now.microsecondsSinceEpoch}',
+              ownerUserId: session.userId,
+              purpose: MediaPurpose.avatar,
+              image: expiredImage,
+              createIdempotencyKey:
+                  'expired-create-${now.microsecondsSinceEpoch}',
+              completeIdempotencyKey:
+                  'expired-complete-${now.microsecondsSinceEpoch}',
+              now: now,
+            ).copyWith(
+              ticket: MediaUploadTicket(
+                uploadId: 'expired-ticket',
+                method: 'PUT',
+                uploadUrl: Uri.parse('https://expired.invalid/object'),
+                headers: const {'Content-Type': 'image/jpeg'},
+                expiresAt: now.subtract(const Duration(minutes: 1)),
+              ),
+            );
+        final renewed = await coordinator.resume(expired);
+
+        expect(renewed.status, MediaUploadStatus.processing);
+        expect(renewed.mediaId, isNotNull);
+        expect(renewed.ticket?.uploadId, isNot('expired-ticket'));
+        expect(await File(expiredImage.localPath).exists(), isFalse);
       } finally {
         client?.close();
         if (await workingDirectory.exists()) {
@@ -101,6 +162,18 @@ void main() {
       }
     },
     timeout: const Timeout(Duration(minutes: 3)),
+  );
+}
+
+Future<PreparedImage> _prepareImage(
+  Directory workingDirectory, {
+  required String name,
+}) async {
+  final source = File('${workingDirectory.path}/$name.png');
+  await _writeLargePng(source);
+  return DefaultMediaImagePreparer().prepare(
+    XFile(source.path),
+    MediaPurpose.avatar,
   );
 }
 
@@ -155,5 +228,24 @@ class _UnusedPreparer implements MediaImagePreparer {
   @override
   Future<PreparedImage> prepare(XFile source, MediaPurpose purpose) {
     throw UnimplementedError();
+  }
+}
+
+class _FailOnceUploader implements ObjectUploader {
+  _FailOnceUploader(this._delegate);
+
+  final ObjectUploader _delegate;
+  int calls = 0;
+
+  @override
+  Future<String> upload({
+    required File file,
+    required MediaUploadTicket ticket,
+  }) {
+    calls += 1;
+    if (calls == 1) {
+      throw const ApiFailure(message: '模拟上传过程中网络中断');
+    }
+    return _delegate.upload(file: file, ticket: ticket);
   }
 }
