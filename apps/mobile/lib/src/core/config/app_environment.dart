@@ -5,6 +5,9 @@ class AppEnvironment {
     required this.flavor,
     required this.apiBaseUrl,
     required this.realtimeUrl,
+    this.stagingTestPhoneA = '',
+    this.stagingTestPhoneB = '',
+    this.stagingTestCode = '',
   });
 
   factory AppEnvironment.fromDefines() {
@@ -20,6 +23,9 @@ class AppEnvironment {
       'REALTIME_URL',
       defaultValue: 'ws://127.0.0.1:3000/ws/v1',
     );
+    const stagingTestPhoneA = String.fromEnvironment('STAGING_TEST_PHONE_A');
+    const stagingTestPhoneB = String.fromEnvironment('STAGING_TEST_PHONE_B');
+    const stagingTestCode = String.fromEnvironment('STAGING_TEST_CODE');
 
     return AppEnvironment(
       flavor: AppFlavor.values.firstWhere(
@@ -28,12 +34,24 @@ class AppEnvironment {
       ),
       apiBaseUrl: _normalizedHttpUrl(apiBaseUrl),
       realtimeUrl: _normalizedRealtimeUrl(realtimeUrl),
+      stagingTestPhoneA: stagingTestPhoneA,
+      stagingTestPhoneB: stagingTestPhoneB,
+      stagingTestCode: stagingTestCode,
     );
   }
 
   final AppFlavor flavor;
   final String apiBaseUrl;
   final String realtimeUrl;
+  final String stagingTestPhoneA;
+  final String stagingTestPhoneB;
+  final String stagingTestCode;
+
+  bool get hasStagingTestAccounts =>
+      flavor == AppFlavor.staging &&
+      RegExp(r'^1[3-9]\d{9}$').hasMatch(stagingTestPhoneA) &&
+      RegExp(r'^1[3-9]\d{9}$').hasMatch(stagingTestPhoneB) &&
+      RegExp(r'^\d{6}$').hasMatch(stagingTestCode);
 
   static String _normalizedHttpUrl(String value) {
     final uri = Uri.tryParse(value);
