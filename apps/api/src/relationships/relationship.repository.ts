@@ -1,7 +1,7 @@
-import { Injectable, OnApplicationShutdown } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { requireDatabaseUrl } from "../database/environment.js";
+import { DatabaseService } from "../database/database.service.js";
+import type { QueryExecutor } from "../database/database.types.js";
 import {
   RelationshipDomainError,
   type BlockView,
@@ -21,13 +21,6 @@ type RequestRow = {
   application_note: string;
   created_at: Date;
   decided_at: Date | null;
-};
-
-type QueryClient = {
-  query<R extends QueryResultRow = QueryResultRow>(
-    text: string,
-    values?: unknown[]
-  ): Promise<QueryResult<R>>;
 };
 
 function pair(userA: string, userB: string): [string, string] {
@@ -51,15 +44,8 @@ function requestView(row: RequestRow): FriendRequestView {
 }
 
 @Injectable()
-export class RelationshipRepository implements OnApplicationShutdown {
-  private readonly pool = new Pool({
-    connectionString: requireDatabaseUrl(process.env),
-    max: 10
-  });
-
-  async onApplicationShutdown(): Promise<void> {
-    await this.pool.end();
-  }
+export class RelationshipRepository {
+  constructor(private readonly database: DatabaseService) {}
 
   async createRequest(input: {
     senderUserId: string;
@@ -68,7 +54,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     idempotencyKeyHash: string;
     now: Date;
   }): Promise<FriendRequestView> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       if (input.senderUserId === input.targetUserId) {
         throw new RelationshipDomainError(
           "FRIEND_REQUEST_SELF",
@@ -171,7 +157,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
       conditions.push(`fr.status = $${values.length}`);
     }
     values.push(input.limit + 1, input.offset);
-    const result = await this.pool.query<RequestRow>(
+    const result = await this.database.query<RequestRow>(
       `${this.requestSelect()}
         WHERE ${conditions.join(" AND ")}
         ORDER BY CASE WHEN fr.status = 'pending' THEN 0 ELSE 1 END,
@@ -191,7 +177,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     decision: "accept" | "reject";
     now: Date;
   }): Promise<FriendDecisionView> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       const locked = await client.query<{
         sender_user_id: string;
         receiver_user_id: string;
@@ -347,7 +333,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
         `AND (up.nickname ILIKE $${values.length} OR fs.remark_name ILIKE $${values.length})`;
     }
     values.push(input.limit + 1, input.offset);
-    const result = await this.pool.query<{
+    const result = await this.database.query<{
       user_id: string;
       nickname: string;
       remark_name: string | null;
@@ -405,7 +391,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     updatedAt: string;
   }> {
     const [low, high] = pair(input.ownerUserId, input.friendUserId);
-    const friendship = await this.pool.query<{ id: string }>(
+    const friendship = await this.database.query<{ id: string }>(
       `SELECT id FROM friendships
         WHERE user_low_id = $1 AND user_high_id = $2 AND status = 'active'`,
       [low, high]
@@ -413,7 +399,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     if (!friendship.rows[0]) {
       throw new RelationshipDomainError("FRIENDSHIP_NOT_FOUND", "对方不是你的好友", 404);
     }
-    const result = await this.pool.query<{
+    const result = await this.database.query<{
       remark_name: string | null;
       can_view_owner_posts: boolean;
       pinned: boolean;
@@ -447,7 +433,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
   }
 
   async deleteFriend(userId: string, friendUserId: string, now: Date): Promise<void> {
-    await this.transaction(async (client) => {
+    await this.database.transaction(async (client) => {
       await this.lockPair(client, userId, friendUserId);
       const [low, high] = pair(userId, friendUserId);
       const result = await client.query<{ id: string }>(
@@ -476,7 +462,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     reasonCode?: string;
     now: Date;
   }): Promise<BlockView> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       if (input.blockerUserId === input.targetUserId) {
         throw new RelationshipDomainError("BLOCK_SELF", "不能拉黑自己", 422);
       }
@@ -581,7 +567,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     targetUserId: string;
     now: Date;
   }): Promise<BlockView> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       await this.lockPair(client, input.blockerUserId, input.targetUserId);
       const relation = await client.query<{
         prior_relation: "friend" | "stranger";
@@ -658,7 +644,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     offset: number;
     limit: number;
   }): Promise<{ items: BlockView[]; hasMore: boolean }> {
-    const result = await this.pool.query<{
+    const result = await this.database.query<{
       blocked_user_id: string;
       nickname: string;
       prior_relation: "friend" | "stranger";
@@ -686,7 +672,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
   }
 
   private async decisionView(
-    client: PoolClient,
+    client: QueryExecutor,
     requestId: string,
     request: {
       sender_user_id: string;
@@ -722,7 +708,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
   }
 
   private async blockView(
-    client: PoolClient,
+    client: QueryExecutor,
     currentUserId: string,
     targetUserId: string,
     state: "blocked" | "unblocked",
@@ -760,7 +746,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
   }
 
   private async getRequest(
-    client: QueryClient,
+    client: QueryExecutor,
     requestId: string
   ): Promise<FriendRequestView> {
     const result = await client.query<RequestRow>(
@@ -777,7 +763,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     return requestView(result.rows[0]);
   }
 
-  private async requireActiveUser(client: PoolClient, userId: string): Promise<void> {
+  private async requireActiveUser(client: QueryExecutor, userId: string): Promise<void> {
     const result = await client.query(
       `SELECT 1 FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL`,
       [userId]
@@ -788,7 +774,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
   }
 
   private async requireNotBlocked(
-    client: PoolClient,
+    client: QueryExecutor,
     userA: string,
     userB: string
   ): Promise<void> {
@@ -811,7 +797,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
     }
   }
 
-  private async lockPair(client: PoolClient, userA: string, userB: string): Promise<void> {
+  private async lockPair(client: QueryExecutor, userA: string, userB: string): Promise<void> {
     const [low, high] = pair(userA, userB);
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
       `${low}:${high}`
@@ -819,7 +805,7 @@ export class RelationshipRepository implements OnApplicationShutdown {
   }
 
   private async audit(
-    client: PoolClient,
+    client: QueryExecutor,
     input: {
       actorUserId: string;
       targetUserId: string;
@@ -848,18 +834,4 @@ export class RelationshipRepository implements OnApplicationShutdown {
     );
   }
 
-  private async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      const result = await work(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 }

@@ -14,7 +14,8 @@
     "accept:profiles:ab": "node scripts/accept-profiles.mjs",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed:ab": "tsx src/database/seed-ab.ts",
-    "test": "node --import tsx --test \"src/**/*.test.ts\""
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:db": "RUN_DATABASE_INTEGRATION_TESTS=true node --import tsx --test \"src/database/*.integration.test.ts\""
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",

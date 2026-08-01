@@ -1,7 +1,7 @@
-import { Injectable, OnApplicationShutdown } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { requireDatabaseUrl } from "../database/environment.js";
+import { DatabaseService } from "../database/database.service.js";
+import type { QueryExecutor } from "../database/database.types.js";
 import {
   ConversationDomainError,
   type ConversationDetail,
@@ -11,13 +11,6 @@ import {
   type RealtimeConversationState,
   type UnreadState
 } from "./conversation.types.js";
-
-type QueryClient = {
-  query<R extends QueryResultRow = QueryResultRow>(
-    text: string,
-    values?: unknown[]
-  ): Promise<QueryResult<R>>;
-};
 
 type MessageRow = {
   id: string;
@@ -103,15 +96,8 @@ function messageView(row: MessageRow, now = new Date()): MessageView {
 }
 
 @Injectable()
-export class ConversationRepository implements OnApplicationShutdown {
-  private readonly pool = new Pool({
-    connectionString: requireDatabaseUrl(process.env),
-    max: 10
-  });
-
-  async onApplicationShutdown(): Promise<void> {
-    await this.pool.end();
-  }
+export class ConversationRepository {
+  constructor(private readonly database: DatabaseService) {}
 
   async listConversations(input: {
     userId: string;
@@ -122,7 +108,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     hasMore: boolean;
     navigationUnread: number;
   }> {
-    const result = await this.pool.query<ConversationRow>(
+    const result = await this.database.query<ConversationRow>(
       `${this.conversationSelect("$1")}
         WHERE (dc.user_low_id = $1 OR dc.user_high_id = $1)
           AND f.status = 'active'
@@ -149,7 +135,7 @@ export class ConversationRepository implements OnApplicationShutdown {
         this.summary(
           row,
           await this.unreadState(
-            this.pool,
+            this.database,
             row.conversation_id,
             input.userId,
             row.notification_override
@@ -169,7 +155,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     userId: string,
     conversationId: string
   ): Promise<ConversationDetail> {
-    const result = await this.pool.query<ConversationRow>(
+    const result = await this.database.query<ConversationRow>(
       `${this.conversationSelect("$2")}
         WHERE c.id = $1
           AND (dc.user_low_id = $2 OR dc.user_high_id = $2)`,
@@ -190,7 +176,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     const summary = this.summary(
       row,
       await this.unreadState(
-        this.pool,
+        this.database,
         conversationId,
         userId,
         row.notification_override
@@ -218,7 +204,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     replyToMessageId: string | null;
     now: Date;
   }): Promise<{ message: MessageView; created: boolean }> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       const participant = await this.requireParticipant(
         client,
         input.userId,
@@ -338,7 +324,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     conversationId: string
   ): Promise<string[]> {
     const participant = await this.requireParticipant(
-      this.pool,
+      this.database,
       userId,
       conversationId,
       false
@@ -371,14 +357,14 @@ export class ConversationRepository implements OnApplicationShutdown {
     hasLater: boolean;
   }> {
     await this.requireParticipant(
-      this.pool,
+      this.database,
       input.userId,
       input.conversationId,
       false
     );
     let rows: MessageRow[];
     if (input.anchorSequence !== undefined) {
-      const anchorExists = await this.pool.query(
+      const anchorExists = await this.database.query(
         `SELECT 1 FROM messages
           WHERE conversation_id = $1 AND sequence = $2`,
         [input.conversationId, input.anchorSequence]
@@ -390,13 +376,13 @@ export class ConversationRepository implements OnApplicationShutdown {
           404
         );
       }
-      const before = await this.pool.query<MessageRow>(
+      const before = await this.database.query<MessageRow>(
         `${this.messageSelect()}
           WHERE m.conversation_id = $1 AND m.sequence <= $2
           ORDER BY m.sequence DESC LIMIT $3`,
         [input.conversationId, input.anchorSequence, input.limit]
       );
-      const after = await this.pool.query<MessageRow>(
+      const after = await this.database.query<MessageRow>(
         `${this.messageSelect()}
           WHERE m.conversation_id = $1 AND m.sequence > $2
           ORDER BY m.sequence ASC LIMIT $3`,
@@ -419,7 +405,7 @@ export class ConversationRepository implements OnApplicationShutdown {
         ...after.rows.slice(0, afterTake)
       ];
     } else if (input.beforeSequence !== undefined) {
-      const result = await this.pool.query<MessageRow>(
+      const result = await this.database.query<MessageRow>(
         `${this.messageSelect()}
           WHERE m.conversation_id = $1 AND m.sequence < $2
           ORDER BY m.sequence DESC LIMIT $3`,
@@ -427,7 +413,7 @@ export class ConversationRepository implements OnApplicationShutdown {
       );
       rows = result.rows.reverse();
     } else if (input.afterSequence !== undefined) {
-      const result = await this.pool.query<MessageRow>(
+      const result = await this.database.query<MessageRow>(
         `${this.messageSelect()}
           WHERE m.conversation_id = $1 AND m.sequence > $2
           ORDER BY m.sequence ASC LIMIT $3`,
@@ -435,7 +421,7 @@ export class ConversationRepository implements OnApplicationShutdown {
       );
       rows = result.rows;
     } else {
-      const result = await this.pool.query<MessageRow>(
+      const result = await this.database.query<MessageRow>(
         `${this.messageSelect()}
           WHERE m.conversation_id = $1
           ORDER BY m.sequence DESC LIMIT $2`,
@@ -448,7 +434,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     }
     const first = number(rows[0].sequence);
     const last = number(rows.at(-1)!.sequence);
-    const bounds = await this.pool.query<{ earlier: boolean; later: boolean }>(
+    const bounds = await this.database.query<{ earlier: boolean; later: boolean }>(
       `SELECT
          EXISTS (
            SELECT 1 FROM messages
@@ -473,7 +459,7 @@ export class ConversationRepository implements OnApplicationShutdown {
     lastReadSequence: number;
     now: Date;
   }): Promise<ReadCursorView> {
-    return this.transaction(async (client) => {
+    return this.database.transaction(async (client) => {
       const participant = await this.requireParticipant(
         client,
         input.userId,
@@ -574,7 +560,7 @@ export class ConversationRepository implements OnApplicationShutdown {
   }
 
   private async unreadState(
-    client: QueryClient,
+    client: QueryExecutor,
     conversationId: string,
     userId: string,
     notificationOverride: "inherit" | "normal" | "muted",
@@ -618,7 +604,7 @@ export class ConversationRepository implements OnApplicationShutdown {
   }
 
   private async navigationUnread(userId: string): Promise<number> {
-    const result = await this.pool.query<{ unread_count: string | number }>(
+    const result = await this.database.query<{ unread_count: string | number }>(
       `SELECT count(*) AS unread_count
          FROM messages m
          JOIN direct_conversations dc ON dc.conversation_id = m.conversation_id
@@ -651,7 +637,7 @@ export class ConversationRepository implements OnApplicationShutdown {
   }
 
   private async requireParticipant(
-    client: QueryClient,
+    client: QueryExecutor,
     userId: string,
     conversationId: string,
     lockConversation: boolean
@@ -692,7 +678,7 @@ export class ConversationRepository implements OnApplicationShutdown {
   }
 
   private async getMessage(
-    client: QueryClient,
+    client: QueryExecutor,
     messageId: string
   ): Promise<MessageView> {
     const result = await client.query<MessageRow>(
@@ -774,20 +760,4 @@ export class ConversationRepository implements OnApplicationShutdown {
               ) last_message ON true`;
   }
 
-  private async transaction<T>(
-    action: (client: PoolClient) => Promise<T>
-  ): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      const value = await action(client);
-      await client.query("COMMIT");
-      return value;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 }

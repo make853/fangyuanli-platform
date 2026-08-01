@@ -48,7 +48,7 @@
 | 搜索 | PostgreSQL 索引起步 | MVP 不急于部署 Elasticsearch，降低成本 |
 | 部署 | 腾讯云单地域、多可用区可扩展 | 第一版先简化，保留横向扩容能力 |
 
-后端技术已经在《技术选型与工程实施方案 v0.1》中确定为 Node.js 24 LTS、TypeScript、NestJS 11 + Fastify。数据访问采用 Kysely + `pg`，数据库迁移以 SQL 为最终事实。
+后端技术已经在《技术选型与工程实施方案 v0.1》中确定为 Node.js 24 LTS、TypeScript、NestJS 11 + Fastify。数据访问通过共享 `DatabaseService` 统一连接池和事务上下文，当前使用参数化 `pg`，Kysely 在该稳定边界内渐进引入；数据库迁移以 SQL 为最终事实。
 
 ### 1.3 为什么不立即使用微服务
 
