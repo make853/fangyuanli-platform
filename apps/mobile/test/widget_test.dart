@@ -1,5 +1,6 @@
 import 'package:fangyuanli_mobile/src/app.dart';
 import 'package:fangyuanli_mobile/src/core/config/app_environment.dart';
+import 'package:fangyuanli_mobile/src/core/config/app_environment_provider.dart';
 import 'package:fangyuanli_mobile/src/core/storage/session_store.dart';
 import 'package:fangyuanli_mobile/src/features/auth/application/auth_controller.dart';
 import 'package:fangyuanli_mobile/src/features/auth/domain/auth_session.dart';

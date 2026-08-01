@@ -44,10 +44,13 @@ class _ProfileRepository implements ProfileRepository {
 
   @override
   Future<UserProfile> updateMine({
+    required String ownerUserId,
     required int expectedVersion,
     String? nickname,
     ProfileGender? gender,
     String? signature,
+    ProfileMediaChange avatar = const ProfileMediaChange.keep(),
+    ProfileMediaChange background = const ProfileMediaChange.keep(),
   }) async {
     profile = UserProfile(
       userId: profile.userId,
@@ -60,6 +63,8 @@ class _ProfileRepository implements ProfileRepository {
       profileVersion: expectedVersion + 1,
       relationship: profile.relationship,
       allowedActions: profile.allowedActions,
+      avatar: avatar.isSpecified ? null : profile.avatar,
+      background: background.isSpecified ? null : profile.background,
     );
     return profile;
   }

@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_failure.dart';
 import '../../../core/network/authenticated_api_client.dart';
-import '../../auth/application/auth_controller.dart';
+import '../../../core/network/authenticated_api_client_provider.dart';
 import '../domain/friend_models.dart';
 
 abstract interface class RelationshipRepository {
@@ -159,12 +159,5 @@ class HttpRelationshipRepository implements RelationshipRepository {
 }
 
 final relationshipRepositoryProvider = Provider<RelationshipRepository>((ref) {
-  final environment = ref.watch(appEnvironmentProvider);
-  final authController = ref.read(authControllerProvider.notifier);
-  return HttpRelationshipRepository(
-    AuthenticatedApiClient(
-      environment: environment,
-      loadSession: authController.validSession,
-    ),
-  );
+  return HttpRelationshipRepository(ref.watch(authenticatedApiClientProvider));
 });

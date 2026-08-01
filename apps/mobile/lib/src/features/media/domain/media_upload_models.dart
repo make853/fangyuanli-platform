@@ -98,38 +98,53 @@ class MediaAsset {
   const MediaAsset({
     required this.mediaId,
     required this.status,
+    this.mediaType,
     this.url,
     this.thumbnailUrl,
     this.coverUrl,
     this.width,
     this.height,
+    this.durationMs,
+    this.expiresAt,
   });
 
   final String mediaId;
   final String status;
+  final String? mediaType;
   final Uri? url;
   final Uri? thumbnailUrl;
   final Uri? coverUrl;
   final int? width;
   final int? height;
+  final int? durationMs;
+  final DateTime? expiresAt;
 
   factory MediaAsset.fromJson(Map<String, dynamic> json) => MediaAsset(
     mediaId: json['mediaId'] as String,
     status: json['status'] as String,
+    mediaType: json['mediaType'] as String?,
     url: _optionalUri(json['url']),
     thumbnailUrl: _optionalUri(json['thumbnailUrl']),
     coverUrl: _optionalUri(json['coverUrl']),
     width: json['width'] as int?,
     height: json['height'] as int?,
+    durationMs: json['durationMs'] as int?,
+    expiresAt: _optionalDateTime(json['expiresAt']),
   );
 
   static Uri? _optionalUri(Object? value) =>
       value is String && value.isNotEmpty ? Uri.parse(value) : null;
+
+  static DateTime? _optionalDateTime(Object? value) =>
+      value is String && value.isNotEmpty
+      ? DateTime.parse(value).toUtc()
+      : null;
 }
 
 class MediaUploadTask {
   const MediaUploadTask({
     required this.taskId,
+    required this.ownerUserId,
     required this.purpose,
     required this.localPath,
     required this.fileName,
@@ -151,6 +166,7 @@ class MediaUploadTask {
   });
 
   final String taskId;
+  final String ownerUserId;
   final MediaPurpose purpose;
   final String localPath;
   final String fileName;
@@ -172,6 +188,7 @@ class MediaUploadTask {
 
   factory MediaUploadTask.fromPrepared({
     required String taskId,
+    required String ownerUserId,
     required MediaPurpose purpose,
     required PreparedImage image,
     required String createIdempotencyKey,
@@ -179,6 +196,7 @@ class MediaUploadTask {
     required DateTime now,
   }) => MediaUploadTask(
     taskId: taskId,
+    ownerUserId: ownerUserId,
     purpose: purpose,
     localPath: image.localPath,
     fileName: image.fileName,
@@ -209,6 +227,7 @@ class MediaUploadTask {
     bool clearError = false,
   }) => MediaUploadTask(
     taskId: taskId,
+    ownerUserId: ownerUserId,
     purpose: purpose,
     localPath: localPath,
     fileName: fileName,
@@ -234,6 +253,7 @@ class MediaUploadTask {
     final ticket = json['ticket'];
     return MediaUploadTask(
       taskId: json['taskId'] as String,
+      ownerUserId: json['ownerUserId'] as String,
       purpose: MediaPurpose.fromWire(json['purpose'] as String),
       localPath: json['localPath'] as String,
       fileName: json['fileName'] as String,
@@ -259,6 +279,7 @@ class MediaUploadTask {
 
   Map<String, dynamic> toJson() => {
     'taskId': taskId,
+    'ownerUserId': ownerUserId,
     'purpose': purpose.wireValue,
     'localPath': localPath,
     'fileName': fileName,
@@ -278,4 +299,17 @@ class MediaUploadTask {
     'attempts': attempts,
     'errorMessage': errorMessage,
   };
+}
+
+class MediaUploadOwnerMismatch implements Exception {
+  const MediaUploadOwnerMismatch({
+    required this.expectedOwnerUserId,
+    required this.actualOwnerUserId,
+  });
+
+  final String expectedOwnerUserId;
+  final String actualOwnerUserId;
+
+  @override
+  String toString() => '上传任务属于其他账号，请切换回原账号后继续';
 }

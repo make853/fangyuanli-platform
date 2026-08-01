@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { MediaDeliveryService } from "../media/media-delivery.service.js";
+import type {
+  MediaDeliveryReference,
+  MediaView
+} from "../media/media.types.js";
 import type { ProfileRepository } from "./profile.repository.js";
 import { ProfileService } from "./profile.service.js";
 import {
@@ -7,6 +12,7 @@ import {
   type PrivacyPatch,
   type PrivacySettingsView,
   type ProfilePatch,
+  type ProfileProjection,
   type ProfileView
 } from "./profile.types.js";
 
@@ -37,6 +43,32 @@ function profile(overrides: Partial<ProfileView> = {}): ProfileView {
   };
 }
 
+function projection(
+  overrides: Partial<ProfileProjection> = {}
+): ProfileProjection {
+  const { avatar: _avatar, background: _background, ...base } = profile();
+  return {
+    ...base,
+    avatarReference: null,
+    backgroundReference: null,
+    ...overrides
+  };
+}
+
+function mediaReference(mediaId: string): MediaDeliveryReference {
+  return {
+    mediaId,
+    mediaType: "image",
+    status: "ready",
+    displayObjectKey: `processed/${mediaId}/display.webp`,
+    thumbnailObjectKey: `processed/${mediaId}/thumbnail.webp`,
+    coverObjectKey: null,
+    width: 512,
+    height: 512,
+    durationMs: null
+  };
+}
+
 function privacy(
   overrides: Partial<PrivacySettingsView> = {}
 ): PrivacySettingsView {
@@ -50,13 +82,13 @@ function privacy(
 }
 
 class FakeProfileRepository {
-  profileResult = profile();
+  profileResult = projection();
   privacyResult = privacy();
   getProfileCalls: Array<[string, string]> = [];
   profileUpdates: Array<{ userId: string; patch: ProfilePatch }> = [];
   privacyUpdates: Array<{ userId: string; patch: PrivacyPatch }> = [];
 
-  async getProfile(viewer: string, target: string): Promise<ProfileView> {
+  async getProfile(viewer: string, target: string): Promise<ProfileProjection> {
     this.getProfileCalls.push([viewer, target]);
     return this.profileResult;
   }
@@ -64,7 +96,7 @@ class FakeProfileRepository {
   async updateProfile(
     ownerUserId: string,
     patch: ProfilePatch
-  ): Promise<ProfileView> {
+  ): Promise<ProfileProjection> {
     this.profileUpdates.push({ userId: ownerUserId, patch });
     return this.profileResult;
   }
@@ -82,14 +114,40 @@ class FakeProfileRepository {
   }
 }
 
+class FakeMediaDeliveryService {
+  calls: MediaDeliveryReference[] = [];
+
+  async createView(reference: MediaDeliveryReference): Promise<MediaView> {
+    this.calls.push(reference);
+    return {
+      mediaId: reference.mediaId,
+      mediaType: reference.mediaType,
+      status: reference.status,
+      url: `https://media.example/${reference.mediaId}`,
+      thumbnailUrl: null,
+      coverUrl: null,
+      width: reference.width,
+      height: reference.height,
+      durationMs: reference.durationMs,
+      expiresAt: "2026-08-02T01:10:00.000Z"
+    };
+  }
+}
+
 function fixture(): {
   repository: FakeProfileRepository;
+  delivery: FakeMediaDeliveryService;
   service: ProfileService;
 } {
   const repository = new FakeProfileRepository();
+  const delivery = new FakeMediaDeliveryService();
   return {
     repository,
-    service: new ProfileService(repository as unknown as ProfileRepository)
+    delivery,
+    service: new ProfileService(
+      repository as unknown as ProfileRepository,
+      delivery as unknown as MediaDeliveryService
+    )
   };
 }
 
@@ -134,8 +192,8 @@ test("trims and validates editable profile fields", async () => {
 test("keeps custom gender extensible but requires its label", async () => {
   const { service } = fixture();
 
-  assert.throws(
-    () => service.updateMine({
+  await assert.rejects(
+    service.updateMine({
       userId,
       idempotencyKey: "profile-update-2",
       body: { expectedVersion: 1, gender: "custom" }
@@ -146,19 +204,37 @@ test("keeps custom gender extensible but requires its label", async () => {
   );
 });
 
-test("keeps profile media closed until its upload pipeline exists", async () => {
-  const { service } = fixture();
+test("passes explicit profile media bindings to the transactional repository", async () => {
+  const { repository, service } = fixture();
+  const avatarMediaId = "019f0000-0000-7000-8000-00000000000c";
 
-  assert.throws(
-    () => service.updateMine({
-      userId,
-      idempotencyKey: "profile-update-3",
-      body: { expectedVersion: 1, avatarMediaId: null }
-    }),
-    (error: unknown) =>
-      error instanceof ProfileDomainError &&
-      error.code === "PROFILE_MEDIA_NOT_READY"
-  );
+  await service.updateMine({
+    userId,
+    idempotencyKey: "profile-update-3",
+    body: {
+      expectedVersion: 1,
+      avatarMediaId,
+      backgroundMediaId: null
+    }
+  });
+
+  assert.deepEqual(repository.profileUpdates[0]?.patch, {
+    expectedVersion: 1,
+    avatarMediaId,
+    backgroundMediaId: null
+  });
+});
+
+test("delivers signed media views without exposing storage keys", async () => {
+  const { repository, delivery, service } = fixture();
+  const avatar = mediaReference("019f0000-0000-7000-8000-00000000000d");
+  repository.profileResult = projection({ avatarReference: avatar });
+
+  const result = await service.getMine(userId);
+
+  assert.equal(result.avatar?.url, `https://media.example/${avatar.mediaId}`);
+  assert.equal(result.background, null);
+  assert.deepEqual(delivery.calls, [avatar]);
 });
 
 test("updates only supplied privacy switches", async () => {
@@ -195,8 +271,8 @@ test("rejects empty privacy changes and missing idempotency keys", async () => {
       error instanceof ProfileDomainError &&
       error.code === "PRIVACY_UPDATE_EMPTY"
   );
-  assert.throws(
-    () => service.updateMine({
+  await assert.rejects(
+    service.updateMine({
       userId,
       body: { expectedVersion: 1, nickname: "新昵称" }
     }),

@@ -1,3 +1,5 @@
+import '../../media/domain/media_upload_models.dart';
+
 enum ProfileGender {
   unspecified,
   male,
@@ -99,6 +101,8 @@ class UserProfile {
     required this.profileVersion,
     required this.relationship,
     required this.allowedActions,
+    this.avatar,
+    this.background,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -120,6 +124,8 @@ class UserProfile {
         for (final action in json['allowedActions'] as List? ?? const [])
           action as String,
       ],
+      avatar: _optionalMedia(json['avatar']),
+      background: _optionalMedia(json['background']),
     );
   }
 
@@ -133,11 +139,28 @@ class UserProfile {
   final int profileVersion;
   final ProfileRelationship relationship;
   final List<String> allowedActions;
+  final MediaAsset? avatar;
+  final MediaAsset? background;
 
   String get initial {
     final value = nickname?.trim() ?? displayName.trim();
     return value.isEmpty ? '方' : String.fromCharCode(value.runes.first);
   }
+
+  static MediaAsset? _optionalMedia(Object? value) => value is Map
+      ? MediaAsset.fromJson(Map<String, dynamic>.from(value))
+      : null;
+}
+
+class ProfileMediaChange {
+  const ProfileMediaChange.keep() : isSpecified = false, mediaId = null;
+
+  const ProfileMediaChange.set(this.mediaId) : isSpecified = true;
+
+  const ProfileMediaChange.remove() : isSpecified = true, mediaId = null;
+
+  final bool isSpecified;
+  final String? mediaId;
 }
 
 class PrivacySettings {

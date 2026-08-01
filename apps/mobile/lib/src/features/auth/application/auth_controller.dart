@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/config/app_environment.dart';
+import '../../../core/config/app_environment_provider.dart';
 import '../../../core/storage/session_store.dart';
 import '../data/auth_api.dart';
 import '../data/auth_repository.dart';
@@ -145,10 +145,6 @@ class AuthController extends StateNotifier<AuthState> {
     return session;
   }
 }
-
-final appEnvironmentProvider = Provider<AppEnvironment>(
-  (_) => AppEnvironment.fromDefines(),
-);
 
 final authApiProvider = Provider<AuthApi>(
   (ref) => AuthApi(environment: ref.watch(appEnvironmentProvider)),

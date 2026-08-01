@@ -1,12 +1,14 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import type { QueryExecutor } from "../database/database.types.js";
+import type { MediaDeliveryReference, MediaStatus, MediaType } from "../media/media.types.js";
 import {
   ProfileDomainError,
   type Gender,
   type PrivacyPatch,
   type PrivacySettingsView,
   type ProfilePatch,
+  type ProfileProjection,
   type ProfileView,
   type RelationshipState
 } from "./profile.types.js";
@@ -19,6 +21,24 @@ type ProfileRow = {
   custom_gender: string | null;
   signature: string | null;
   profile_version: number;
+  avatar_id: string | null;
+  avatar_media_type: MediaType | null;
+  avatar_status: MediaStatus | null;
+  avatar_display_object_key: string | null;
+  avatar_thumbnail_object_key: string | null;
+  avatar_cover_object_key: string | null;
+  avatar_width: number | null;
+  avatar_height: number | null;
+  avatar_duration_ms: number | null;
+  background_id: string | null;
+  background_media_type: MediaType | null;
+  background_status: MediaStatus | null;
+  background_display_object_key: string | null;
+  background_thumbnail_object_key: string | null;
+  background_cover_object_key: string | null;
+  background_width: number | null;
+  background_height: number | null;
+  background_duration_ms: number | null;
   strangers_can_view_profile: boolean;
   is_friend: boolean;
   request_pending: boolean;
@@ -38,7 +58,10 @@ type PrivacyRow = {
 export class ProfileRepository {
   constructor(private readonly database: DatabaseService) {}
 
-  async getProfile(viewerUserId: string, targetUserId: string): Promise<ProfileView> {
+  async getProfile(
+    viewerUserId: string,
+    targetUserId: string
+  ): Promise<ProfileProjection> {
     return this.loadProfile(this.database, viewerUserId, targetUserId);
   }
 
@@ -46,7 +69,7 @@ export class ProfileRepository {
     userId: string,
     patch: ProfilePatch,
     now: Date
-  ): Promise<ProfileView> {
+  ): Promise<ProfileProjection> {
     return this.database.transaction(async (client) => {
       const locked = await client.query<{
         nickname: string;
@@ -54,8 +77,11 @@ export class ProfileRepository {
         custom_gender: string | null;
         signature: string | null;
         profile_version: number;
+        avatar_media_id: string | null;
+        background_media_id: string | null;
       }>(
-        `SELECT nickname, gender, custom_gender, signature, profile_version
+        `SELECT nickname, gender, custom_gender, signature, profile_version,
+                avatar_media_id, background_media_id
            FROM user_profiles
           WHERE user_id = $1
           FOR UPDATE`,
@@ -90,17 +116,66 @@ export class ProfileRepository {
             : null;
       const signature = patch.signature ?? current.signature ?? "";
 
+      if (patch.avatarMediaId !== undefined && patch.avatarMediaId !== null) {
+        await this.validateProfileMedia(
+          client,
+          userId,
+          patch.avatarMediaId,
+          "avatar"
+        );
+      }
+      if (
+        patch.backgroundMediaId !== undefined &&
+        patch.backgroundMediaId !== null
+      ) {
+        await this.validateProfileMedia(
+          client,
+          userId,
+          patch.backgroundMediaId,
+          "background"
+        );
+      }
+      const avatarMediaId =
+        patch.avatarMediaId === undefined
+          ? current.avatar_media_id
+          : patch.avatarMediaId;
+      const backgroundMediaId =
+        patch.backgroundMediaId === undefined
+          ? current.background_media_id
+          : patch.backgroundMediaId;
+
       await client.query(
         `UPDATE user_profiles
             SET nickname = $2,
                 gender = $3,
                 custom_gender = $4,
                 signature = $5,
+                avatar_media_id = $6,
+                background_media_id = $7,
                 profile_version = profile_version + 1,
-                updated_at = $6
+                updated_at = $8
           WHERE user_id = $1`,
-        [userId, nickname, gender, customGender, signature, now]
+        [
+          userId,
+          nickname,
+          gender,
+          customGender,
+          signature,
+          avatarMediaId,
+          backgroundMediaId,
+          now
+        ]
       );
+      await this.updateMediaRetention(client, {
+        previousMediaId: current.avatar_media_id,
+        nextMediaId: avatarMediaId,
+        now
+      });
+      await this.updateMediaRetention(client, {
+        previousMediaId: current.background_media_id,
+        nextMediaId: backgroundMediaId,
+        now
+      });
       await client.query(
         `UPDATE users SET updated_at = $2 WHERE id = $1`,
         [userId, now]
@@ -168,7 +243,7 @@ export class ProfileRepository {
     client: QueryExecutor,
     viewerUserId: string,
     targetUserId: string
-  ): Promise<ProfileView> {
+  ): Promise<ProfileProjection> {
     const result = await client.query<ProfileRow>(
       `SELECT u.id AS user_id,
               u.fangyuan_number,
@@ -177,6 +252,24 @@ export class ProfileRepository {
               p.custom_gender,
               p.signature,
               p.profile_version,
+              avatar.id AS avatar_id,
+              avatar.media_type AS avatar_media_type,
+              avatar.processing_status AS avatar_status,
+              avatar.display_object_key AS avatar_display_object_key,
+              avatar.thumbnail_object_key AS avatar_thumbnail_object_key,
+              avatar.cover_object_key AS avatar_cover_object_key,
+              avatar.width AS avatar_width,
+              avatar.height AS avatar_height,
+              avatar.duration_ms AS avatar_duration_ms,
+              background.id AS background_id,
+              background.media_type AS background_media_type,
+              background.processing_status AS background_status,
+              background.display_object_key AS background_display_object_key,
+              background.thumbnail_object_key AS background_thumbnail_object_key,
+              background.cover_object_key AS background_cover_object_key,
+              background.width AS background_width,
+              background.height AS background_height,
+              background.duration_ms AS background_duration_ms,
               privacy.strangers_can_view_profile,
               EXISTS (
                 SELECT 1
@@ -221,6 +314,12 @@ export class ProfileRepository {
          FROM users u
          JOIN user_profiles p ON p.user_id = u.id
          JOIN user_privacy_settings privacy ON privacy.user_id = u.id
+         LEFT JOIN media_assets avatar
+           ON avatar.id = p.avatar_media_id
+          AND avatar.deleted_at IS NULL
+         LEFT JOIN media_assets background
+           ON background.id = p.background_media_id
+          AND background.deleted_at IS NULL
         WHERE u.id = $2
           AND u.status = 'active'
           AND u.deleted_at IS NULL`,
@@ -233,7 +332,7 @@ export class ProfileRepository {
     return this.profileView(row, viewerUserId === targetUserId);
   }
 
-  private profileView(row: ProfileRow, isSelf: boolean): ProfileView {
+  private profileView(row: ProfileRow, isSelf: boolean): ProfileProjection {
     const relationship = this.relationship(row, isSelf);
     const full =
       isSelf ||
@@ -244,17 +343,140 @@ export class ProfileRepository {
     return {
       userId: row.user_id,
       displayName: full ? row.nickname : "用户",
-      avatar: null,
+      avatarReference: this.mediaReference(row, "avatar"),
       fangyuanNumber: full ? row.fangyuan_number : null,
       nickname: full ? row.nickname : null,
       gender: full ? row.gender : "hidden",
       signature: row.signature ?? "",
-      background: null,
+      backgroundReference: full ? this.mediaReference(row, "background") : null,
       profileVisibility: full ? "full" : "limited",
       profileVersion: row.profile_version,
       relationship,
       allowedActions: this.allowedActions(relationship.state, relationship)
     };
+  }
+
+  private mediaReference(
+    row: ProfileRow,
+    slot: "avatar" | "background"
+  ): MediaDeliveryReference | null {
+    const mediaId = row[`${slot}_id`];
+    const mediaType = row[`${slot}_media_type`];
+    const status = row[`${slot}_status`];
+    if (!mediaId || !mediaType || !status) return null;
+    return {
+      mediaId,
+      mediaType,
+      status,
+      displayObjectKey: row[`${slot}_display_object_key`],
+      thumbnailObjectKey: row[`${slot}_thumbnail_object_key`],
+      coverObjectKey: row[`${slot}_cover_object_key`],
+      width: row[`${slot}_width`],
+      height: row[`${slot}_height`],
+      durationMs: row[`${slot}_duration_ms`]
+    };
+  }
+
+  private async validateProfileMedia(
+    client: QueryExecutor,
+    ownerUserId: string,
+    mediaId: string,
+    expectedPurpose: "avatar" | "background"
+  ): Promise<void> {
+    const result = await client.query<{
+      owner_user_id: string | null;
+      purpose: string;
+      media_type: MediaType;
+      processing_status: MediaStatus;
+      display_object_key: string | null;
+      thumbnail_object_key: string | null;
+    }>(
+      `SELECT owner_user_id, purpose, media_type, processing_status,
+              display_object_key, thumbnail_object_key
+         FROM media_assets
+        WHERE id = $1
+          AND deleted_at IS NULL
+        FOR UPDATE`,
+      [mediaId]
+    );
+    const media = result.rows[0];
+    if (!media) {
+      throw new ProfileDomainError(
+        "PROFILE_MEDIA_NOT_FOUND",
+        "所选图片不存在或已经失效",
+        404
+      );
+    }
+    if (media.owner_user_id !== ownerUserId) {
+      throw new ProfileDomainError(
+        "PROFILE_MEDIA_NOT_OWNED",
+        "不能使用其他账号上传的图片",
+        403
+      );
+    }
+    if (media.purpose !== expectedPurpose || media.media_type !== "image") {
+      throw new ProfileDomainError(
+        "PROFILE_MEDIA_PURPOSE_MISMATCH",
+        "所选图片用途与资料位置不匹配",
+        422
+      );
+    }
+    if (media.processing_status !== "ready") {
+      throw new ProfileDomainError(
+        "PROFILE_MEDIA_NOT_READY",
+        "图片仍在处理中，请稍后重试",
+        409
+      );
+    }
+    if (!media.display_object_key || !media.thumbnail_object_key) {
+      throw new ProfileDomainError(
+        "PROFILE_MEDIA_DERIVATIVE_MISSING",
+        "图片处理结果不完整，请重新上传",
+        422
+      );
+    }
+  }
+
+  private async updateMediaRetention(
+    client: QueryExecutor,
+    input: {
+      previousMediaId: string | null;
+      nextMediaId: string | null;
+      now: Date;
+    }
+  ): Promise<void> {
+    if (input.nextMediaId) {
+      await client.query(
+        `UPDATE media_assets
+            SET expires_at = NULL,
+                updated_at = $2
+          WHERE id = $1`,
+        [input.nextMediaId, input.now]
+      );
+    }
+    if (
+      !input.previousMediaId ||
+      input.previousMediaId === input.nextMediaId
+    ) {
+      return;
+    }
+    const graceUntil = new Date(input.now.getTime() + 24 * 60 * 60 * 1000);
+    await client.query(
+      `UPDATE media_assets media
+          SET expires_at = CASE
+                WHEN media.expires_at IS NULL OR media.expires_at < $2 THEN $2
+                ELSE media.expires_at
+              END,
+              updated_at = $3
+        WHERE media.id = $1
+          AND NOT EXISTS (
+            SELECT 1
+              FROM user_profiles profile
+             WHERE profile.avatar_media_id = media.id
+                OR profile.background_media_id = media.id
+          )`,
+      [input.previousMediaId, graceUntil, input.now]
+    );
   }
 
   private relationship(row: ProfileRow, isSelf: boolean): ProfileView["relationship"] {

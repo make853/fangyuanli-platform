@@ -5,6 +5,7 @@ import '../../../core/presentation/feature_entry.dart';
 import '../application/profile_controller.dart';
 import '../domain/profile_models.dart';
 import 'profile_edit_screen.dart';
+import 'profile_media_widgets.dart';
 
 class MyProfileDetailScreen extends ConsumerWidget {
   const MyProfileDetailScreen({super.key});
@@ -48,8 +49,14 @@ class MyProfileDetailScreen extends ConsumerWidget {
             else ...[
               _ProfileCover(
                 profile: profile,
-                onAvatarTap: () => showFeatureComingSoon(context, '头像'),
-                onCoverTap: () => showFeatureComingSoon(context, '背景墙'),
+                onAvatarTap: () => _showMediaPreview(
+                  context,
+                  profile.avatar?.url ?? profile.avatar?.thumbnailUrl,
+                ),
+                onCoverTap: () => _showMediaPreview(
+                  context,
+                  profile.background?.url ?? profile.background?.thumbnailUrl,
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -104,28 +111,21 @@ class _ProfileCover extends StatelessWidget {
               color: const Color(0xFFD6E7DF),
               child: InkWell(
                 onTap: onCoverTap,
-                child: Ink(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFBFDACD),
-                        Color(0xFFE9F1ED),
-                        Color(0xFFCFE2D9),
-                      ],
-                    ),
-                  ),
-                  child: const Align(
-                    alignment: Alignment.topRight,
-                    child: Padding(
-                      padding: EdgeInsets.all(14),
-                      child: Icon(
-                        Icons.wallpaper_rounded,
-                        color: Color(0x993A5C4D),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ProfileBackgroundImage(media: profile.background),
+                    const Align(
+                      alignment: Alignment.topRight,
+                      child: Padding(
+                        padding: EdgeInsets.all(14),
+                        child: Icon(
+                          Icons.wallpaper_rounded,
+                          color: Color(0x993A5C4D),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -140,22 +140,13 @@ class _ProfileCover extends StatelessWidget {
                 key: const ValueKey('profile-avatar'),
                 borderRadius: BorderRadius.circular(29),
                 onTap: onAvatarTap,
-                child: Container(
-                  width: 92,
-                  height: 92,
-                  margin: const EdgeInsets.all(4),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDDEEE7),
-                    borderRadius: BorderRadius.circular(26),
-                  ),
-                  child: Text(
-                    profile.initial,
-                    style: const TextStyle(
-                      color: Color(0xFF167A5B),
-                      fontSize: 31,
-                      fontWeight: FontWeight.w700,
-                    ),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: ProfileAvatarImage(
+                    media: profile.avatar,
+                    initial: profile.initial,
+                    size: 92,
+                    borderRadius: 26,
                   ),
                 ),
               ),
@@ -165,6 +156,43 @@ class _ProfileCover extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _showMediaPreview(BuildContext context, Uri? url) async {
+  if (url == null) return;
+  await showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (context) => Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4,
+              child: Center(
+                child: Image.network(
+                  url.toString(),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const Text(
+                    '图片加载失败',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ProfileSummary extends StatelessWidget {

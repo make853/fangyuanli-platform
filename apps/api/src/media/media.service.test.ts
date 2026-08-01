@@ -4,8 +4,10 @@ import type { RequestHasher } from "../relationships/request-hasher.js";
 import type { MediaRepository } from "./media.repository.js";
 import { MediaService } from "./media.service.js";
 import type {
+  ObjectReadTicket,
   ObjectStorageAdapter,
   ObjectUploadTicket,
+  StoredObject,
   StoredObjectMetadata
 } from "./media.storage.js";
 import {
@@ -68,6 +70,18 @@ class FakeStorage implements ObjectStorageAdapter {
   async headObject(objectKey: string): Promise<StoredObjectMetadata | null> {
     this.headCalls.push(objectKey);
     return this.metadata;
+  }
+
+  async getObject(): Promise<StoredObject> {
+    throw new Error("unused");
+  }
+
+  async putObject(): Promise<StoredObjectMetadata> {
+    throw new Error("unused");
+  }
+
+  async createReadTicket(): Promise<ObjectReadTicket> {
+    throw new Error("unused");
   }
 
   async deleteObject(): Promise<void> {}

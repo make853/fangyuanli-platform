@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_failure.dart';
 import '../../../core/network/authenticated_api_client.dart';
-import '../../auth/application/auth_controller.dart';
+import '../../../core/network/authenticated_api_client_provider.dart';
 import '../domain/profile_models.dart';
 
 abstract interface class ProfileRepository {
@@ -11,10 +11,13 @@ abstract interface class ProfileRepository {
   Future<UserProfile> loadUser(String userId);
 
   Future<UserProfile> updateMine({
+    required String ownerUserId,
     required int expectedVersion,
     String? nickname,
     ProfileGender? gender,
     String? signature,
+    ProfileMediaChange avatar = const ProfileMediaChange.keep(),
+    ProfileMediaChange background = const ProfileMediaChange.keep(),
   });
 
   Future<PrivacySettings> loadPrivacy();
@@ -45,19 +48,25 @@ class HttpProfileRepository implements ProfileRepository {
 
   @override
   Future<UserProfile> updateMine({
+    required String ownerUserId,
     required int expectedVersion,
     String? nickname,
     ProfileGender? gender,
     String? signature,
+    ProfileMediaChange avatar = const ProfileMediaChange.keep(),
+    ProfileMediaChange background = const ProfileMediaChange.keep(),
   }) async {
     final envelope = await _client.patch(
       '/me',
       idempotent: true,
+      expectedUserId: ownerUserId,
       data: {
         'expectedVersion': expectedVersion,
         'nickname': ?nickname,
         if (gender != null) 'gender': gender.wireValue,
         'signature': ?signature,
+        if (avatar.isSpecified) 'avatarMediaId': avatar.mediaId,
+        if (background.isSpecified) 'backgroundMediaId': background.mediaId,
       },
     );
     return UserProfile.fromJson(_data(envelope));
@@ -97,14 +106,7 @@ class HttpProfileRepository implements ProfileRepository {
 }
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
-  final environment = ref.watch(appEnvironmentProvider);
-  final authController = ref.read(authControllerProvider.notifier);
-  return HttpProfileRepository(
-    AuthenticatedApiClient(
-      environment: environment,
-      loadSession: authController.validSession,
-    ),
-  );
+  return HttpProfileRepository(ref.watch(authenticatedApiClientProvider));
 });
 
 final userProfileProvider = FutureProvider.autoDispose

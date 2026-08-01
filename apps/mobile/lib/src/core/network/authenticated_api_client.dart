@@ -30,9 +30,12 @@ class AuthenticatedApiClient {
   final SessionLoader loadSession;
   final Uuid _uuid;
 
+  void close() => _dio.close(force: true);
+
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    String? expectedUserId,
   }) {
     return _request(
       (options) => _dio.get<Map<String, dynamic>>(
@@ -40,6 +43,7 @@ class AuthenticatedApiClient {
         queryParameters: queryParameters,
         options: options,
       ),
+      expectedUserId: expectedUserId,
     );
   }
 
@@ -48,6 +52,7 @@ class AuthenticatedApiClient {
     Object? data,
     bool idempotent = false,
     String? idempotencyKey,
+    String? expectedUserId,
   }) {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
       idempotent: idempotent,
@@ -59,6 +64,7 @@ class AuthenticatedApiClient {
         data: data,
         options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
+      expectedUserId: expectedUserId,
     );
   }
 
@@ -67,6 +73,7 @@ class AuthenticatedApiClient {
     Object? data,
     bool idempotent = false,
     String? idempotencyKey,
+    String? expectedUserId,
   }) {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
       idempotent: idempotent,
@@ -78,6 +85,7 @@ class AuthenticatedApiClient {
         data: data,
         options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
+      expectedUserId: expectedUserId,
     );
   }
 
@@ -86,6 +94,7 @@ class AuthenticatedApiClient {
     Object? data,
     bool idempotent = false,
     String? idempotencyKey,
+    String? expectedUserId,
   }) {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
       idempotent: idempotent,
@@ -97,6 +106,7 @@ class AuthenticatedApiClient {
         data: data,
         options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
+      expectedUserId: expectedUserId,
     );
   }
 
@@ -104,6 +114,7 @@ class AuthenticatedApiClient {
     String path, {
     bool idempotent = false,
     String? idempotencyKey,
+    String? expectedUserId,
   }) {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
       idempotent: idempotent,
@@ -114,6 +125,7 @@ class AuthenticatedApiClient {
         path,
         options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
+      expectedUserId: expectedUserId,
     );
   }
 
@@ -121,6 +133,7 @@ class AuthenticatedApiClient {
     String path, {
     bool idempotent = false,
     String? idempotencyKey,
+    String? expectedUserId,
   }) async {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
       idempotent: idempotent,
@@ -131,12 +144,14 @@ class AuthenticatedApiClient {
         path,
         options: _withIdempotency(options, resolvedIdempotencyKey),
       ),
+      expectedUserId: expectedUserId,
     );
   }
 
   Future<Map<String, dynamic>> _request(
     Future<Response<Map<String, dynamic>>> Function(Options options) send, {
     bool retried = false,
+    String? expectedUserId,
   }) async {
     final session = await loadSession(forceRefresh: false);
     if (session == null) {
@@ -146,6 +161,7 @@ class AuthenticatedApiClient {
         statusCode: 401,
       );
     }
+    _requireExpectedUser(session, expectedUserId);
 
     try {
       final response = await send(_options(session));
@@ -158,7 +174,8 @@ class AuthenticatedApiClient {
       if (!retried && error.response?.statusCode == 401) {
         final refreshed = await loadSession(forceRefresh: true);
         if (refreshed != null) {
-          return _request(send, retried: true);
+          _requireExpectedUser(refreshed, expectedUserId);
+          return _request(send, retried: true, expectedUserId: expectedUserId);
         }
       }
       throw ApiFailure.fromDio(error);
@@ -168,6 +185,7 @@ class AuthenticatedApiClient {
   Future<void> _voidRequest(
     Future<Response<void>> Function(Options options) send, {
     bool retried = false,
+    String? expectedUserId,
   }) async {
     final session = await loadSession(forceRefresh: false);
     if (session == null) {
@@ -177,6 +195,7 @@ class AuthenticatedApiClient {
         statusCode: 401,
       );
     }
+    _requireExpectedUser(session, expectedUserId);
 
     try {
       await send(_options(session));
@@ -184,7 +203,12 @@ class AuthenticatedApiClient {
       if (!retried && error.response?.statusCode == 401) {
         final refreshed = await loadSession(forceRefresh: true);
         if (refreshed != null) {
-          return _voidRequest(send, retried: true);
+          _requireExpectedUser(refreshed, expectedUserId);
+          return _voidRequest(
+            send,
+            retried: true,
+            expectedUserId: expectedUserId,
+          );
         }
       }
       throw ApiFailure.fromDio(error);
@@ -213,6 +237,15 @@ class AuthenticatedApiClient {
         'authorization': 'Bearer ${session.accessToken}',
         'x-device-id': session.deviceId,
       },
+    );
+  }
+
+  void _requireExpectedUser(AuthSession session, String? expectedUserId) {
+    if (expectedUserId == null || session.userId == expectedUserId) return;
+    throw const ApiFailure(
+      message: '账号已经切换，请使用原账号继续此操作',
+      code: 'AUTH_ACCOUNT_CHANGED',
+      statusCode: 409,
     );
   }
 }

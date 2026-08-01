@@ -38,3 +38,22 @@ flutter build web
 ```
 
 运行 iPhone 模拟器或真机前，Mac 必须安装完整 Xcode，并完成 iOS 开发环境配置。
+
+### staging 媒体上传验收
+
+`integration_test/media_upload_staging_test.dart` 不进入正式 App。它会在 iOS
+模拟器内生成测试图片，复用产品代码完成压缩、短期凭证申请、COS 直传、完成确认、
+媒体状态查询和资料绑定；同一次验收还会模拟上传中断后续传、过期凭证自动换新，
+并使用 A/B 账号验证好友可见头像与背景墙、拉黑后只保留最小头像资料。
+
+先把 staging API 安全转发到本机 `127.0.0.1:3000`，并通过环境变量提供 A/B
+测试账号，再在本机终端执行受版本控制的验收入口：
+
+```bash
+zsh scripts/run-ios-media-acceptance.sh
+```
+
+默认设备为 `iPhone 17`，可用 `IOS_ACCEPTANCE_DEVICE` 覆盖。测试号码和验证码只通过
+本机环境变量传入，不写入源码、测试报告或 Git。开发机上的 `build/` 目录可以保留一层
+本地包装脚本，用于建立 SSH 隧道并读取 staging 配置，但核心验收逻辑必须留在
+`scripts/run-ios-media-acceptance.sh`。

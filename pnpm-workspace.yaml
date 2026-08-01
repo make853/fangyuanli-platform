@@ -7,6 +7,7 @@ onlyBuiltDependencies:
 
 allowBuilds:
   esbuild: true
+  sharp: true
 
 # Codex bundled pnpm runs as arm64 while the user's current Homebrew Node is x64
 # under Rosetta. Keep both macOS binaries until Node 24 arm64 is installed.

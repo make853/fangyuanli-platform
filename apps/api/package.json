@@ -7,11 +7,14 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "start:prod": "node dist/main.js",
-    "build": "tsc -p tsconfig.build.json",
+    "start:worker": "tsx src/worker-main.ts",
+    "start:worker:prod": "node dist/worker-main.js",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.scripts.json",
     "smoke:prod": "node scripts/smoke-prod.mjs",
     "accept:messages:ab": "node scripts/accept-direct-messages.mjs",
     "accept:realtime:ab": "node scripts/accept-realtime-messages.mjs",
     "accept:profiles:ab": "node scripts/accept-profiles.mjs",
+    "check:cos": "tsx scripts/check-cos-storage.ts",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed:ab": "tsx src/database/seed-ab.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
@@ -30,6 +33,7 @@
     "redis": "^5.12.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "sharp": "^0.34.5",
     "ws": "^8.21.1"
   },
   "devDependencies": {

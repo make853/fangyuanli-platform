@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/app_environment_provider.dart';
 import '../application/auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -77,6 +79,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         .verifyCode(_codeController.text);
   }
 
+  Future<void> _loginWithStagingAccount(String phone, String code) async {
+    setState(() {
+      _agreed = true;
+      _phoneController.text = phone;
+      _codeController.text = code;
+    });
+    final controller = ref.read(authControllerProvider.notifier);
+    if (await controller.sendCode(phone) && mounted) {
+      await controller.verifyCode(code);
+    }
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -91,6 +105,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     });
     final state = ref.watch(authControllerProvider);
+    final environment = ref.watch(appEnvironmentProvider);
+    final showStagingAccounts =
+        kDebugMode && environment.hasStagingTestAccounts;
 
     return Scaffold(
       body: SafeArea(
@@ -242,6 +259,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             )
                           : const Text('登录 / 注册'),
                     ),
+                    if (showStagingAccounts) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: state.isBusy
+                                  ? null
+                                  : () => _loginWithStagingAccount(
+                                      environment.stagingTestPhoneA,
+                                      environment.stagingTestCode,
+                                    ),
+                              child: const Text('测试账号 A'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: state.isBusy
+                                  ? null
+                                  : () => _loginWithStagingAccount(
+                                      environment.stagingTestPhoneB,
+                                      environment.stagingTestCode,
+                                    ),
+                              child: const Text('测试账号 B'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '仅用于 staging 双账号验收，不会出现在正式版。',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF78847E),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     const Text(
                       '首次验证手机号将自动创建账号。暂不支持仅使用邮箱注册。',

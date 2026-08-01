@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../database/database.service.js";
 import type { QueryExecutor } from "../database/database.types.js";
+import { MediaProcessingRepository } from "./media-processing.repository.js";
 import {
   MediaDomainError,
   type MediaType,
@@ -48,7 +49,10 @@ type MediaRow = {
 
 @Injectable()
 export class MediaRepository {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly processing: MediaProcessingRepository
+  ) {}
 
   async createUpload(input: {
     uploadId: string;
@@ -221,6 +225,7 @@ export class MediaRepository {
           input.now
         ]
       );
+      await this.processing.enqueue(mediaId, input.now, client);
       return this.loadMedia(client, input.ownerUserId, mediaId);
     });
   }

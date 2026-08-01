@@ -14,7 +14,9 @@
     "db:seed:ab": "pnpm --filter @fangyuanli/api db:seed:ab",
     "dev:api": "pnpm --filter @fangyuanli/api dev",
     "start:api": "pnpm --filter @fangyuanli/api start",
-    "start:api:prod": "pnpm --filter @fangyuanli/api start:prod"
+    "start:api:prod": "pnpm --filter @fangyuanli/api start:prod",
+    "start:worker": "pnpm --filter @fangyuanli/api start:worker",
+    "start:worker:prod": "pnpm --filter @fangyuanli/api start:worker:prod"
   },
   "optionalDependencies": {
     "@esbuild/darwin-x64": "0.28.1"
