@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/domain/friend_models.dart';
 import '../domain/direct_message.dart';
@@ -139,13 +140,17 @@ class DirectChatSettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _openSearch(BuildContext context) async {
-    final sequence = await Navigator.of(context).push<int>(
-      MaterialPageRoute<int>(
-        builder: (_) => ChatHistorySearchScreen(
-          conversationTitle: title,
-          messages: messages,
-        ),
+    final sequence = await AppNavigation.push<int>(
+      context,
+      destination: AppRouteId.chatHistorySearch,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.settings,
+        routeId: AppRouteId.directChatSettings,
+        entityId: conversationId,
       ),
+      builder: (_) =>
+          ChatHistorySearchScreen(conversationTitle: title, messages: messages),
     );
     if (sequence == null || !context.mounted) return;
     Navigator.pop(context, DirectChatSettingsResult.locate(sequence));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/application/conversation_list_controller.dart';
 import '../../conversations/domain/conversation_summary.dart';
@@ -120,10 +121,14 @@ class _MessagesTab extends ConsumerWidget {
             iconColor: const Color(0xFF2F7D68),
             unreadCount: state.pendingRequestCount,
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const FriendRequestsScreen(),
+              AppNavigation.push<void>(
+                context,
+                destination: AppRouteId.friendRequests,
+                source: const AppNavigationSource(
+                  section: AppSection.friends,
+                  entryPoint: AppEntryPoint.messageList,
                 ),
+                builder: (_) => const FriendRequestsScreen(),
               );
             },
           ),
@@ -157,10 +162,15 @@ class _MessagesTab extends ConsumerWidget {
   }
 
   void _openEmptyInbox(BuildContext context, String title, String message) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _EmptyInboxScreen(title: title, message: message),
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.systemInbox,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.messageList,
+        entityId: title,
       ),
+      builder: (_) => _EmptyInboxScreen(title: title, message: message),
     );
   }
 }
@@ -186,13 +196,18 @@ class _ConversationTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => DirectChatScreen(
-                conversationId: conversation.conversationId,
-                title: conversation.title,
-                currentUserId: currentUserId,
-              ),
+          AppNavigation.push<void>(
+            context,
+            destination: AppRouteId.directChat,
+            source: AppNavigationSource(
+              section: AppSection.friends,
+              entryPoint: AppEntryPoint.messageList,
+              entityId: conversation.conversationId,
+            ),
+            builder: (_) => DirectChatScreen(
+              conversationId: conversation.conversationId,
+              title: conversation.title,
+              currentUserId: currentUserId,
             ),
           );
         },
@@ -429,10 +444,15 @@ class _ContactTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => FriendProfileScreen(initialContact: contact),
+          AppNavigation.push<void>(
+            context,
+            destination: AppRouteId.friendProfile,
+            source: AppNavigationSource(
+              section: AppSection.friends,
+              entryPoint: AppEntryPoint.contactList,
+              entityId: contact.userId,
             ),
+            builder: (_) => FriendProfileScreen(initialContact: contact),
           );
         },
         child: Padding(

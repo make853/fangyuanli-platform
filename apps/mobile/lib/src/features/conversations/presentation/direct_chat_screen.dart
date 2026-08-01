@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/domain/friend_models.dart';
 import '../../friends/presentation/friend_profile_screen.dart';
@@ -79,8 +80,16 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
   void _openProfile(String? userId) {
     if (userId == null) return;
     if (userId == widget.currentUserId) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const MyProfileDetailScreen()),
+      AppNavigation.push<void>(
+        context,
+        destination: AppRouteId.myProfile,
+        source: AppNavigationSource(
+          section: AppSection.friends,
+          entryPoint: AppEntryPoint.directChat,
+          routeId: AppRouteId.directChat,
+          entityId: widget.conversationId,
+        ),
+        builder: (_) => const MyProfileDetailScreen(),
       );
       return;
     }
@@ -96,21 +105,33 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
       _showUnavailableAction('用户资料');
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => FriendProfileScreen(initialContact: contact!),
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.friendProfile,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.directChat,
+        routeId: AppRouteId.directChat,
+        entityId: widget.conversationId,
       ),
+      builder: (_) => FriendProfileScreen(initialContact: contact!),
     );
   }
 
   Future<void> _openSettings(String title, DirectChatState state) async {
-    final result = await Navigator.of(context).push<DirectChatSettingsResult>(
-      MaterialPageRoute<DirectChatSettingsResult>(
-        builder: (_) => DirectChatSettingsScreen(
-          conversationId: widget.conversationId,
-          title: title,
-          messages: state.messages,
-        ),
+    final result = await AppNavigation.push<DirectChatSettingsResult>(
+      context,
+      destination: AppRouteId.directChatSettings,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.directChat,
+        routeId: AppRouteId.directChat,
+        entityId: widget.conversationId,
+      ),
+      builder: (_) => DirectChatSettingsScreen(
+        conversationId: widget.conversationId,
+        title: title,
+        messages: state.messages,
       ),
     );
     if (!mounted || result == null) return;
