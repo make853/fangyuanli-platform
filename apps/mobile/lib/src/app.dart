@@ -5,6 +5,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/application/auth_controller.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/home_shell.dart';
+import 'features/media/application/media_upload_coordinator.dart';
 
 class FangyuanliApp extends ConsumerWidget {
   const FangyuanliApp({super.key});
@@ -12,6 +13,9 @@ class FangyuanliApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
+    if (authState.status == AuthStatus.signedIn) {
+      ref.watch(mediaUploadRecoveryProvider);
+    }
 
     return MaterialApp(
       title: '方圆里',

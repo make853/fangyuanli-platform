@@ -7,9 +7,9 @@ import 'package:path_provider/path_provider.dart';
 import '../domain/media_upload_models.dart';
 
 abstract interface class MediaUploadTaskStore {
-  Future<List<MediaUploadTask>> readAll();
+  Future<List<MediaUploadTask>> readForOwner(String ownerUserId);
   Future<void> write(MediaUploadTask task);
-  Future<void> remove(String taskId);
+  Future<void> remove({required String ownerUserId, required String taskId});
 }
 
 class FileMediaUploadTaskStore implements MediaUploadTaskStore {
@@ -25,7 +25,7 @@ class FileMediaUploadTaskStore implements MediaUploadTaskStore {
   Future<void> _writeQueue = Future.value();
 
   @override
-  Future<List<MediaUploadTask>> readAll() async {
+  Future<List<MediaUploadTask>> readForOwner(String ownerUserId) async {
     await _writeQueue;
     final file = await _taskFile();
     if (!await file.exists()) return const [];
@@ -35,6 +35,7 @@ class FileMediaUploadTaskStore implements MediaUploadTaskStore {
       return decoded
           .whereType<Map<String, dynamic>>()
           .map(MediaUploadTask.fromJson)
+          .where((task) => task.ownerUserId == ownerUserId)
           .toList(growable: false);
     } on FormatException {
       await _quarantine(file);
@@ -48,7 +49,10 @@ class FileMediaUploadTaskStore implements MediaUploadTaskStore {
   @override
   Future<void> write(MediaUploadTask task) => _serialize(() async {
     final tasks = await _readUnlocked();
-    final index = tasks.indexWhere((item) => item.taskId == task.taskId);
+    final index = tasks.indexWhere(
+      (item) =>
+          item.ownerUserId == task.ownerUserId && item.taskId == task.taskId,
+    );
     if (index == -1) {
       tasks.add(task);
     } else {
@@ -58,11 +62,14 @@ class FileMediaUploadTaskStore implements MediaUploadTaskStore {
   });
 
   @override
-  Future<void> remove(String taskId) => _serialize(() async {
-    final tasks = await _readUnlocked();
-    tasks.removeWhere((task) => task.taskId == taskId);
-    await _writeUnlocked(tasks);
-  });
+  Future<void> remove({required String ownerUserId, required String taskId}) =>
+      _serialize(() async {
+        final tasks = await _readUnlocked();
+        tasks.removeWhere(
+          (task) => task.ownerUserId == ownerUserId && task.taskId == taskId,
+        );
+        await _writeUnlocked(tasks);
+      });
 
   Future<void> _serialize(Future<void> Function() operation) {
     final next = _writeQueue.then((_) => operation());
@@ -94,7 +101,7 @@ class FileMediaUploadTaskStore implements MediaUploadTaskStore {
 
   Future<File> _taskFile() async {
     final directory = await _directoryLoader();
-    return File(path.join(directory.path, 'upload_tasks.v1.json'));
+    return File(path.join(directory.path, 'upload_tasks.v2.json'));
   }
 
   Future<void> _quarantine(File file) async {

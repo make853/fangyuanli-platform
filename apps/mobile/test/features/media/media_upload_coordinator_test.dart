@@ -28,6 +28,7 @@ void main() {
     final uploader = _FakeObjectUploader();
     final store = _MemoryTaskStore();
     final coordinator = MediaUploadCoordinator(
+      _ownerUserId,
       _UnusedPicker(),
       _UnusedPreparer(),
       api,
@@ -47,7 +48,7 @@ void main() {
     expect(api.completeKeys, [result.completeIdempotencyKey]);
     expect(uploader.calls, 1);
     expect(await file.exists(), isFalse);
-    expect((await store.readAll()).single.mediaId, 'media-1');
+    expect((await store.readForOwner(_ownerUserId)).single.mediaId, 'media-1');
   });
 
   test('keeps the upload ticket and resumes after a network failure', () async {
@@ -58,6 +59,7 @@ void main() {
     );
     final store = _MemoryTaskStore();
     final coordinator = MediaUploadCoordinator(
+      _ownerUserId,
       _UnusedPicker(),
       _UnusedPreparer(),
       api,
@@ -89,6 +91,7 @@ void main() {
     final original =
         MediaUploadTask.fromPrepared(
           taskId: 'task-1',
+          ownerUserId: _ownerUserId,
           purpose: MediaPurpose.background,
           image: _prepared(file),
           createIdempotencyKey: 'create-old',
@@ -105,6 +108,7 @@ void main() {
         );
     await store.write(original);
     final coordinator = MediaUploadCoordinator(
+      _ownerUserId,
       _UnusedPicker(),
       _UnusedPreparer(),
       api,
@@ -125,6 +129,7 @@ void main() {
     final missing = File('${temporary.path}/missing.jpg');
     final store = _MemoryTaskStore();
     final coordinator = MediaUploadCoordinator(
+      _ownerUserId,
       _UnusedPicker(),
       _UnusedPreparer(),
       _FakeMediaApi(),
@@ -141,9 +146,40 @@ void main() {
     expect(result.status, MediaUploadStatus.failed);
     expect(result.errorMessage, contains('重新选择'));
   });
+
+  test('never resumes a durable task owned by another account', () async {
+    final file = await _imageFile(temporary);
+    final otherAccountTask = MediaUploadTask.fromPrepared(
+      taskId: 'other-account-task',
+      ownerUserId: 'user-2',
+      purpose: MediaPurpose.post,
+      image: _prepared(file),
+      createIdempotencyKey: 'create-other',
+      completeIdempotencyKey: 'complete-other',
+      now: _now,
+    );
+    final store = _MemoryTaskStore();
+    await store.write(otherAccountTask);
+    final coordinator = MediaUploadCoordinator(
+      _ownerUserId,
+      _UnusedPicker(),
+      _UnusedPreparer(),
+      _FakeMediaApi(),
+      _FakeObjectUploader(),
+      store,
+      now: () => _now,
+    );
+
+    await expectLater(
+      coordinator.resume(otherAccountTask),
+      throwsA(isA<MediaUploadOwnerMismatch>()),
+    );
+    expect(await coordinator.resumePending(), isEmpty);
+  });
 }
 
 final _now = DateTime.utc(2026, 8, 1, 10);
+const _ownerUserId = 'user-1';
 
 Future<File> _imageFile(Directory directory) async {
   final file = File('${directory.path}/prepared.jpg');
@@ -204,8 +240,10 @@ class _FakeMediaApi implements MediaUploadApi {
   }
 
   @override
-  Future<MediaAsset> loadMedia(String mediaId) async =>
-      MediaAsset(mediaId: mediaId, status: 'ready');
+  Future<MediaAsset> loadMedia(
+    String mediaId, {
+    required String ownerUserId,
+  }) async => MediaAsset(mediaId: mediaId, status: 'ready');
 }
 
 class _FakeObjectUploader implements ObjectUploader {
@@ -229,15 +267,19 @@ class _MemoryTaskStore implements MediaUploadTaskStore {
   final Map<String, MediaUploadTask> _tasks = {};
 
   @override
-  Future<List<MediaUploadTask>> readAll() async => _tasks.values.toList();
+  Future<List<MediaUploadTask>> readForOwner(String ownerUserId) async =>
+      _tasks.values.where((task) => task.ownerUserId == ownerUserId).toList();
 
   @override
-  Future<void> remove(String taskId) async {
-    _tasks.remove(taskId);
+  Future<void> remove({
+    required String ownerUserId,
+    required String taskId,
+  }) async {
+    _tasks.remove('$ownerUserId:$taskId');
   }
 
   @override
   Future<void> write(MediaUploadTask task) async {
-    _tasks[task.taskId] = task;
+    _tasks['${task.ownerUserId}:${task.taskId}'] = task;
   }
 }

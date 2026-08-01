@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/network/api_failure.dart';
-import '../../../core/network/authenticated_api_client.dart';
+import '../../../core/network/authenticated_api_client_provider.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/image_pipeline.dart';
 import '../data/media_upload_api.dart';
@@ -13,6 +13,7 @@ import '../domain/media_upload_models.dart';
 
 class MediaUploadCoordinator {
   MediaUploadCoordinator(
+    this.ownerUserId,
     this._picker,
     this._preparer,
     this._api,
@@ -23,6 +24,7 @@ class MediaUploadCoordinator {
   }) : _uuid = uuid ?? const Uuid(),
        _now = now ?? (() => DateTime.now().toUtc());
 
+  final String ownerUserId;
   final MediaImagePicker _picker;
   final MediaImagePreparer _preparer;
   final MediaUploadApi _api;
@@ -49,6 +51,7 @@ class MediaUploadCoordinator {
     final now = _now();
     final task = MediaUploadTask.fromPrepared(
       taskId: _uuid.v4(),
+      ownerUserId: ownerUserId,
       purpose: purpose,
       image: image,
       createIdempotencyKey: _uuid.v4(),
@@ -60,7 +63,7 @@ class MediaUploadCoordinator {
   }
 
   Future<List<MediaUploadTask>> resumePending() async {
-    final tasks = await _store.readAll();
+    final tasks = await _store.readForOwner(ownerUserId);
     final resumed = <MediaUploadTask>[];
     for (final task in tasks.where((task) => task.status.canResume)) {
       resumed.add(await resume(task));
@@ -68,7 +71,8 @@ class MediaUploadCoordinator {
     return resumed;
   }
 
-  Future<MediaUploadTask> resume(MediaUploadTask task) {
+  Future<MediaUploadTask> resume(MediaUploadTask task) async {
+    _requireOwner(task);
     return _inFlight.putIfAbsent(task.taskId, () async {
       try {
         return await _process(task, renewedTicket: false);
@@ -79,10 +83,14 @@ class MediaUploadCoordinator {
   }
 
   Future<MediaUploadTask> refreshProcessing(MediaUploadTask task) async {
+    _requireOwner(task);
     final mediaId = task.mediaId;
     if (mediaId == null) return resume(task);
     try {
-      final asset = await _api.loadMedia(mediaId);
+      final asset = await _api.loadMedia(
+        mediaId,
+        ownerUserId: task.ownerUserId,
+      );
       final updated = task.copyWith(
         status: asset.status == 'ready'
             ? MediaUploadStatus.ready
@@ -247,6 +255,14 @@ class MediaUploadCoordinator {
       // The upload is already safely stored in COS; cleanup can be retried later.
     }
   }
+
+  void _requireOwner(MediaUploadTask task) {
+    if (task.ownerUserId == ownerUserId) return;
+    throw MediaUploadOwnerMismatch(
+      expectedOwnerUserId: ownerUserId,
+      actualOwnerUserId: task.ownerUserId,
+    );
+  }
 }
 
 final mediaImagePickerProvider = Provider<MediaImagePicker>(
@@ -262,25 +278,36 @@ final mediaUploadTaskStoreProvider = Provider<MediaUploadTaskStore>(
 );
 
 final mediaUploadApiProvider = Provider<MediaUploadApi>((ref) {
-  final authController = ref.read(authControllerProvider.notifier);
-  return HttpMediaUploadApi(
-    AuthenticatedApiClient(
-      environment: ref.watch(appEnvironmentProvider),
-      loadSession: authController.validSession,
-    ),
-  );
+  return HttpMediaUploadApi(ref.watch(authenticatedApiClientProvider));
 });
 
 final objectUploaderProvider = Provider<ObjectUploader>(
   (_) => DioObjectUploader(),
 );
 
-final mediaUploadCoordinatorProvider = Provider<MediaUploadCoordinator>(
-  (ref) => MediaUploadCoordinator(
-    ref.watch(mediaImagePickerProvider),
-    ref.watch(mediaImagePreparerProvider),
-    ref.watch(mediaUploadApiProvider),
-    ref.watch(objectUploaderProvider),
-    ref.watch(mediaUploadTaskStoreProvider),
-  ),
-);
+final mediaUploadCoordinatorProvider =
+    Provider.autoDispose<MediaUploadCoordinator>((ref) {
+      final ownerUserId = ref.watch(
+        authControllerProvider.select((state) => state.session?.userId),
+      );
+      if (ownerUserId == null) {
+        throw StateError('Media upload requires an authenticated account');
+      }
+      return MediaUploadCoordinator(
+        ownerUserId,
+        ref.watch(mediaImagePickerProvider),
+        ref.watch(mediaImagePreparerProvider),
+        ref.watch(mediaUploadApiProvider),
+        ref.watch(objectUploaderProvider),
+        ref.watch(mediaUploadTaskStoreProvider),
+      );
+    });
+
+final mediaUploadRecoveryProvider =
+    FutureProvider.autoDispose<List<MediaUploadTask>>((ref) async {
+      final ownerUserId = ref.watch(
+        authControllerProvider.select((state) => state.session?.userId),
+      );
+      if (ownerUserId == null) return const [];
+      return ref.watch(mediaUploadCoordinatorProvider).resumePending();
+    });

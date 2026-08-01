@@ -130,6 +130,7 @@ class MediaAsset {
 class MediaUploadTask {
   const MediaUploadTask({
     required this.taskId,
+    required this.ownerUserId,
     required this.purpose,
     required this.localPath,
     required this.fileName,
@@ -151,6 +152,7 @@ class MediaUploadTask {
   });
 
   final String taskId;
+  final String ownerUserId;
   final MediaPurpose purpose;
   final String localPath;
   final String fileName;
@@ -172,6 +174,7 @@ class MediaUploadTask {
 
   factory MediaUploadTask.fromPrepared({
     required String taskId,
+    required String ownerUserId,
     required MediaPurpose purpose,
     required PreparedImage image,
     required String createIdempotencyKey,
@@ -179,6 +182,7 @@ class MediaUploadTask {
     required DateTime now,
   }) => MediaUploadTask(
     taskId: taskId,
+    ownerUserId: ownerUserId,
     purpose: purpose,
     localPath: image.localPath,
     fileName: image.fileName,
@@ -209,6 +213,7 @@ class MediaUploadTask {
     bool clearError = false,
   }) => MediaUploadTask(
     taskId: taskId,
+    ownerUserId: ownerUserId,
     purpose: purpose,
     localPath: localPath,
     fileName: fileName,
@@ -234,6 +239,7 @@ class MediaUploadTask {
     final ticket = json['ticket'];
     return MediaUploadTask(
       taskId: json['taskId'] as String,
+      ownerUserId: json['ownerUserId'] as String,
       purpose: MediaPurpose.fromWire(json['purpose'] as String),
       localPath: json['localPath'] as String,
       fileName: json['fileName'] as String,
@@ -259,6 +265,7 @@ class MediaUploadTask {
 
   Map<String, dynamic> toJson() => {
     'taskId': taskId,
+    'ownerUserId': ownerUserId,
     'purpose': purpose.wireValue,
     'localPath': localPath,
     'fileName': fileName,
@@ -278,4 +285,17 @@ class MediaUploadTask {
     'attempts': attempts,
     'errorMessage': errorMessage,
   };
+}
+
+class MediaUploadOwnerMismatch implements Exception {
+  const MediaUploadOwnerMismatch({
+    required this.expectedOwnerUserId,
+    required this.actualOwnerUserId,
+  });
+
+  final String expectedOwnerUserId;
+  final String actualOwnerUserId;
+
+  @override
+  String toString() => '上传任务属于其他账号，请切换回原账号后继续';
 }

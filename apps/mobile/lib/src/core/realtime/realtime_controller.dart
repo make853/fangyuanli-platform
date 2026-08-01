@@ -5,9 +5,9 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../features/auth/application/auth_controller.dart';
+import '../config/app_environment_provider.dart';
+import '../network/authenticated_api_client_provider.dart';
 import '../../features/auth/domain/auth_session.dart';
-import '../network/authenticated_api_client.dart';
 import 'realtime_cursor_store.dart';
 import 'realtime_event.dart';
 import 'realtime_socket.dart';
@@ -276,23 +276,15 @@ final realtimeSocketConnectorProvider = Provider<RealtimeSocketConnector>(
 );
 
 final realtimeSyncRepositoryProvider = Provider<RealtimeSyncRepository>((ref) {
-  final environment = ref.watch(appEnvironmentProvider);
-  final authController = ref.read(authControllerProvider.notifier);
-  return HttpRealtimeSyncRepository(
-    AuthenticatedApiClient(
-      environment: environment,
-      loadSession: authController.validSession,
-    ),
-  );
+  return HttpRealtimeSyncRepository(ref.watch(authenticatedApiClientProvider));
 });
 
 final realtimeControllerProvider =
     StateNotifierProvider.autoDispose<RealtimeController, RealtimeState>((ref) {
       final environment = ref.watch(appEnvironmentProvider);
-      final authController = ref.read(authControllerProvider.notifier);
       return RealtimeController(
         Uri.parse(environment.realtimeUrl),
-        authController.validSession,
+        ref.watch(authenticatedSessionLoaderProvider),
         ref.watch(realtimeSocketConnectorProvider),
         ref.watch(realtimeCursorStoreProvider),
         ref.watch(realtimeSyncRepositoryProvider),

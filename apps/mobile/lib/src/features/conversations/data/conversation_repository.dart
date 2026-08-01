@@ -3,7 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/network/api_failure.dart';
 import '../../../core/network/authenticated_api_client.dart';
-import '../../auth/application/auth_controller.dart';
+import '../../../core/network/authenticated_api_client_provider.dart';
 import '../domain/conversation_summary.dart';
 import '../domain/direct_message.dart';
 
@@ -95,12 +95,5 @@ class HttpConversationRepository implements ConversationRepository {
 }
 
 final conversationRepositoryProvider = Provider<ConversationRepository>((ref) {
-  final environment = ref.watch(appEnvironmentProvider);
-  final authController = ref.read(authControllerProvider.notifier);
-  return HttpConversationRepository(
-    AuthenticatedApiClient(
-      environment: environment,
-      loadSession: authController.validSession,
-    ),
-  );
+  return HttpConversationRepository(ref.watch(authenticatedApiClientProvider));
 });

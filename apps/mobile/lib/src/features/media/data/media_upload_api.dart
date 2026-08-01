@@ -19,7 +19,7 @@ abstract interface class MediaUploadApi {
     required String idempotencyKey,
   });
 
-  Future<MediaAsset> loadMedia(String mediaId);
+  Future<MediaAsset> loadMedia(String mediaId, {required String ownerUserId});
 }
 
 class HttpMediaUploadApi implements MediaUploadApi {
@@ -35,6 +35,7 @@ class HttpMediaUploadApi implements MediaUploadApi {
     final envelope = await _client.post(
       '/media/uploads',
       idempotencyKey: idempotencyKey,
+      expectedUserId: task.ownerUserId,
       data: {
         'purpose': task.purpose.wireValue,
         'mediaType': 'image',
@@ -60,14 +61,21 @@ class HttpMediaUploadApi implements MediaUploadApi {
     final envelope = await _client.post(
       '/media/uploads/$uploadId/complete',
       idempotencyKey: idempotencyKey,
+      expectedUserId: task.ownerUserId,
       data: {'etag': etag, 'bytes': task.bytes, 'sha256': task.sha256},
     );
     return MediaAsset.fromJson(_data(envelope));
   }
 
   @override
-  Future<MediaAsset> loadMedia(String mediaId) async {
-    final envelope = await _client.get('/media/$mediaId');
+  Future<MediaAsset> loadMedia(
+    String mediaId, {
+    required String ownerUserId,
+  }) async {
+    final envelope = await _client.get(
+      '/media/$mediaId',
+      expectedUserId: ownerUserId,
+    );
     return MediaAsset.fromJson(_data(envelope));
   }
 

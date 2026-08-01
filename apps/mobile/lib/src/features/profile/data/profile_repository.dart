@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_failure.dart';
 import '../../../core/network/authenticated_api_client.dart';
-import '../../auth/application/auth_controller.dart';
+import '../../../core/network/authenticated_api_client_provider.dart';
 import '../domain/profile_models.dart';
 
 abstract interface class ProfileRepository {
@@ -97,14 +97,7 @@ class HttpProfileRepository implements ProfileRepository {
 }
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
-  final environment = ref.watch(appEnvironmentProvider);
-  final authController = ref.read(authControllerProvider.notifier);
-  return HttpProfileRepository(
-    AuthenticatedApiClient(
-      environment: environment,
-      loadSession: authController.validSession,
-    ),
-  );
+  return HttpProfileRepository(ref.watch(authenticatedApiClientProvider));
 });
 
 final userProfileProvider = FutureProvider.autoDispose
