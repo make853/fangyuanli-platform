@@ -8,6 +8,7 @@ export type AmapNamingPayload = {
   addressComponent?: unknown;
   pois?: unknown;
   aois?: unknown;
+  regionalPois?: unknown;
 };
 
 type RawCandidate = {
@@ -15,10 +16,18 @@ type RawCandidate = {
   type: string;
   distance: number;
   area: number;
-  origin: "aoi" | "poi" | "businessArea" | "neighborhood" | "building";
+  origin:
+    | "aoi"
+    | "poi"
+    | "regional"
+    | "businessArea"
+    | "neighborhood"
+    | "building";
 };
 
-const VENUE_KEYWORDS = [
+const COMMUNITY_KEYWORDS = ["小区", "花园", "家园", "公寓", "社区", "新城"] as const;
+const COMMUNITY_TYPES = ["住宅区", "住宅小区", "社区中心"] as const;
+const PUBLIC_CULTURE_KEYWORDS = [
   "体育场",
   "体育馆",
   "体育中心",
@@ -32,38 +41,38 @@ const VENUE_KEYWORDS = [
   "音乐厅",
   "剧院",
   "公园",
-  "景区",
-  "广场",
-  "大学",
-  "学院",
+  "景区"
+] as const;
+const MAJOR_TRANSIT_KEYWORDS = [
   "火车站",
   "高铁站",
+  "地铁站",
   "客运站",
-  "机场",
-  "购物中心",
-  "商场",
-  "医院"
+  "汽车站",
+  "机场"
 ] as const;
-
+const MAJOR_MALL_KEYWORDS = ["购物中心", "商场", "商业广场", "购物广场"] as const;
+const HIGHER_EDUCATION_TYPES = ["高等院校", "大学"] as const;
+const BASIC_EDUCATION_TYPES = ["中学", "小学"] as const;
+const MAJOR_HOSPITAL_TYPES = ["综合医院", "专科医院", "中医院"] as const;
 const STABLE_TYPES = [
   "风景名胜",
-  "科教文化服务",
-  "体育休闲服务",
-  "交通设施服务",
-  "政府机构",
-  "医疗保健服务",
+  "体育场馆",
+  "火车站",
+  "长途汽车站",
+  "机场",
   "产业园区",
   "商务住宅;产业园区"
 ] as const;
-
-const COMMUNITY_KEYWORDS = ["小区", "花园", "家园", "公寓", "社区"] as const;
 const UNSTABLE_TYPES = [
   "餐饮服务",
   "生活服务",
   "汽车服务",
   "住宿服务",
   "公司企业",
-  "便民商店"
+  "便民商店",
+  "超级市场",
+  "便利店"
 ] as const;
 const SUBORDINATE_KEYWORDS = [
   "停车场",
@@ -76,7 +85,8 @@ const SUBORDINATE_KEYWORDS = [
   "音乐喷泉",
   "喷泉",
   "相亲角",
-  "治安派出所"
+  "治安派出所",
+  "公交站"
 ] as const;
 const ORGANIZATION_KEYWORDS = [
   "支部委员会",
@@ -86,8 +96,35 @@ const ORGANIZATION_KEYWORDS = [
   "党群服务中心",
   "社区服务中心",
   "办事处",
+  "办公室",
+  "管理所",
   "警务室",
   "派出所"
+] as const;
+const LOW_QUALITY_EDUCATION = [
+  "幼儿园",
+  "托儿所",
+  "早教",
+  "托育",
+  "培训机构"
+] as const;
+const MINOR_HEALTH_TYPES = [
+  "诊所",
+  "卫生室",
+  "卫生站",
+  "药房",
+  "医疗保健服务场所"
+] as const;
+const MERCHANT_NAME_KEYWORDS = [
+  "银行",
+  "酒店",
+  "宾馆",
+  "饭店",
+  "餐厅",
+  "烧烤",
+  "夜市",
+  "足浴",
+  "KTV"
 ] as const;
 const ROAD_SUFFIXES = ["路", "街", "大道", "巷", "胡同", "公路"] as const;
 
@@ -97,6 +134,7 @@ export class PlazaNameSelector {
     const raw = [
       ...this.items(payload.aois).map((item) => this.raw(item, "aoi")),
       ...this.items(payload.pois).map((item) => this.raw(item, "poi")),
+      ...this.items(payload.regionalPois).map((item) => this.raw(item, "regional")),
       ...this.addressItems(payload.addressComponent, "businessAreas").map(
         (item) => this.raw(item, "businessArea")
       ),
@@ -121,52 +159,100 @@ export class PlazaNameSelector {
   }
 
   private rank(candidate: RawCandidate): PlazaNameCandidate | null {
-    if (
-      this.isSubordinate(candidate.name) ||
-      this.isOrganization(candidate.name) ||
-      this.isRoadName(candidate.name)
-    ) {
-      return null;
-    }
-    const venue = this.includes(candidate.name, VENUE_KEYWORDS);
-    const community = this.includes(candidate.name, COMMUNITY_KEYWORDS);
-    const stableType = this.includes(candidate.type, STABLE_TYPES);
-    const unstableType = this.includes(candidate.type, UNSTABLE_TYPES);
+    if (this.shouldReject(candidate)) return null;
+
+    const community =
+      this.includes(candidate.name, COMMUNITY_KEYWORDS) ||
+      this.includes(candidate.type, COMMUNITY_TYPES);
     const citySquare = candidate.type.includes("城市广场");
+    const publicCulture = this.includes(candidate.name, PUBLIC_CULTURE_KEYWORDS);
+    const majorTransit =
+      this.includes(candidate.name, MAJOR_TRANSIT_KEYWORDS) ||
+      this.includes(candidate.type, MAJOR_TRANSIT_KEYWORDS);
+    const majorMall =
+      candidate.type.includes("购物服务;商场") &&
+      (this.includes(candidate.name, MAJOR_MALL_KEYWORDS) ||
+        candidate.name.endsWith("广场"));
+    const majorHospital =
+      /医院|中医院/u.test(candidate.name) &&
+      this.includes(candidate.type, MAJOR_HOSPITAL_TYPES);
+    const university =
+      /大学|学院/u.test(candidate.name) &&
+      this.includes(candidate.type, HIGHER_EDUCATION_TYPES);
+    const basicSchool = this.includes(candidate.type, BASIC_EDUCATION_TYPES);
+    const stableType = this.includes(candidate.type, STABLE_TYPES);
     let score = 0;
     let source: PlazaNamingSource = "landmark";
 
-    if (citySquare) {
-      score = candidate.origin === "aoi" ? 1450 : 1350;
+    // A residential project containing “广场” is still a community. Type semantics
+    // take precedence over keyword coincidence.
+    if (community) {
+      score = 360;
+      source = "community";
+    } else if (citySquare && !this.isMerchantMasqueradingAsSquare(candidate)) {
+      score = candidate.origin === "aoi" ? 1650 : 1550;
+      source = "venue";
+    } else if (majorTransit) {
+      score = candidate.origin === "aoi" ? 1460 : 1360;
+      source = "venue";
+    } else if (publicCulture) {
+      score = candidate.origin === "aoi" ? 1420 : 1320;
+      source = "venue";
+    } else if (majorMall) {
+      score = candidate.origin === "aoi" ? 1280 : 1220;
+      source = "venue";
+    } else if (majorHospital || university) {
+      score = candidate.origin === "aoi" ? 1240 : 1160;
       source = "venue";
     } else if (candidate.origin === "businessArea") {
-      score = 850;
-    } else if (venue && !unstableType) {
-      score = candidate.origin === "aoi" ? 1200 : 1080;
-      source = "venue";
-    } else if (community) {
-      score = 280;
-      source = "community";
-    } else if (
-      candidate.origin === "aoi" &&
-      (candidate.area >= 20_000 || stableType)
-    ) {
-      score = 930;
-    } else if (candidate.origin === "poi" && stableType && !unstableType) {
-      score = 760;
+      score = 920;
+    } else if (candidate.origin === "aoi" && candidate.area >= 20_000) {
+      score = 860;
+    } else if (stableType && candidate.origin !== "building") {
+      score = 700;
+    } else if (basicSchool) {
+      // Schools are persistent but identify only one institution, so they are a
+      // last-resort fallback below regional landmarks, business areas and AOIs.
+      score = 300;
     } else if (candidate.origin === "building" && stableType) {
-      score = 520;
+      score = 450;
     } else {
       return null;
     }
 
-    score += Math.min(100, candidate.area / 1000);
-    score -= Math.min(500, candidate.distance) * 0.4;
+    score += Math.min(120, candidate.area / 1000);
+    score -= Math.min(3000, candidate.distance) * 0.11;
     return {
       name: this.displayName(candidate.name),
       source,
       score
     };
+  }
+
+  private shouldReject(candidate: RawCandidate): boolean {
+    const { name, type } = candidate;
+    if (
+      this.isSubordinate(name) ||
+      this.isOrganization(name) ||
+      this.isRoadName(name) ||
+      this.includes(name, MERCHANT_NAME_KEYWORDS) ||
+      this.includes(name, LOW_QUALITY_EDUCATION) ||
+      this.includes(type, LOW_QUALITY_EDUCATION) ||
+      (type.includes("培训机构") && /学院|学校/u.test(name)) ||
+      this.includes(type, MINOR_HEALTH_TYPES) ||
+      (type.includes("公交车站") && !/客运站|汽车站/u.test(name))
+    ) {
+      return true;
+    }
+    return this.includes(type, UNSTABLE_TYPES) && !type.includes("购物服务;商场");
+  }
+
+  private isMerchantMasqueradingAsSquare(candidate: RawCandidate): boolean {
+    return (
+      this.includes(candidate.name, MERCHANT_NAME_KEYWORDS) ||
+      /(?:店|馆店|分店|营业厅)(?:\)|）)?$/u.test(candidate.name) ||
+      (candidate.type.includes("购物服务") && !candidate.type.includes("购物服务;商场"))
+    );
   }
 
   private displayName(value: string): string {
@@ -233,22 +319,34 @@ export class PlazaNameSelector {
   }
 
   private normalizeName(name: string, type: string): string {
-    if (!type.includes("地铁站")) return name;
+    if (type.includes("地铁站")) {
+      const withoutExit = name.replace(
+        /[-—·\s]*(?:(?:[A-Za-z]\d*|\d+|[一二三四五六七八九十]+)号?(?:出入口|口))$/u,
+        ""
+      );
+      const withoutMarker = withoutExit
+        .replace(/[（(]地铁站[）)]$/u, "")
+        .replace(/地铁站$/u, "")
+        .replace(/站$/u, "");
+      return withoutMarker ? `${withoutMarker}地铁站` : name;
+    }
 
-    const withoutExit = name.replace(
-      /[-—·\s]*(?:(?:[A-Za-z]\d*|\d+|[一二三四五六七八九十]+)号?(?:出入口|口))$/u,
-      ""
-    );
-    const withoutMarker = withoutExit
-      .replace(/[（(]地铁站[）)]$/u, "")
-      .replace(/地铁站$/u, "")
-      .replace(/站$/u, "");
-    return withoutMarker ? `${withoutMarker}地铁站` : name;
+    if (type.includes("医疗保健服务") || /医院|中医院/u.test(name)) {
+      const parent = name
+        .replace(
+          /[-—·\s]*(?:门诊综合楼|门诊楼|门诊部|住院部|住院楼|病房楼|医技楼|急诊楼|综合楼)$/u,
+          ""
+        )
+        .replace(/[（(](?:门诊部|住院部|门诊楼|住院楼|综合楼)[）)]$/u, "");
+      if ([...parent].length >= 2) return parent;
+    }
+
+    return name;
   }
 
   private isSubordinate(name: string): boolean {
     return (
-      /[-—·]/u.test(name) ||
+      /[-—]/u.test(name) ||
       this.includes(name, SUBORDINATE_KEYWORDS) ||
       /(?:亭|桥|瀑布|雕塑|观景台|景点|东门|西门|南门|北门|正门|侧门|大门|店)(?:\)|）)?$/u.test(
         name

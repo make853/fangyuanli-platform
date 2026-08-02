@@ -121,15 +121,16 @@ test("serializes anchor updates per user through a transaction lock", async () =
   );
 });
 
-test("atomically claims neutral plazas before external naming lookups", async () => {
+test("atomically claims neutral or outdated plazas before external naming lookups", async () => {
   const database = new FakeDatabase();
   const repository = new PlazaContextRepository(
     database as unknown as DatabaseService,
     new PlazaGridProjector()
   );
 
-  const claimed = await repository.claimNeutralPlazasByCells({
+  const claimed = await repository.claimPlazasForNamingByCells({
     version,
+    policyVersion: 2,
     cells: [
       { gridX: 1, gridY: 2 },
       { gridX: 2, gridY: 2 }
@@ -146,4 +147,27 @@ test("atomically claims neutral plazas before external naming lookups", async ()
   const claimSql = database.statements.find((sql) => sql.startsWith("WITH claimable AS"));
   assert.match(claimSql ?? "", /FOR UPDATE SKIP LOCKED/);
   assert.match(claimSql ?? "", /naming_retry_after/);
+  assert.match(claimSql ?? "", /naming_policy_version < \$3/);
+});
+
+test("applies a new automatic name without changing plaza identity", async () => {
+  const database = new FakeDatabase();
+  const repository = new PlazaContextRepository(
+    database as unknown as DatabaseService,
+    new PlazaGridProjector()
+  );
+
+  await repository.applyPlazaNameCandidate({
+    plazaId: "019f0b00-0000-7000-8000-000000000099",
+    name: "民生广场",
+    source: "venue",
+    policyVersion: 2
+  });
+
+  const updateSql = database.statements.find((sql) =>
+    sql.startsWith("UPDATE plaza_grids SET display_name")
+  );
+  assert.match(updateSql ?? "", /naming_policy_version = \$4/);
+  assert.doesNotMatch(updateSql ?? "", /conversation_id/);
+  assert.doesNotMatch(updateSql ?? "", /grid_version_id =/);
 });

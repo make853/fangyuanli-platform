@@ -48,7 +48,7 @@ test(
 );
 
 test(
-  "migrations activate the two-kilometre plaza grid without rewriting older versions",
+  "migrations activate the two-kilometre grid and version automatic plaza names",
   { skip: process.env.RUN_DATABASE_INTEGRATION_TESTS !== "true" },
   async () => {
     const pool = new Pool({
@@ -74,6 +74,18 @@ test(
         { version: 2, side_length_meters: 1000, status: "retired" },
         { version: 3, side_length_meters: 2000, status: "active" }
       ]);
+      const namingColumn = await database.query<{
+        column_default: string;
+        is_nullable: "YES" | "NO";
+      }>(
+        `SELECT column_default, is_nullable
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'plaza_grids'
+            AND column_name = 'naming_policy_version'`
+      );
+      assert.equal(namingColumn.rows[0]?.is_nullable, "NO");
+      assert.match(namingColumn.rows[0]?.column_default ?? "", /1/);
     } finally {
       await database.onApplicationShutdown();
     }
