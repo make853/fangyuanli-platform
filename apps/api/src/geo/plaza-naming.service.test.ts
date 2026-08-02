@@ -39,8 +39,18 @@ test("uses distinct stable candidates without changing plaza identity", async ()
   const provider = {
     isConfigured: () => true,
     candidates: async () => [
-      { name: "滨江体育中心广场", source: "venue" as const, score: 1000 },
-      { name: "滨江商圈广场", source: "landmark" as const, score: 800 }
+      {
+        name: "滨江体育中心广场",
+        source: "venue" as const,
+        kind: "culture_scenic" as const,
+        score: 1000
+      },
+      {
+        name: "滨江商圈广场",
+        source: "landmark" as const,
+        kind: "area" as const,
+        score: 800
+      }
     ]
   } as PlazaNamingProvider;
   const service = new PlazaNamingService(
@@ -62,12 +72,14 @@ test("uses distinct stable candidates without changing plaza identity", async ()
       plazaId: "plaza-0",
       name: "滨江体育中心广场",
       source: "venue",
+      kind: "culture_scenic",
       policyVersion: PLAZA_NAMING_POLICY_VERSION
     },
     {
       plazaId: "plaza-1",
       name: "滨江商圈广场",
       source: "landmark",
+      kind: "area",
       policyVersion: PLAZA_NAMING_POLICY_VERSION
     }
   ]);

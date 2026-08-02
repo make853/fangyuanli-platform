@@ -505,6 +505,7 @@ Table plaza_grids {
   display_name varchar(96) [not null]
   naming_source varchar(24) [not null, default: 'neutral']
   naming_policy_version int [not null, default: 1, note: '自动展示名策略版本；不改变广场或会话身份']
+  naming_kind varchar(32) [note: '自动命名语义分类，用于审计和策略升级']
   center_longitude_gcj02 decimal(10,7) [not null]
   center_latitude_gcj02 decimal(10,7) [not null]
   status varchar(16) [not null, default: 'active']

@@ -161,13 +161,15 @@ test("applies a new automatic name without changing plaza identity", async () =>
     plazaId: "019f0b00-0000-7000-8000-000000000099",
     name: "民生广场",
     source: "venue",
+    kind: "public_square",
     policyVersion: 2
   });
 
   const updateSql = database.statements.find((sql) =>
     sql.startsWith("UPDATE plaza_grids SET display_name")
   );
-  assert.match(updateSql ?? "", /naming_policy_version = \$4/);
+  assert.match(updateSql ?? "", /naming_kind = \$4/);
+  assert.match(updateSql ?? "", /naming_policy_version = \$5/);
   assert.doesNotMatch(updateSql ?? "", /conversation_id/);
   assert.doesNotMatch(updateSql ?? "", /grid_version_id =/);
 });

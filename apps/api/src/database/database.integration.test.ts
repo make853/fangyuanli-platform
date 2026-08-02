@@ -86,6 +86,19 @@ test(
       );
       assert.equal(namingColumn.rows[0]?.is_nullable, "NO");
       assert.match(namingColumn.rows[0]?.column_default ?? "", /1/);
+      const namingKindColumn = await database.query<{
+        data_type: string;
+        is_nullable: "YES" | "NO";
+      }>(
+        `SELECT data_type, is_nullable
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'plaza_grids'
+            AND column_name = 'naming_kind'`
+      );
+      assert.deepEqual(namingKindColumn.rows, [
+        { data_type: "character varying", is_nullable: "YES" }
+      ]);
     } finally {
       await database.onApplicationShutdown();
     }

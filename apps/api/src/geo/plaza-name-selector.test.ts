@@ -41,7 +41,7 @@ test("prioritizes stable venues and filters small merchants and roads", () => {
   assert.equal(candidates.some((candidate) => candidate.name.includes("咖啡")), false);
   assert.equal(candidates.some((candidate) => candidate.name.includes("庄周大道")), false);
   assert.ok(
-    candidates.findIndex((candidate) => candidate.name === "晴川花园广场") >
+    candidates.findIndex((candidate) => candidate.name === "晴川花园广场") <
       candidates.findIndex((candidate) => candidate.name === "滨江商圈广场")
   );
 });
@@ -155,7 +155,8 @@ test("filters local organizations and keeps community names low priority", () =>
     {
       name: "贸易西路社区广场",
       source: "community",
-      score: 355.6
+      kind: "community",
+      score: 1046.4
     }
   ]);
 });
@@ -252,4 +253,93 @@ test("collapses hospital sub-buildings into the parent hospital", () => {
   assert.deepEqual(candidates.map((candidate) => candidate.name), [
     "民权中医院广场"
   ]);
+});
+
+test("keeps the representative public, heritage, commercial and community choices", () => {
+  const candidates = new PlazaNameSelector().select({
+    regionalPois: [
+      {
+        name: "中央城市广场",
+        type: "购物服务;商场;购物中心",
+        distance: "1200"
+      },
+      {
+        name: "圣晖广场",
+        type: "购物服务;商场;购物中心",
+        distance: "900"
+      },
+      {
+        name: "民权站",
+        type: "交通设施服务;火车站",
+        distance: "1100"
+      },
+      {
+        name: "民权县葡萄酒厂遗址",
+        type: "风景名胜;风景名胜相关;旅游景点",
+        distance: "1400"
+      },
+      {
+        name: "华联城广场",
+        type: "购物服务;商场;购物中心",
+        distance: "1600"
+      }
+    ],
+    aois: [
+      {
+        name: "南华社区",
+        type: "商务住宅;住宅区",
+        area: "90000",
+        distance: "200"
+      },
+      {
+        name: "绿洲社区",
+        type: "商务住宅;住宅区",
+        area: "70000",
+        distance: "500"
+      }
+    ]
+  });
+
+  const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
+  assert.equal(byName.get("民权站广场")?.kind, "transit");
+  assert.equal(byName.get("民权县葡萄酒厂遗址广场")?.kind, "culture_scenic");
+  assert.equal(byName.get("中央城市广场")?.kind, "commercial_landmark");
+  assert.equal(byName.get("圣晖广场")?.kind, "commercial_landmark");
+  assert.equal(byName.get("华联城广场")?.kind, "commercial_landmark");
+  assert.equal(byName.get("南华社区广场")?.kind, "community");
+  assert.equal(byName.get("绿洲社区广场")?.kind, "community");
+});
+
+test("uses villages before road intersections and plain roads as final fallbacks", () => {
+  const candidates = new PlazaNameSelector().select({
+    aois: [
+      {
+        name: "赵庄村",
+        type: "地名地址信息;普通地名;村庄级地名",
+        area: "50000",
+        distance: "300"
+      },
+      {
+        name: "鲁庄新村",
+        type: "地名地址信息;普通地名;村庄级地名",
+        area: "42000",
+        distance: "400"
+      }
+    ],
+    roadinters: [
+      {
+        first_name: "西郊北路",
+        second_name: "庄周大道",
+        distance: "100"
+      }
+    ],
+    roads: [{ name: "西郊北路", distance: "60" }]
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.name),
+    ["赵庄广场", "鲁庄新村广场", "西郊北路·庄周大道广场", "西郊北路广场"]
+  );
+  assert.equal(candidates[0]?.kind, "village");
+  assert.equal(candidates[2]?.kind, "road");
 });

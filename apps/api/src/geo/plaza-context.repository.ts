@@ -9,7 +9,10 @@ import type {
   PlazaGridVersion,
   PlazaProjection
 } from "./plaza-context.types.js";
-import type { PlazaNamingSource } from "./plaza-naming.provider.js";
+import type {
+  PlazaNamingKind,
+  PlazaNamingSource
+} from "./plaza-naming.provider.js";
 
 type GridVersionRow = {
   id: string;
@@ -246,19 +249,21 @@ export class PlazaContextRepository {
     plazaId: string;
     name: string;
     source: PlazaNamingSource;
+    kind: PlazaNamingKind;
     policyVersion: number;
   }): Promise<boolean> {
     const result = await this.database.query(
       `UPDATE plaza_grids
           SET display_name = $2,
               naming_source = $3,
-              naming_policy_version = $4,
+              naming_kind = $4,
+              naming_policy_version = $5,
               naming_retry_after = NULL,
               updated_at = now()
         WHERE id = $1
-          AND (naming_source = 'neutral' OR naming_policy_version < $4)
+          AND (naming_source = 'neutral' OR naming_policy_version < $5)
           AND status = 'active'`,
-      [input.plazaId, input.name, input.source, input.policyVersion]
+      [input.plazaId, input.name, input.source, input.kind, input.policyVersion]
     );
     return result.rowCount === 1;
   }
