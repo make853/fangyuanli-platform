@@ -46,3 +46,35 @@ test(
     }
   }
 );
+
+test(
+  "migrations activate the one-kilometre plaza grid without rewriting version one",
+  { skip: process.env.RUN_DATABASE_INTEGRATION_TESTS !== "true" },
+  async () => {
+    const pool = new Pool({
+      application_name: "fangyuanli-plaza-grid-integration-test",
+      connectionString: requireDatabaseUrl(process.env),
+      max: 1
+    });
+    const database = new DatabaseService(pool);
+
+    try {
+      const result = await database.query<{
+        version: number;
+        side_length_meters: number;
+        status: "active" | "retired";
+      }>(
+        `SELECT version, side_length_meters, status
+           FROM plaza_grid_versions
+          ORDER BY version`
+      );
+
+      assert.deepEqual(result.rows, [
+        { version: 1, side_length_meters: 500, status: "retired" },
+        { version: 2, side_length_meters: 1000, status: "active" }
+      ]);
+    } finally {
+      await database.onApplicationShutdown();
+    }
+  }
+);
