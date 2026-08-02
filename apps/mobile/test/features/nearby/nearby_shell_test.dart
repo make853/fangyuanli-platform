@@ -45,6 +45,39 @@ void main() {
     expect(find.text('12'), findsNothing);
   });
 
+  testWidgets('广场聊天头部紧凑且每张卡片独立进入广场信息', (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceLocationSourceProvider.overrideWithValue(
+            _UnavailableLocationSource(),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: PlazaScreen())),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('plaza-switcher'))).height,
+      76,
+    );
+    expect(find.text('当前位置可进入的4个广场 · 均可发言'), findsNothing);
+    expect(find.text('通知设置'), findsNothing);
+    expect(find.text('可发言'), findsNothing);
+    for (final id in ['primary', 'east', 'river', 'culture']) {
+      expect(find.byKey(ValueKey('plaza-more-$id')), findsOneWidget);
+    }
+
+    await tester.tap(find.byKey(const ValueKey('plaza-more-east')));
+    await tester.pumpAndSettle();
+    expect(find.text('广场信息'), findsOneWidget);
+    expect(find.text('东街广场'), findsOneWidget);
+  });
+
   testWidgets('地点卡片主体进入聊天，聊天右上角进入地点详情', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: PlacesScreen())),

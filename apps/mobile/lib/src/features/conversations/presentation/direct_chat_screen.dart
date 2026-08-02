@@ -39,21 +39,22 @@ class DirectChatScreen extends ConsumerStatefulWidget {
 class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
-  final _scrollController = ScrollController();
   final _composerController = ChatComposerController();
+  late final ChatTimelineViewportController _timelineController;
   final _messageKeys = <int, GlobalKey>{};
 
   @override
   void initState() {
     super.initState();
-    _scrollToLatest(jump: true);
+    _timelineController = ChatTimelineViewportController();
+    _timelineController.scrollToLatest(jump: true);
   }
 
   @override
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
-    _scrollController.dispose();
+    _timelineController.dispose();
     _composerController.dispose();
     super.dispose();
   }
@@ -67,30 +68,8 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
     if (succeeded) {
       _textController.clear();
       _focusNode.requestFocus();
-      _scrollToLatest();
+      _timelineController.scrollToLatest();
     }
-  }
-
-  bool _isNearLatest() {
-    if (!_scrollController.hasClients) return true;
-    final position = _scrollController.position;
-    return position.maxScrollExtent - position.pixels <= 96;
-  }
-
-  void _scrollToLatest({bool jump = false}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final target = _scrollController.position.maxScrollExtent;
-      if (jump) {
-        _scrollController.jumpTo(target);
-      } else {
-        _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
-      }
-    });
   }
 
   void _showUnavailableAction(String action) {
@@ -205,10 +184,10 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
       if (newLatest?.sequence != oldLatest?.sequence) {
         final followsLatest =
             oldMessages.isEmpty ||
-            _isNearLatest() ||
+            _timelineController.isNearLatest ||
             newLatest?.senderUserId == widget.currentUserId;
         if (followsLatest) {
-          _scrollToLatest(jump: oldMessages.isEmpty);
+          _timelineController.scrollToLatest(jump: oldMessages.isEmpty);
         }
       }
     });
@@ -233,7 +212,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
               child: _MessageList(
                 state: state,
                 userId: widget.currentUserId,
-                controller: _scrollController,
+                controller: _timelineController.scrollController,
                 ownAvatar: ownProfile?.avatar,
                 ownInitial: ownProfile?.initial ?? '我',
                 peerAvatar: currentContact?.avatar ?? widget.peerAvatar,
