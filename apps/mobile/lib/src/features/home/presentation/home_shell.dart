@@ -13,6 +13,7 @@ import '../../friends/presentation/friend_scan_screen.dart';
 import '../../friends/presentation/friends_screen.dart';
 import '../../posts/presentation/post_composer_screen.dart';
 import '../../places/presentation/places_screen.dart';
+import '../../plaza/application/plaza_controller.dart';
 import '../../plaza/presentation/plaza_screen.dart';
 import '../../profile/application/profile_controller.dart';
 import '../../profile/presentation/my_screen.dart';
@@ -66,6 +67,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
       );
       unawaited(
         ref.read(profileControllerProvider.notifier).load(silent: true),
+      );
+      unawaited(
+        ref.read(plazaControllerProvider.notifier).refresh(silent: true),
       );
     }
   }
@@ -122,6 +126,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     ref.watch(realtimeControllerProvider);
     final conversationState = ref.watch(conversationListControllerProvider);
     final friendsState = ref.watch(friendsControllerProvider);
+    final plazaState = ref.watch(plazaControllerProvider);
     final friendsUnread =
         conversationState.navigationUnread + friendsState.pendingRequestCount;
     return Scaffold(
@@ -158,11 +163,19 @@ class _HomeShellState extends ConsumerState<HomeShell>
             NavigationDestination(
               icon: _DestinationIcon(
                 icon: destination.icon,
-                unreadCount: destination.label == '好友' ? friendsUnread : 0,
+                unreadCount: switch (destination.label) {
+                  '广场' => plazaState.navigationUnread,
+                  '好友' => friendsUnread,
+                  _ => 0,
+                },
               ),
               selectedIcon: _DestinationIcon(
                 icon: destination.selectedIcon,
-                unreadCount: destination.label == '好友' ? friendsUnread : 0,
+                unreadCount: switch (destination.label) {
+                  '广场' => plazaState.navigationUnread,
+                  '好友' => friendsUnread,
+                  _ => 0,
+                },
               ),
               label: destination.label,
             ),

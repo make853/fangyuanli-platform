@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
 import '../../conversations/domain/community_chat_models.dart';
 import '../../conversations/presentation/community_chat_screen.dart';
 import '../../nearby/presentation/nearby_ui.dart';
+import '../application/plaza_controller.dart';
 import '../data/plaza_preview_catalog.dart';
 import '../domain/plaza_models.dart';
 
 enum _PlazaView { chat, feed }
 
-class PlazaScreen extends StatefulWidget {
+class PlazaScreen extends ConsumerStatefulWidget {
   const PlazaScreen({
     this.plazas = PlazaPreviewCatalog.plazas,
     this.previewMessages = PlazaPreviewCatalog.messages,
@@ -20,10 +22,10 @@ class PlazaScreen extends StatefulWidget {
   final List<CommunityMessagePreview> previewMessages;
 
   @override
-  State<PlazaScreen> createState() => _PlazaScreenState();
+  ConsumerState<PlazaScreen> createState() => _PlazaScreenState();
 }
 
-class _PlazaScreenState extends State<PlazaScreen> {
+class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   _PlazaView _view = _PlazaView.chat;
   late String _selectedPlazaId;
   final _readPlazaIds = <String>{};
@@ -34,9 +36,6 @@ class _PlazaScreenState extends State<PlazaScreen> {
     _selectedPlazaId = widget.plazas.first.id;
   }
 
-  PlazaSummary get _selected =>
-      widget.plazas.firstWhere((plaza) => plaza.id == _selectedPlazaId);
-
   void _pending(String action) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -45,6 +44,10 @@ class _PlazaScreenState extends State<PlazaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final plazaState = ref.watch(plazaControllerProvider);
+    final plazas = plazaState.plazas.length == 4
+        ? plazaState.plazas
+        : widget.plazas;
     return Column(
       children: [
         Padding(
@@ -61,15 +64,18 @@ class _PlazaScreenState extends State<PlazaScreen> {
         ),
         Expanded(
           child: _view == _PlazaView.chat
-              ? _buildChat()
+              ? _buildChat(plazas, plazaState)
               : const _PlazaFeedShell(),
         ),
       ],
     );
   }
 
-  Widget _buildChat() {
-    final selected = _selected;
+  Widget _buildChat(List<PlazaSummary> plazas, PlazaState plazaState) {
+    final selectedId = plazas.any((plaza) => plaza.id == _selectedPlazaId)
+        ? _selectedPlazaId
+        : plazas.first.id;
+    final selected = plazas.firstWhere((plaza) => plaza.id == selectedId);
     return Column(
       children: [
         SizedBox(
@@ -78,10 +84,10 @@ class _PlazaScreenState extends State<PlazaScreen> {
             key: const ValueKey('plaza-switcher'),
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: widget.plazas.length,
+            itemCount: plazas.length,
             separatorBuilder: (_, _) => const SizedBox(width: 9),
             itemBuilder: (context, index) {
-              final plaza = widget.plazas[index];
+              final plaza = plazas[index];
               return _PlazaSwitchCard(
                 plaza: plaza,
                 selected: plaza.id == selected.id,
@@ -96,11 +102,38 @@ class _PlazaScreenState extends State<PlazaScreen> {
             },
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 6, 16, 4),
-          child: Text(
-            '当前位置可进入的4个广场 · 均可发言',
-            style: TextStyle(color: Color(0xFF78847E), fontSize: 12),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 3, 8, 1),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _locationStatus(plazaState),
+                  style: const TextStyle(
+                    color: Color(0xFF78847E),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              if (!plazaState.isLoading)
+                IconButton(
+                  key: const ValueKey('plaza-location-refresh'),
+                  tooltip: '刷新附近广场',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => ref
+                      .read(plazaControllerProvider.notifier)
+                      .refresh(silent: plazaState.plazas.isNotEmpty),
+                  icon: const Icon(Icons.my_location_rounded, size: 18),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 13),
+                  child: SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+            ],
           ),
         ),
         Padding(
@@ -142,11 +175,11 @@ class _PlazaScreenState extends State<PlazaScreen> {
           child: CommunityChatBody(
             key: ValueKey('plaza-chat-${selected.id}'),
             channel: CommunityChannelDescriptor(
-              id: selected.id,
+              id: selected.conversationId ?? selected.id,
               kind: CommunityChannelKind.plaza,
               title: selected.name,
               subtitle:
-                  '${selected.isPrimary ? '主广场' : '相邻广场'} · ${selected.activePeople}人活跃',
+                  '${selected.isPrimary ? '主广场' : '相邻广场'} · ${selected.activityLabel}',
               emptyMessage: '这个广场暂时还没有消息',
             ),
             previewMessages: selected.isPrimary
@@ -156,6 +189,17 @@ class _PlazaScreenState extends State<PlazaScreen> {
         ),
       ],
     );
+  }
+
+  String _locationStatus(PlazaState state) {
+    if (state.hasFreshEligibility) {
+      return '当前位置可进入的4个广场 · 均可发言';
+    }
+    if (state.isUsingCachedOverview) {
+      return state.isLoading ? '正在确认当前位置 · 先显示上次广场' : '上次进入的广场 · 点击定位刷新';
+    }
+    if (state.errorMessage != null) return '定位后显示真实的4个广场 · 点击重试';
+    return '正在获取附近广场';
   }
 }
 
@@ -206,7 +250,7 @@ class _PlazaSwitchCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      '${plaza.activePeople}人活跃',
+                      plaza.activityLabel,
                       style: const TextStyle(
                         color: Color(0xFF66736D),
                         fontSize: 11,
@@ -246,8 +290,10 @@ class PlazaInfoScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
         children: [
-          NearbyPreviewNotice(text: '${plaza.name}目前使用交互预览数据'),
-          const SizedBox(height: 14),
+          if (plaza.conversationId == null) ...[
+            NearbyPreviewNotice(text: '${plaza.name}目前使用交互预览数据'),
+            const SizedBox(height: 14),
+          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(18),
@@ -260,7 +306,7 @@ class PlazaInfoScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${plaza.isPrimary ? '当前主广场' : '可发言的相邻广场'} · ${plaza.activePeople}人活跃',
+                    '${plaza.isPrimary ? '当前主广场' : '可发言的相邻广场'} · ${plaza.activityLabel}',
                     style: const TextStyle(color: Color(0xFF66736D)),
                   ),
                 ],
