@@ -162,6 +162,13 @@ test("applies a new automatic name without changing plaza identity", async () =>
     name: "民生广场",
     source: "venue",
     kind: "public_square",
+    point: {
+      coordinateSystem: "gcj02",
+      longitude: 115.15,
+      latitude: 34.64
+    },
+    provider: "amap",
+    providerPlaceId: "B0FF123",
     policyVersion: 2
   });
 
@@ -169,7 +176,39 @@ test("applies a new automatic name without changing plaza identity", async () =>
     sql.startsWith("UPDATE plaza_grids SET display_name")
   );
   assert.match(updateSql ?? "", /naming_kind = \$4/);
-  assert.match(updateSql ?? "", /naming_policy_version = \$5/);
+  assert.match(updateSql ?? "", /naming_provider = \$5/);
+  assert.match(updateSql ?? "", /naming_provider_place_id = \$6/);
+  assert.match(updateSql ?? "", /naming_longitude_gcj02 = \$7/);
+  assert.match(updateSql ?? "", /naming_latitude_gcj02 = \$8/);
+  assert.match(updateSql ?? "", /naming_policy_version = \$9/);
+  assert.doesNotMatch(updateSql ?? "", /conversation_id/);
+  assert.doesNotMatch(updateSql ?? "", /grid_version_id =/);
+});
+
+test("resets an outdated cross-region name without changing plaza identity", async () => {
+  const database = new FakeDatabase();
+  const repository = new PlazaContextRepository(
+    database as unknown as DatabaseService,
+    new PlazaGridProjector()
+  );
+
+  await repository.applyNeutralPlazaName({
+    plazaId: "019f0b00-0000-7000-8000-000000000099",
+    version,
+    cell: { gridX: 1, gridY: 2 },
+    retryAfter: new Date("2026-08-03T00:00:00Z"),
+    policyVersion: 6
+  });
+
+  const updateSql = database.statements.find(
+    (sql) =>
+      sql.startsWith("UPDATE plaza_grids SET display_name") &&
+      sql.includes("naming_source = 'neutral'")
+  );
+  assert.match(updateSql ?? "", /naming_kind = NULL/);
+  assert.match(updateSql ?? "", /naming_provider = NULL/);
+  assert.match(updateSql ?? "", /naming_longitude_gcj02 = NULL/);
+  assert.match(updateSql ?? "", /naming_policy_version = \$3/);
   assert.doesNotMatch(updateSql ?? "", /conversation_id/);
   assert.doesNotMatch(updateSql ?? "", /grid_version_id =/);
 });

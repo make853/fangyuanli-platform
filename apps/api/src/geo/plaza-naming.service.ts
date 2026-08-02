@@ -45,8 +45,16 @@ export class PlazaNamingService {
     const lookups = await Promise.all(
       claimable.map(async (plaza) => {
         try {
-          const candidates = await this.provider.candidates(
+          const discovered = await this.provider.candidates(
             this.projector.center(plaza, input.version)
+          );
+          // Discovery may intentionally search beyond the region so that the
+          // map provider returns enough high-quality POIs. Assignment is much
+          // stricter: an auditable coordinate must be covered by this cell.
+          const candidates = discovered.filter(
+            (candidate) =>
+              candidate.point !== undefined &&
+              this.projector.contains(plaza, input.version, candidate.point)
           );
           return { plaza, candidates, failed: false };
         } catch {
@@ -73,12 +81,15 @@ export class PlazaNamingService {
     for (const lookup of lookups) {
       if (lookup.failed) continue;
       const candidate = assignments.get(lookup.plaza.plazaId);
-      if (!candidate) {
-        await this.repository.deferPlazaNaming({
+      if (!candidate?.point) {
+        const reset = await this.repository.applyNeutralPlazaName({
           plazaId: lookup.plaza.plazaId,
+          version: input.version,
+          cell: lookup.plaza,
           retryAfter: new Date(Date.now() + 6 * 60 * 60 * 1000),
           policyVersion: PLAZA_NAMING_POLICY_VERSION
         });
+        if (reset) changed = true;
         continue;
       }
       const updated = await this.repository.applyPlazaNameCandidate({
@@ -86,6 +97,9 @@ export class PlazaNamingService {
         name: candidate.name,
         source: candidate.source,
         kind: candidate.kind,
+        point: candidate.point,
+        provider: candidate.provider ?? null,
+        providerPlaceId: candidate.providerPlaceId ?? null,
         policyVersion: PLAZA_NAMING_POLICY_VERSION
       });
       if (updated) {

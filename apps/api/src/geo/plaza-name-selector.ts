@@ -19,6 +19,8 @@ type RawCandidate = {
   type: string;
   distance: number;
   area: number;
+  point?: PlazaNameCandidate["point"];
+  providerPlaceId?: string;
   origin:
     | "aoi"
     | "poi"
@@ -169,7 +171,13 @@ export class PlazaNameSelector {
       const ranked = this.rank(candidate);
       if (!ranked) continue;
       const current = byName.get(ranked.name);
-      if (!current || ranked.score > current.score) byName.set(ranked.name, ranked);
+      if (
+        !current ||
+        (ranked.point !== undefined && current.point === undefined) ||
+        (Boolean(ranked.point) === Boolean(current.point) && ranked.score > current.score)
+      ) {
+        byName.set(ranked.name, ranked);
+      }
     }
     return [...byName.values()].sort(
       (left, right) => right.score - left.score || left.name.localeCompare(right.name, "zh-CN")
@@ -281,7 +289,16 @@ export class PlazaNameSelector {
       name: this.displayName(candidate.name),
       source,
       kind,
-      score
+      score,
+      ...(candidate.point
+        ? {
+            point: candidate.point,
+            provider: "amap" as const,
+            ...(candidate.providerPlaceId
+              ? { providerPlaceId: candidate.providerPlaceId }
+              : {})
+          }
+        : {})
     };
   }
 
@@ -326,11 +343,15 @@ export class PlazaNameSelector {
     const rawName = this.text(item.name);
     const name = rawName ? this.normalizeName(rawName, type) : null;
     if (!name || [...name].length < 2 || [...name].length > 48) return null;
+    const point = this.point(item.location);
+    const providerPlaceId = this.text(item.id);
     return {
       name,
       type,
       distance: this.number(item.distance),
       area: this.number(item.area),
+      ...(point ? { point } : {}),
+      ...(providerPlaceId ? { providerPlaceId } : {}),
       origin
     };
   }
@@ -339,13 +360,38 @@ export class PlazaNameSelector {
     const first = this.text(item.first_name);
     const second = this.text(item.second_name);
     if (!first || !second || first === second) return null;
+    const point = this.point(item.location);
+    const providerPlaceId = this.text(item.id);
     return {
       name: `${first}·${second}`,
       type: "道路交叉口",
       distance: this.number(item.distance),
       area: 0,
+      ...(point ? { point } : {}),
+      ...(providerPlaceId ? { providerPlaceId } : {}),
       origin: "road"
     };
+  }
+
+  private point(value: unknown): PlazaNameCandidate["point"] | null {
+    if (typeof value !== "string") return null;
+    const [longitudeText, latitudeText, ...rest] = value.split(",");
+    if (rest.length > 0 || longitudeText === undefined || latitudeText === undefined) {
+      return null;
+    }
+    const longitude = Number(longitudeText);
+    const latitude = Number(latitudeText);
+    if (
+      !Number.isFinite(longitude) ||
+      !Number.isFinite(latitude) ||
+      longitude < -180 ||
+      longitude > 180 ||
+      latitude < -90 ||
+      latitude > 90
+    ) {
+      return null;
+    }
+    return { coordinateSystem: "gcj02", longitude, latitude };
   }
 
   private addressItems(value: unknown, key: string): Record<string, unknown>[] {

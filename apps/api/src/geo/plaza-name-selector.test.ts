@@ -387,3 +387,41 @@ test("uses villages before road intersections and plain roads as final fallbacks
   assert.equal(candidates[0]?.kind, "village");
   assert.equal(candidates[2]?.kind, "road");
 });
+
+test("preserves valid Amap coordinates and prefers an auditable duplicate", () => {
+  const candidates = new PlazaNameSelector().select({
+    aois: [
+      {
+        name: "民生广场",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "10"
+      }
+    ],
+    regionalPois: [
+      {
+        id: "B0FF123",
+        name: "民生广场",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "200",
+        location: "115.1550363,34.6395154"
+      },
+      {
+        name: "损坏坐标广场",
+        type: "风景名胜;公园广场;城市广场",
+        location: "not-a-coordinate"
+      }
+    ]
+  });
+
+  const selected = candidates.find((candidate) => candidate.name === "民生广场");
+  assert.deepEqual(selected?.point, {
+    coordinateSystem: "gcj02",
+    longitude: 115.1550363,
+    latitude: 34.6395154
+  });
+  assert.equal(selected?.providerPlaceId, "B0FF123");
+  assert.equal(
+    candidates.find((candidate) => candidate.name === "损坏坐标广场")?.point,
+    undefined
+  );
+});

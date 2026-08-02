@@ -1,6 +1,6 @@
 # 方圆里 AI 与开发交接指南
 
-更新时间：2026-08-01
+更新时间：2026-08-03
 
 这份文件用于以下场景：
 
@@ -105,6 +105,7 @@ make853/fangyuanli-platform
 - 私聊消息最初通过 SQLite 版本2落地，现已由版本4原位迁移为统一会话消息表：按账号与会话隔离、消息ID幂等、会话序号唯一；聊天页本地优先并通过 `afterSequence` 多页增量补拉，发送成功和实时消息都会写回本地。iPhone `profile` 模式已通过彻底退出后的冷启动无闪屏和飞行模式读取本地消息验收；离线期间产生新消息后的恢复增量补拉仍待人工验收。设计边界见 `docs/architecture/decisions/0006-mobile-local-message-snapshots-and-sequence-sync.md`；
 - 真机验收曾发现联系人列表仍依赖网络，Bb 会在冷启动先缺失再出现；数据库版本3已增加账号概览快照，好友申请、联系人、黑名单、会话列表和未读数改为本地先显示、后台静默更新，成功的备注/置顶/拉黑等本地投影立即持久化。账号隔离与冷启动自动化测试、真机彻底退出重开、飞行模式读取和恢复联网静默刷新现已全部通过。设计边界见 `docs/architecture/decisions/0007-mobile-account-overview-snapshots.md`；
 - 私聊缓存验收结论已推广为全部聊天的统一约束：广场、地点、活动、私聊和系统会话共用 `ConversationMessage`、统一 SQLite 消息表和 `ConversationSyncController`，复用序号同步、实时合并、未读与未来 outbox；各业务模块只提供位置、角色、禁言、状态和读写能力策略，不得复制缓存。旧 `DirectMessage` 数据已由数据库版本4原位迁移，见 `docs/architecture/decisions/0008-unified-conversation-cache-and-sync-engine.md`；
+- 广场采用单层权威区域：首版是2公里正方形，未来通过完整地图版本演进为无重叠、无空缺的不规则多边形，不建立第二套业务广场。命名策略 v6 要求最终高德 POI 坐标严格位于所属区域内部，保存供应商、POI标识和坐标审计；格外候选不得借名，无格内候选退回中性编号。见 `docs/architecture/decisions/0016-single-layer-versioned-plaza-regions.md`；
 - staging 媒体验收已扩展为 A/B 双账号，覆盖好友完整资料、拉黑后最小头像资料、背景墙隔离和测试状态恢复；原生裁剪手势仍需在 iPhone 模拟器或真机人工确认一次。
 
 好友关系、私聊文字消息、实时推送、断线补偿、多连接同步、个人资料和资料图片已经通过真实服务器 A/B 闭环；Flutter 已完成登录、好友申请、联系人、关系设置、私聊实时收发、资料编辑，以及头像/背景墙的可恢复上传、处理、绑定和权限读取。个人历史动态与聊天媒体仍待后续接入。HTML 原型中的其余交互大部分仍是模拟状态。

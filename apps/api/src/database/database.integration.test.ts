@@ -99,6 +99,45 @@ test(
       assert.deepEqual(namingKindColumn.rows, [
         { data_type: "character varying", is_nullable: "YES" }
       ]);
+      const namingAuditColumns = await database.query<{
+        column_name: string;
+        data_type: string;
+        is_nullable: "YES" | "NO";
+      }>(
+        `SELECT column_name, data_type, is_nullable
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'plaza_grids'
+            AND column_name IN (
+              'naming_provider',
+              'naming_provider_place_id',
+              'naming_longitude_gcj02',
+              'naming_latitude_gcj02'
+            )
+          ORDER BY column_name`
+      );
+      assert.deepEqual(namingAuditColumns.rows, [
+        {
+          column_name: "naming_latitude_gcj02",
+          data_type: "numeric",
+          is_nullable: "YES"
+        },
+        {
+          column_name: "naming_longitude_gcj02",
+          data_type: "numeric",
+          is_nullable: "YES"
+        },
+        {
+          column_name: "naming_provider",
+          data_type: "character varying",
+          is_nullable: "YES"
+        },
+        {
+          column_name: "naming_provider_place_id",
+          data_type: "character varying",
+          is_nullable: "YES"
+        }
+      ]);
     } finally {
       await database.onApplicationShutdown();
     }
