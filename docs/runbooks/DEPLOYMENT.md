@@ -100,3 +100,17 @@ openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'
 将结果保存为 `FANGYUANLI_LOCATION_CONTEXT_KEY`，不得提交到Git，也不得在
 staging和production之间共用。轮换密钥会使现有短期位置令牌立即失效，因此
 应在低峰期轮换，并允许客户端自动刷新 `/geo/context`。
+
+广场稳定策略可以通过环境变量调节，不需要重新发布 App。未配置时使用
+MVP 默认值：
+
+```text
+PLAZA_ANCHOR_RADIUS_METERS=150
+PLAZA_MAXIMUM_ACCURACY_METERS=80
+PLAZA_SWITCH_CONFIRMATION_COUNT=3
+PLAZA_SWITCH_DWELL_SECONDS=60
+LOCATION_CONTEXT_TTL_SECONDS=600
+```
+
+这些参数只改变锚点判断，不改变网格 ID。网格边长和投影属于版本化数据库
+配置，禁止直接修改已激活版本；调整时必须新增网格版本并设计灰度迁移。

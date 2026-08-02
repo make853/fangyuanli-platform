@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module.js";
 import { ConversationModule } from "./conversations/conversation.module.js";
 import { DatabaseModule } from "./database/database.module.js";
+import { GeoModule } from "./geo/geo.module.js";
 import { HealthController } from "./health.controller.js";
 import { MediaModule } from "./media/media.module.js";
 import { PlaceModule } from "./places/place.module.js";
@@ -16,6 +17,7 @@ import { RelationshipModule } from "./relationships/relationship.module.js";
     ConversationModule,
     ProfileModule,
     MediaModule,
+    GeoModule,
     PlaceModule
   ],
   controllers: [HealthController]
