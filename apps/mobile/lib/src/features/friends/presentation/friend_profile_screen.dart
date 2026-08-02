@@ -5,7 +5,7 @@ import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/presentation/direct_chat_screen.dart';
 import '../../profile/data/profile_repository.dart';
-import '../../profile/domain/profile_models.dart';
+import '../../profile/presentation/profile_detail_screen.dart';
 import '../application/friend_relationship_coordinator.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
@@ -19,25 +19,119 @@ class FriendProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(friendsControllerProvider);
     final contact = _currentContact(state);
-    final isProcessing = state.processingUserIds.contains(contact.userId);
-    final loadedProfile = ref.watch(userProfileProvider(contact.userId));
-    final profile = loadedProfile.asData?.value;
+    final provider = userProfileProvider(contact.userId);
+    final profile = ref.watch(provider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('好友资料')),
+      appBar: AppBar(
+        title: const Text('个人资料'),
+        actions: [
+          IconButton(
+            tooltip: '好友设置',
+            onPressed: () => _openSettings(context, contact),
+            icon: const Icon(Icons.more_horiz_rounded),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(provider);
+          await ref.read(provider.future);
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 28),
+          children: [
+            switch (profile) {
+              AsyncData(:final value) => ProfileDetailContent(
+                profile: value,
+                displayName: contact.visibleName,
+                actionSection: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: contact.directConversationId.isEmpty
+                        ? null
+                        : () => _openChat(context, ref, contact),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded),
+                    label: const Text('发消息'),
+                  ),
+                ),
+              ),
+              AsyncError() => _ProfileLoadFailure(
+                onRetry: () async {
+                  ref.invalidate(provider);
+                  await ref.read(provider.future);
+                },
+              ),
+              _ => const Padding(
+                padding: EdgeInsets.only(top: 120),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            },
+          ],
+        ),
+      ),
+    );
+  }
+
+  FriendContact _currentContact(FriendsState state) {
+    for (final contact in state.contacts) {
+      if (contact.userId == initialContact.userId) return contact;
+    }
+    return initialContact;
+  }
+
+  void _openChat(BuildContext context, WidgetRef ref, FriendContact contact) {
+    final userId = ref.read(authControllerProvider).session?.userId;
+    if (userId == null) return;
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.directChat,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.profile,
+        routeId: AppRouteId.friendProfile,
+        entityId: contact.userId,
+      ),
+      builder: (_) => DirectChatScreen(
+        conversationId: contact.directConversationId,
+        title: contact.visibleName,
+        currentUserId: userId,
+      ),
+    );
+  }
+
+  void _openSettings(BuildContext context, FriendContact contact) {
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.friendProfileSettings,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.profile,
+        routeId: AppRouteId.friendProfile,
+        entityId: contact.userId,
+      ),
+      builder: (_) => FriendProfileSettingsScreen(initialContact: contact),
+    );
+  }
+}
+
+class FriendProfileSettingsScreen extends ConsumerWidget {
+  const FriendProfileSettingsScreen({required this.initialContact, super.key});
+
+  final FriendContact initialContact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(friendsControllerProvider);
+    final contact = _currentContact(state);
+    final isProcessing = state.processingUserIds.contains(contact.userId);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('好友设置')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
-          _ProfileHeader(contact: contact, profile: profile),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: contact.directConversationId.isEmpty
-                ? null
-                : () => _openChat(context, ref, contact),
-            icon: const Icon(Icons.chat_bubble_outline_rounded),
-            label: const Text('发消息'),
-          ),
-          const SizedBox(height: 14),
           _SettingsCard(
             children: [
               ListTile(
@@ -110,26 +204,6 @@ class FriendProfileScreen extends ConsumerWidget {
       if (contact.userId == initialContact.userId) return contact;
     }
     return initialContact;
-  }
-
-  void _openChat(BuildContext context, WidgetRef ref, FriendContact contact) {
-    final userId = ref.read(authControllerProvider).session?.userId;
-    if (userId == null) return;
-    AppNavigation.push<void>(
-      context,
-      destination: AppRouteId.directChat,
-      source: AppNavigationSource(
-        section: AppSection.friends,
-        entryPoint: AppEntryPoint.profile,
-        routeId: AppRouteId.friendProfile,
-        entityId: contact.userId,
-      ),
-      builder: (_) => DirectChatScreen(
-        conversationId: contact.directConversationId,
-        title: contact.visibleName,
-        currentUserId: userId,
-      ),
-    );
   }
 
   Future<void> _editRemark(
@@ -357,81 +431,26 @@ class _RemarkDialogState extends State<_RemarkDialog> {
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.contact, this.profile});
+class _ProfileLoadFailure extends StatelessWidget {
+  const _ProfileLoadFailure({required this.onRetry});
 
-  final FriendContact contact;
-  final UserProfile? profile;
+  final Future<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final initial = contact.visibleName.trim().isEmpty
-        ? '友'
-        : contact.visibleName.trim().characters.first;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.only(top: 100),
+      child: Column(
         children: [
-          CircleAvatar(
-            radius: 34,
-            backgroundColor: const Color(0xFFDDEEE7),
-            child: Text(
-              initial,
-              style: const TextStyle(
-                color: Color(0xFF167A5B),
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+          const Icon(
+            Icons.cloud_off_outlined,
+            size: 42,
+            color: Color(0xFFA1AAA5),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  contact.visibleName,
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (contact.remarkName != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '昵称：${profile?.nickname ?? contact.nickname}',
-                    style: const TextStyle(color: Color(0xFF78847E)),
-                  ),
-                ],
-                if (profile?.fangyuanNumber != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '方圆号：${profile!.fangyuanNumber}',
-                    style: const TextStyle(color: Color(0xFF78847E)),
-                  ),
-                ],
-                if (profile != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '性别：${profile!.gender.label}',
-                    style: const TextStyle(color: Color(0xFF78847E)),
-                  ),
-                  if (profile!.signature.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      profile!.signature,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ],
-            ),
-          ),
+          const SizedBox(height: 12),
+          const Text('个人资料加载失败'),
+          const SizedBox(height: 12),
+          OutlinedButton(onPressed: onRetry, child: const Text('重新加载')),
         ],
       ),
     );

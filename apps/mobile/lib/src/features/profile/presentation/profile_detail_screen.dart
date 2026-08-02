@@ -118,7 +118,7 @@ class UserProfileDetailScreen extends ConsumerWidget {
           padding: const EdgeInsets.only(bottom: 28),
           children: [
             switch (state) {
-              AsyncData(:final value) => _PublicProfileContent(profile: value),
+              AsyncData(:final value) => ProfileDetailContent(profile: value),
               AsyncError(:final error) => _LoadFailure(
                 message: '个人资料加载失败：$error',
                 onRetry: () async {
@@ -138,10 +138,19 @@ class UserProfileDetailScreen extends ConsumerWidget {
   }
 }
 
-class _PublicProfileContent extends StatelessWidget {
-  const _PublicProfileContent({required this.profile});
+class ProfileDetailContent extends StatelessWidget {
+  const ProfileDetailContent({
+    required this.profile,
+    this.actionSection,
+    this.displayName,
+    this.showRelationshipSummary = true,
+    super.key,
+  });
 
   final UserProfile profile;
+  final Widget? actionSection;
+  final String? displayName;
+  final bool showRelationshipSummary;
 
   @override
   Widget build(BuildContext context) {
@@ -160,12 +169,18 @@ class _PublicProfileContent extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: _ProfileSummary(profile: profile),
+          child: _ProfileSummary(profile: profile, displayName: displayName),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-          child: _RelationshipSummary(profile: profile),
-        ),
+        if (actionSection case final section?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: section,
+          ),
+        if (showRelationshipSummary)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: _RelationshipSummary(profile: profile),
+          ),
         if (profile.visibility == ProfileVisibility.full) ...[
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 22, 20, 9),
@@ -328,9 +343,10 @@ Future<void> _showMediaPreview(BuildContext context, Uri? url) async {
 }
 
 class _ProfileSummary extends StatelessWidget {
-  const _ProfileSummary({required this.profile});
+  const _ProfileSummary({required this.profile, this.displayName});
 
   final UserProfile profile;
+  final String? displayName;
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +360,7 @@ class _ProfileSummary extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            profile.nickname ?? profile.displayName,
+            displayName ?? profile.nickname ?? profile.displayName,
             style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 5),
