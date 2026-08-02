@@ -62,6 +62,8 @@ const MAJOR_TRANSIT_KEYWORDS = [
   "地铁站",
   "客运站",
   "汽车站",
+  "站前广场",
+  "站广场",
   "机场"
 ] as const;
 const MAJOR_MALL_KEYWORDS = ["购物中心", "商场", "商业广场", "购物广场"] as const;
@@ -217,7 +219,14 @@ export class PlazaNameSelector {
     } else if (citySquare && !this.isMerchantMasqueradingAsSquare(candidate)) {
       score = candidate.origin === "aoi" ? 1750 : 1650;
       source = "venue";
-      kind = "public_square";
+      // AMap can type station forecourts and scenic plazas as 城市广场. Keep
+      // their strong regional score while persisting the more useful semantic
+      // kind for four-plaza diversity and future policy audits.
+      kind = majorTransit
+        ? "transit"
+        : publicCulture
+          ? "culture_scenic"
+          : "public_square";
     } else if (majorTransit) {
       score = candidate.origin === "aoi" ? 1600 : 1500;
       source = "venue";
