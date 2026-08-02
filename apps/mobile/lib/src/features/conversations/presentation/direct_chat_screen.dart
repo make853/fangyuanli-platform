@@ -12,6 +12,7 @@ import '../application/direct_chat_controller.dart';
 import '../domain/conversation_message.dart';
 import 'chat_composer.dart';
 import 'chat_message_bubble.dart';
+import 'chat_message_timeline.dart';
 import 'chat_time.dart';
 import 'direct_chat_settings_screen.dart';
 
@@ -43,6 +44,12 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
   final _messageKeys = <int, GlobalKey>{};
 
   @override
+  void initState() {
+    super.initState();
+    _scrollToLatest(jump: true);
+  }
+
+  @override
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
@@ -64,14 +71,25 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
     }
   }
 
-  void _scrollToLatest() {
+  bool _isNearLatest() {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    return position.maxScrollExtent - position.pixels <= 96;
+  }
+
+  void _scrollToLatest({bool jump = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
+      final target = _scrollController.position.maxScrollExtent;
+      if (jump) {
+        _scrollController.jumpTo(target);
+      } else {
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
@@ -180,6 +198,19 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(next.errorMessage!)));
       }
+      final oldMessages = previous?.messages ?? const [];
+      final newMessages = next.messages;
+      final oldLatest = oldMessages.isEmpty ? null : oldMessages.last;
+      final newLatest = newMessages.isEmpty ? null : newMessages.last;
+      if (newLatest?.sequence != oldLatest?.sequence) {
+        final followsLatest =
+            oldMessages.isEmpty ||
+            _isNearLatest() ||
+            newLatest?.senderUserId == widget.currentUserId;
+        if (followsLatest) {
+          _scrollToLatest(jump: oldMessages.isEmpty);
+        }
+      }
     });
 
     return Scaffold(
@@ -253,7 +284,6 @@ class _MessageList extends StatelessWidget {
       return ListView(
         key: const ValueKey('chat-stable-loading-surface'),
         controller: controller,
-        reverse: true,
       );
     }
     if (state.messages.isEmpty) {
@@ -261,17 +291,11 @@ class _MessageList extends StatelessWidget {
         child: Text('还没有消息，打个招呼吧', style: TextStyle(color: Color(0xFF78847E))),
       );
     }
-    return ListView(
+    return ChatMessageTimeline(
       controller: controller,
-      reverse: true,
-      padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
-      children: [
-        for (var index = state.messages.length - 1; index >= 0; index--)
-          _message(
-            state.messages[index],
-            previous: index == 0 ? null : state.messages[index - 1],
-          ),
-      ],
+      messages: state.messages,
+      itemBuilder: (_, message, previous) =>
+          _message(message, previous: previous),
     );
   }
 
