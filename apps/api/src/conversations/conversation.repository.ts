@@ -276,6 +276,10 @@ export class ConversationRepository {
       );
       const sequence = number(sequenceResult.rows[0].latest_sequence);
       const messageId = randomUUID();
+      const retention =
+        sendAccess.type === "plaza"
+          ? { policy: "plaza_text_1y", interval: "1 year" }
+          : { policy: "direct_text_6m", interval: "6 months" };
       await client.query(
         `INSERT INTO messages (
            id, conversation_id, sequence, sender_user_id, client_message_id,
@@ -283,11 +287,8 @@ export class ConversationRepository {
            send_status, created_at
          ) VALUES (
            $1, $2, $3, $4, $5, 'text', $6, $7,
-           $9,
-           $8::timestamptz + CASE
-             WHEN $9 = 'plaza_text_1y' THEN interval '1 year'
-             ELSE interval '6 months'
-           END,
+           $9::varchar,
+           $8::timestamptz + $10::interval,
            'sent',
            $8::timestamptz
          )`,
@@ -300,7 +301,8 @@ export class ConversationRepository {
           input.text,
           input.replyToMessageId,
           input.now,
-          sendAccess.type === "plaza" ? "plaza_text_1y" : "direct_text_6m"
+          retention.policy,
+          retention.interval
         ]
       );
       await this.seedRecipientUnread(

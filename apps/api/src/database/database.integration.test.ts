@@ -162,3 +162,65 @@ test(
     }
   }
 );
+
+test(
+  "PostgreSQL accepts typed direct and plaza retention parameters",
+  { skip: process.env.RUN_DATABASE_INTEGRATION_TESTS !== "true" },
+  async () => {
+    const pool = new Pool({
+      application_name: "fangyuanli-message-retention-integration-test",
+      connectionString: requireDatabaseUrl(process.env),
+      max: 1
+    });
+    const database = new DatabaseService(pool);
+
+    try {
+      await database.transaction(async (transaction) => {
+        await transaction.query(
+          `CREATE TEMP TABLE message_retention_test (
+             policy varchar(32) NOT NULL,
+             expires_at timestamptz NOT NULL
+           )`
+        );
+        const createdAt = new Date("2026-08-03T00:00:00.000Z");
+        for (const retention of [
+          { policy: "direct_text_6m", interval: "6 months" },
+          { policy: "plaza_text_1y", interval: "1 year" }
+        ]) {
+          await transaction.query(
+            `INSERT INTO message_retention_test (policy, expires_at)
+             VALUES ($1::varchar, $2::timestamptz + $3::interval)`,
+            [retention.policy, createdAt, retention.interval]
+          );
+        }
+
+        const result = await transaction.query<{
+          policy: string;
+          expires_at: Date;
+        }>(
+          `SELECT policy, expires_at
+             FROM message_retention_test
+            ORDER BY policy`
+        );
+        assert.deepEqual(
+          result.rows.map((row) => ({
+            policy: row.policy,
+            expiresAt: row.expires_at.toISOString()
+          })),
+          [
+            {
+              policy: "direct_text_6m",
+              expiresAt: "2027-02-03T00:00:00.000Z"
+            },
+            {
+              policy: "plaza_text_1y",
+              expiresAt: "2027-08-03T00:00:00.000Z"
+            }
+          ]
+        );
+      });
+    } finally {
+      await database.onApplicationShutdown();
+    }
+  }
+);
