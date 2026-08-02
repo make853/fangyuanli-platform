@@ -38,8 +38,12 @@ sudo install -m 0644 deploy/systemd/fangyuanli-worker.service \
 sudo systemctl daemon-reload
 sudo systemctl enable fangyuanli-api.service fangyuanli-worker.service
 sudo systemctl restart fangyuanli-api.service fangyuanli-worker.service
-curl --fail http://127.0.0.1:3000/health
+curl --fail --retry 15 --retry-connrefused --retry-delay 1 --max-time 5 \
+  http://127.0.0.1:3000/health
 ```
+
+systemd 重启后 Node 进程通常需要不足一秒开始监听；健康检查必须允许这段
+启动窗口，但重试结束仍失败时部署应立即停止并查看服务日志。
 
 查看运行状态和最近日志：
 
