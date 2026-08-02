@@ -65,6 +65,20 @@ const UNSTABLE_TYPES = [
   "公司企业",
   "便民商店"
 ] as const;
+const SUBORDINATE_KEYWORDS = [
+  "停车场",
+  "出入口",
+  "入口",
+  "出口",
+  "号口",
+  "售票处",
+  "服务台",
+  "音乐喷泉",
+  "喷泉",
+  "相亲角",
+  "治安派出所"
+] as const;
+const ROAD_SUFFIXES = ["路", "街", "大道", "巷", "胡同", "公路"] as const;
 
 @Injectable()
 export class PlazaNameSelector {
@@ -96,14 +110,21 @@ export class PlazaNameSelector {
   }
 
   private rank(candidate: RawCandidate): PlazaNameCandidate | null {
+    if (this.isSubordinate(candidate.name) || this.isRoadName(candidate.name)) {
+      return null;
+    }
     const venue = this.includes(candidate.name, VENUE_KEYWORDS);
     const community = this.includes(candidate.name, COMMUNITY_KEYWORDS);
     const stableType = this.includes(candidate.type, STABLE_TYPES);
     const unstableType = this.includes(candidate.type, UNSTABLE_TYPES);
+    const citySquare = candidate.type.includes("城市广场");
     let score = 0;
     let source: PlazaNamingSource = "landmark";
 
-    if (candidate.origin === "businessArea") {
+    if (citySquare) {
+      score = candidate.origin === "aoi" ? 1450 : 1350;
+      source = "venue";
+    } else if (candidate.origin === "businessArea") {
       score = 850;
     } else if (venue && !unstableType) {
       score = candidate.origin === "aoi" ? 1200 : 1080;
@@ -185,5 +206,19 @@ export class PlazaNameSelector {
   private includes(value: string, keywords: readonly string[]): boolean {
     const normalized = value.toLowerCase();
     return keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+  }
+
+  private isRoadName(name: string): boolean {
+    return ROAD_SUFFIXES.some((suffix) => name.endsWith(suffix));
+  }
+
+  private isSubordinate(name: string): boolean {
+    return (
+      /[-—·]/u.test(name) ||
+      this.includes(name, SUBORDINATE_KEYWORDS) ||
+      /(?:亭|桥|瀑布|雕塑|观景台|景点|东门|西门|南门|北门|正门|侧门|大门|店)(?:\)|）)?$/u.test(
+        name
+      )
+    );
   }
 }
