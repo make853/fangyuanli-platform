@@ -504,6 +504,7 @@ Table plaza_grids {
   conversation_id uuid [not null, unique, ref: > conversations.id]
   display_name varchar(96) [not null]
   naming_source varchar(24) [not null, default: 'neutral']
+  naming_policy_version int [not null, default: 1, note: '自动展示名策略版本；不改变广场或会话身份']
   center_longitude_gcj02 decimal(10,7) [not null]
   center_latitude_gcj02 decimal(10,7) [not null]
   status varchar(16) [not null, default: 'active']

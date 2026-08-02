@@ -206,9 +206,10 @@ export class PlazaContextRepository {
     });
   }
 
-  async claimNeutralPlazasByCells(input: {
+  async claimPlazasForNamingByCells(input: {
     version: PlazaGridVersion;
     cells: PlazaCell[];
+    policyVersion: number;
   }): Promise<Array<PlazaCell & { plazaId: string }>> {
     const coordinates = input.cells.map((cell) => `${cell.gridX}:${cell.gridY}`);
     const result = await this.database.query<{
@@ -221,7 +222,7 @@ export class PlazaContextRepository {
            FROM plaza_grids
           WHERE grid_version_id = $1
             AND concat(grid_x, ':', grid_y) = ANY($2::text[])
-            AND naming_source = 'neutral'
+            AND (naming_source = 'neutral' OR naming_policy_version < $3)
             AND status = 'active'
             AND (naming_retry_after IS NULL OR naming_retry_after <= now())
           FOR UPDATE SKIP LOCKED
@@ -232,7 +233,7 @@ export class PlazaContextRepository {
          FROM claimable
         WHERE grid.id = claimable.id
       RETURNING grid.id AS plaza_id, grid.grid_x, grid.grid_y`,
-      [input.version.id, coordinates]
+      [input.version.id, coordinates, input.policyVersion]
     );
     return result.rows.map((row) => ({
       plazaId: row.plaza_id,
@@ -241,36 +242,39 @@ export class PlazaContextRepository {
     }));
   }
 
-  async renameNeutralPlaza(input: {
+  async applyPlazaNameCandidate(input: {
     plazaId: string;
     name: string;
     source: PlazaNamingSource;
+    policyVersion: number;
   }): Promise<boolean> {
     const result = await this.database.query(
       `UPDATE plaza_grids
           SET display_name = $2,
               naming_source = $3,
+              naming_policy_version = $4,
               naming_retry_after = NULL,
               updated_at = now()
         WHERE id = $1
-          AND naming_source = 'neutral'
+          AND (naming_source = 'neutral' OR naming_policy_version < $4)
           AND status = 'active'`,
-      [input.plazaId, input.name, input.source]
+      [input.plazaId, input.name, input.source, input.policyVersion]
     );
     return result.rowCount === 1;
   }
 
-  async deferNeutralPlazaNaming(input: {
+  async deferPlazaNaming(input: {
     plazaId: string;
     retryAfter: Date;
+    policyVersion: number;
   }): Promise<void> {
     await this.database.query(
       `UPDATE plaza_grids
           SET naming_retry_after = $2
         WHERE id = $1
-          AND naming_source = 'neutral'
+          AND (naming_source = 'neutral' OR naming_policy_version < $3)
           AND status = 'active'`,
-      [input.plazaId, input.retryAfter]
+      [input.plazaId, input.retryAfter, input.policyVersion]
     );
   }
 

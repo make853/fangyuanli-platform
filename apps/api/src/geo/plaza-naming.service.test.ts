@@ -4,6 +4,7 @@ import type { PlazaContextRepository } from "./plaza-context.repository.js";
 import type { PlazaGridVersion, PlazaProjection } from "./plaza-context.types.js";
 import { PlazaGridProjector } from "./plaza-grid-projector.js";
 import type { PlazaNamingProvider } from "./plaza-naming.provider.js";
+import { PLAZA_NAMING_POLICY_VERSION } from "./plaza-naming.provider.js";
 import { PlazaNamingService } from "./plaza-naming.service.js";
 
 const version: PlazaGridVersion = {
@@ -28,9 +29,9 @@ const plazas: PlazaProjection[] = [0, 1].map((index) => ({
 test("uses distinct stable candidates without changing plaza identity", async () => {
   const renamed: Array<{ plazaId: string; name: string }> = [];
   const repository = {
-    claimNeutralPlazasByCells: async () =>
+    claimPlazasForNamingByCells: async () =>
       plazas.map(({ plazaId, gridX, gridY }) => ({ plazaId, gridX, gridY })),
-    renameNeutralPlaza: async (input: { plazaId: string; name: string }) => {
+    applyPlazaNameCandidate: async (input: { plazaId: string; name: string }) => {
       renamed.push(input);
       return true;
     }
@@ -57,21 +58,31 @@ test("uses distinct stable candidates without changing plaza identity", async ()
     true
   );
   assert.deepEqual(renamed, [
-    { plazaId: "plaza-0", name: "滨江体育中心广场", source: "venue" },
-    { plazaId: "plaza-1", name: "滨江商圈广场", source: "landmark" }
+    {
+      plazaId: "plaza-0",
+      name: "滨江体育中心广场",
+      source: "venue",
+      policyVersion: PLAZA_NAMING_POLICY_VERSION
+    },
+    {
+      plazaId: "plaza-1",
+      name: "滨江商圈广场",
+      source: "landmark",
+      policyVersion: PLAZA_NAMING_POLICY_VERSION
+    }
   ]);
 });
 
 test("map lookup failure never blocks plaza entry", async () => {
   const deferred: string[] = [];
   const repository = {
-    claimNeutralPlazasByCells: async () => [
+    claimPlazasForNamingByCells: async () => [
       { plazaId: "plaza-0", gridX: 0, gridY: 0 }
     ],
-    deferNeutralPlazaNaming: async (input: { plazaId: string }) => {
+    deferPlazaNaming: async (input: { plazaId: string }) => {
       deferred.push(input.plazaId);
     },
-    renameNeutralPlaza: async () => {
+    applyPlazaNameCandidate: async () => {
       throw new Error("must not rename");
     }
   } as unknown as PlazaContextRepository;
@@ -101,7 +112,7 @@ test("map lookup failure never blocks plaza entry", async () => {
 test("does not claim naming work when the provider is not configured", async () => {
   let claimed = false;
   const repository = {
-    claimNeutralPlazasByCells: async () => {
+    claimPlazasForNamingByCells: async () => {
       claimed = true;
       return [];
     }

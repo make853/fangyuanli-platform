@@ -6,7 +6,10 @@ import type {
   PlazaProjection
 } from "./plaza-context.types.js";
 import { PlazaGridProjector } from "./plaza-grid-projector.js";
-import { PlazaNamingProvider } from "./plaza-naming.provider.js";
+import {
+  PLAZA_NAMING_POLICY_VERSION,
+  PlazaNamingProvider
+} from "./plaza-naming.provider.js";
 
 @Injectable()
 export class PlazaNamingService {
@@ -26,26 +29,30 @@ export class PlazaNamingService {
     plazas: PlazaProjection[];
   }): Promise<boolean> {
     if (!this.provider.isConfigured()) return false;
-    const neutral = await this.repository.claimNeutralPlazasByCells(input);
-    if (neutral.length === 0) return false;
+    const claimable = await this.repository.claimPlazasForNamingByCells({
+      ...input,
+      policyVersion: PLAZA_NAMING_POLICY_VERSION
+    });
+    if (claimable.length === 0) return false;
 
-    const neutralIds = new Set(neutral.map((plaza) => plaza.plazaId));
+    const claimableIds = new Set(claimable.map((plaza) => plaza.plazaId));
     const usedNames = new Set(
       input.plazas
-        .filter((plaza) => !neutralIds.has(plaza.plazaId))
+        .filter((plaza) => !claimableIds.has(plaza.plazaId))
         .map((plaza) => plaza.name)
     );
     const lookups = await Promise.all(
-      neutral.map(async (plaza) => {
+      claimable.map(async (plaza) => {
         try {
           const candidates = await this.provider.candidates(
             this.projector.center(plaza, input.version)
           );
           return { plaza, candidates, failed: false };
         } catch {
-          await this.repository.deferNeutralPlazaNaming({
+          await this.repository.deferPlazaNaming({
             plazaId: plaza.plazaId,
-            retryAfter: new Date(Date.now() + 30 * 60 * 1000)
+            retryAfter: new Date(Date.now() + 30 * 60 * 1000),
+            policyVersion: PLAZA_NAMING_POLICY_VERSION
           });
           return { plaza, candidates: [], failed: true };
         }
@@ -57,16 +64,18 @@ export class PlazaNamingService {
       if (lookup.failed) continue;
       const candidate = lookup.candidates.find((item) => !usedNames.has(item.name));
       if (!candidate) {
-        await this.repository.deferNeutralPlazaNaming({
+        await this.repository.deferPlazaNaming({
           plazaId: lookup.plaza.plazaId,
-          retryAfter: new Date(Date.now() + 6 * 60 * 60 * 1000)
+          retryAfter: new Date(Date.now() + 6 * 60 * 60 * 1000),
+          policyVersion: PLAZA_NAMING_POLICY_VERSION
         });
         continue;
       }
-      const updated = await this.repository.renameNeutralPlaza({
+      const updated = await this.repository.applyPlazaNameCandidate({
         plazaId: lookup.plaza.plazaId,
         name: candidate.name,
-        source: candidate.source
+        source: candidate.source,
+        policyVersion: PLAZA_NAMING_POLICY_VERSION
       });
       if (updated) {
         usedNames.add(candidate.name);

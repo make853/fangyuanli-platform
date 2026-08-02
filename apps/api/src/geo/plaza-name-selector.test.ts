@@ -155,7 +155,101 @@ test("filters local organizations and keeps community names low priority", () =>
     {
       name: "贸易西路社区广场",
       source: "community",
-      score: 264
+      score: 355.6
     }
+  ]);
+});
+
+test("prefers regional landmarks and rejects low-quality school, office and training names", () => {
+  const candidates = new PlazaNameSelector().select({
+    aois: [
+      {
+        name: "乐鼎·明德府",
+        type: "商务住宅;住宅区",
+        area: "75582",
+        distance: "200"
+      }
+    ],
+    pois: [
+      {
+        name: "庄周双语小学",
+        type: "科教文化服务;学校;小学",
+        distance: "80"
+      },
+      {
+        name: "民权县欢欢幼儿园",
+        type: "科教文化服务;学校;幼儿园",
+        distance: "60"
+      },
+      {
+        name: "成品流流通办公室",
+        type: "政府机构及社会团体;政府机关",
+        distance: "50"
+      },
+      {
+        name: "雅芝林商学院",
+        type: "科教文化服务;培训机构;培训机构",
+        distance: "40"
+      }
+    ],
+    regionalPois: [
+      {
+        name: "民生广场",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "900"
+      },
+      {
+        name: "民权站广场",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "1100"
+      },
+      {
+        name: "圣晖广场",
+        type: "购物服务;商场;购物中心",
+        distance: "700"
+      },
+      {
+        name: "建设银行中央城市广场",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "300"
+      }
+    ]
+  });
+
+  assert.deepEqual(candidates.slice(0, 3).map((candidate) => candidate.name), [
+    "民生广场",
+    "民权站广场",
+    "圣晖广场"
+  ]);
+  assert.equal(
+    candidates.some((candidate) =>
+      /幼儿园|办公室|商学院|建设银行/u.test(candidate.name)
+    ),
+    false
+  );
+  assert.ok(
+    candidates.findIndex((candidate) => candidate.name === "庄周双语小学广场") >
+      candidates.findIndex((candidate) => candidate.name === "乐鼎·明德府广场")
+  );
+});
+
+test("collapses hospital sub-buildings into the parent hospital", () => {
+  const candidates = new PlazaNameSelector().select({
+    pois: [
+      {
+        name: "民权中医院门诊综合楼",
+        type: "医疗保健服务;综合医院",
+        distance: "90"
+      },
+      {
+        name: "民权中医院-门诊部",
+        type: "医疗保健服务;综合医院",
+        distance: "120"
+      }
+    ]
+  });
+
+  assert.deepEqual(candidates.map((candidate) => candidate.name), [
+    "民权中医院广场"
   ]);
 });
