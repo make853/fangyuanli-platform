@@ -94,7 +94,68 @@ test("prefers a city plaza over its entrances, fountains and minor attractions",
     false
   );
   assert.equal(
+    candidates.some((candidate) => candidate.name === "人民广场地铁站广场"),
+    true
+  );
+  assert.equal(
     candidates.some((candidate) => candidate.name === "人民广场商圈广场"),
     true
   );
+});
+
+test("collapses metro exits into one stable station candidate", () => {
+  const candidates = new PlazaNameSelector().select({
+    pois: [
+      {
+        name: "民权站地铁站1号口",
+        type: "交通设施服务;地铁站;出入口",
+        distance: "80"
+      },
+      {
+        name: "民权站A口",
+        type: "交通设施服务;地铁站;出入口",
+        distance: "120"
+      },
+      {
+        name: "民权站(地铁站)",
+        type: "交通设施服务;地铁站",
+        distance: "100"
+      }
+    ]
+  });
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.name),
+    ["民权地铁站广场"]
+  );
+});
+
+test("filters local organizations and keeps community names low priority", () => {
+  const candidates = new PlazaNameSelector().select({
+    pois: [
+      {
+        name: "中共贸易西路社区支部委员会",
+        type: "政府机构及社会团体;政府机关",
+        distance: "20"
+      },
+      {
+        name: "贸易西路居民委员会",
+        type: "政府机构及社会团体;政府机关",
+        distance: "30"
+      },
+      {
+        name: "贸易西路社区",
+        type: "政府机构及社会团体;政府机关",
+        distance: "40"
+      }
+    ]
+  });
+
+  assert.deepEqual(candidates, [
+    {
+      name: "贸易西路社区广场",
+      source: "community",
+      score: 264
+    }
+  ]);
 });
