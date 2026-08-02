@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/realtime/realtime_controller.dart';
+import '../../../core/realtime/realtime_event.dart';
+import '../../auth/application/auth_controller.dart';
+import '../data/friends_snapshot_store.dart';
 import '../data/relationship_repository.dart';
 import '../domain/friend_models.dart';
 
@@ -51,13 +55,55 @@ class FriendsState {
 }
 
 class FriendsController extends StateNotifier<FriendsState> {
-  FriendsController(this._repository) : super(const FriendsState()) {
-    unawaited(load());
+  FriendsController(
+    this._repository, {
+    Stream<RealtimeEvent>? realtimeEvents,
+    this.snapshotStore,
+    this.ownerUserId,
+  }) : super(const FriendsState()) {
+    _subscription = realtimeEvents?.listen(_onRealtimeEvent);
+    unawaited(_initialize());
   }
 
   final RelationshipRepository _repository;
+  final FriendsSnapshotStore? snapshotStore;
+  final String? ownerUserId;
+  StreamSubscription<RealtimeEvent>? _subscription;
+  Timer? _profileReloadTimer;
+  Future<void>? _activeLoad;
+  Future<void> _snapshotWrite = Future.value();
 
-  Future<void> load({bool silent = false}) async {
+  FriendContact? contactForUser(String userId) {
+    for (final contact in state.contacts) {
+      if (contact.userId == userId) return contact;
+    }
+    return null;
+  }
+
+  Future<void> _initialize() async {
+    final cached = await _readSnapshot();
+    if (!mounted) return;
+    if (cached != null) {
+      state = state.copyWith(
+        requests: cached.requests,
+        contacts: cached.contacts,
+        blockedUsers: cached.blockedUsers,
+      );
+    }
+    await load(silent: cached != null);
+  }
+
+  Future<void> load({bool silent = false}) {
+    final active = _activeLoad;
+    if (active != null) return active;
+    final request = _load(silent: silent);
+    _activeLoad = request;
+    return request.whenComplete(() {
+      if (identical(_activeLoad, request)) _activeLoad = null;
+    });
+  }
+
+  Future<void> _load({required bool silent}) async {
     if (!silent) {
       state = state.copyWith(isLoading: true, clearError: true);
     }
@@ -70,14 +116,30 @@ class FriendsController extends StateNotifier<FriendsState> {
       final requestPage = results[0] as PageResult<FriendRequest>;
       final friendPage = results[1] as PageResult<FriendContact>;
       final blockPage = results[2] as PageResult<BlockedUser>;
+      if (!mounted) return;
       state = state.copyWith(
         requests: requestPage.items,
         contacts: friendPage.items,
         blockedUsers: blockPage.items,
         isLoading: false,
+        clearError: true,
       );
+      _persistSnapshot();
     } catch (error) {
+      if (!mounted) return;
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
+    }
+  }
+
+  Future<void> refreshContacts() async {
+    try {
+      final page = await _repository.loadFriends();
+      if (!mounted) return;
+      state = state.copyWith(contacts: page.items, clearError: true);
+      _persistSnapshot();
+    } catch (error) {
+      if (!mounted) return;
+      state = state.copyWith(errorMessage: error.toString());
     }
   }
 
@@ -106,6 +168,7 @@ class FriendsController extends StateNotifier<FriendsState> {
         processingRequestIds: {...state.processingRequestIds}
           ..remove(requestId),
       );
+      _persistSnapshot();
       return true;
     } catch (error) {
       state = state.copyWith(
@@ -231,6 +294,7 @@ class FriendsController extends StateNotifier<FriendsState> {
       state = state.copyWith(
         processingUserIds: {...state.processingUserIds}..remove(userId),
       );
+      _persistSnapshot();
       return true;
     } catch (error) {
       state = state.copyWith(
@@ -245,9 +309,60 @@ class FriendsController extends StateNotifier<FriendsState> {
     if (left.pinned != right.pinned) return left.pinned ? -1 : 1;
     return left.visibleName.compareTo(right.visibleName);
   }
+
+  Future<FriendsSnapshot?> _readSnapshot() async {
+    final store = snapshotStore;
+    final owner = ownerUserId;
+    if (store == null || owner == null || owner.isEmpty) return null;
+    try {
+      return await store.read(owner);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _persistSnapshot() {
+    final store = snapshotStore;
+    final owner = ownerUserId;
+    if (store == null || owner == null || owner.isEmpty) return;
+    final snapshot = FriendsSnapshot(
+      requests: List.of(state.requests),
+      contacts: List.of(state.contacts),
+      blockedUsers: List.of(state.blockedUsers),
+    );
+    _snapshotWrite = _snapshotWrite
+        .then((_) => store.write(owner, snapshot))
+        .catchError((_) {});
+  }
+
+  void _onRealtimeEvent(RealtimeEvent event) {
+    if (event.name != 'profile.updated') return;
+    final userId = event.payload['userId'];
+    if (userId is! String || contactForUser(userId) == null) return;
+    _profileReloadTimer?.cancel();
+    _profileReloadTimer = Timer(
+      const Duration(milliseconds: 180),
+      () => unawaited(refreshContacts()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _profileReloadTimer?.cancel();
+    unawaited(_subscription?.cancel());
+    super.dispose();
+  }
 }
 
 final friendsControllerProvider =
-    StateNotifierProvider.autoDispose<FriendsController, FriendsState>(
-      (ref) => FriendsController(ref.watch(relationshipRepositoryProvider)),
-    );
+    StateNotifierProvider.autoDispose<FriendsController, FriendsState>((ref) {
+      final realtime = ref.watch(realtimeControllerProvider.notifier);
+      return FriendsController(
+        ref.watch(relationshipRepositoryProvider),
+        realtimeEvents: realtime.events,
+        snapshotStore: ref.watch(friendsSnapshotStoreProvider),
+        ownerUserId: ref.watch(
+          authControllerProvider.select((state) => state.session?.userId),
+        ),
+      );
+    });

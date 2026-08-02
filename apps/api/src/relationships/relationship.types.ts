@@ -11,7 +11,8 @@ export class RelationshipDomainError extends Error {
 export type UserSummary = {
   userId: string;
   displayName: string;
-  avatar: null;
+  avatar: MediaView | null;
+  profileVersion: number;
 };
 
 export type FriendRequestView = {
@@ -48,3 +49,4 @@ export type BlockView = {
   directMessagingAllowed: boolean;
   updatedAt: string;
 };
+import type { MediaView } from "../media/media.types.js";

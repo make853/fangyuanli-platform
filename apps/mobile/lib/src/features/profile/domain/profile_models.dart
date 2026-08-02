@@ -87,6 +87,14 @@ class ProfileRelationship {
   final bool isBlockedByMe;
   final bool hasBlockedMe;
   final bool canViewMyPosts;
+
+  Map<String, dynamic> toJson() => {
+    'state': state.name,
+    'canStartDirectChat': canStartDirectChat,
+    'isBlockedByMe': isBlockedByMe,
+    'hasBlockedMe': hasBlockedMe,
+    'canViewMyPosts': canViewMyPosts,
+  };
 }
 
 class UserProfile {
@@ -146,6 +154,21 @@ class UserProfile {
     final value = nickname?.trim() ?? displayName.trim();
     return value.isEmpty ? '方' : String.fromCharCode(value.runes.first);
   }
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'displayName': displayName,
+    'fangyuanNumber': fangyuanNumber,
+    'nickname': nickname,
+    'gender': gender.wireValue,
+    'signature': signature,
+    'profileVisibility': visibility.name,
+    'profileVersion': profileVersion,
+    'relationship': relationship.toJson(),
+    'allowedActions': allowedActions,
+    if (avatar != null) 'avatar': avatar!.toJson(),
+    if (background != null) 'background': background!.toJson(),
+  };
 
   static MediaAsset? _optionalMedia(Object? value) => value is Map
       ? MediaAsset.fromJson(Map<String, dynamic>.from(value))

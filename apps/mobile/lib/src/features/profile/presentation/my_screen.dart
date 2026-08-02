@@ -4,11 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/navigation/app_navigation.dart';
 import '../../../core/presentation/feature_entry.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../friends/application/friend_relationship_coordinator.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/domain/friend_models.dart';
+import '../../media/domain/media_upload_models.dart';
 import '../application/profile_controller.dart';
 import 'privacy_screen.dart';
 import 'profile_detail_screen.dart';
+import 'profile_media_widgets.dart';
 
 class MyScreen extends ConsumerWidget {
   const MyScreen({super.key});
@@ -73,6 +76,7 @@ class MyScreen extends ConsumerWidget {
               ? (session == null ? '登录状态读取中' : '手机号账号已登录')
               : (profile.signature.isEmpty ? '还没有填写个人签名' : profile.signature),
           initial: profile?.initial,
+          avatar: profile?.avatar,
           onOpenProfile: () {
             AppNavigation.push<void>(
               context,
@@ -172,6 +176,7 @@ class _MyProfileCard extends StatelessWidget {
     required this.nickname,
     required this.signature,
     required this.initial,
+    required this.avatar,
     required this.onOpenProfile,
     required this.onOpenQrCode,
   });
@@ -179,6 +184,7 @@ class _MyProfileCard extends StatelessWidget {
   final String nickname;
   final String signature;
   final String? initial;
+  final MediaAsset? avatar;
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenQrCode;
 
@@ -194,28 +200,12 @@ class _MyProfileCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 18, 10, 18),
           child: Row(
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDDEEE7),
-                  borderRadius: BorderRadius.circular(21),
-                ),
-                child: initial == null
-                    ? const Icon(
-                        Icons.person_rounded,
-                        color: Color(0xFF167A5B),
-                        size: 32,
-                      )
-                    : Text(
-                        initial!,
-                        style: const TextStyle(
-                          color: Color(0xFF167A5B),
-                          fontSize: 23,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+              ProfileAvatarImage(
+                key: const ValueKey('my-profile-avatar'),
+                media: avatar,
+                initial: initial ?? '我',
+                size: 64,
+                borderRadius: 21,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -518,7 +508,7 @@ class BlockListScreen extends ConsumerWidget {
         false;
     if (!confirmed || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .unblockUser(blocked.target.userId);
     if (!context.mounted) return;
     final message = succeeded
@@ -555,12 +545,11 @@ class _BlockedUserTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: const Color(0xFFEEF1EF),
-            child: Text(
-              initial,
-              style: const TextStyle(color: Color(0xFF66736D)),
-            ),
+          ProfileAvatarImage(
+            media: blocked.target.avatar,
+            initial: initial,
+            size: 40,
+            borderRadius: 20,
           ),
           const SizedBox(width: 12),
           Expanded(

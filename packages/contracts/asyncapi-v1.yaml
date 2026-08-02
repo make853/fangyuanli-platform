@@ -45,6 +45,7 @@ channels:
           - $ref: '#/components/messages/MessageRejected'
           - $ref: '#/components/messages/MessageCreated'
           - $ref: '#/components/messages/ConversationUnreadChanged'
+          - $ref: '#/components/messages/ProfileUpdated'
           - $ref: '#/components/messages/FriendshipChanged'
           - $ref: '#/components/messages/BlockRelationChanged'
           - $ref: '#/components/messages/ActivityJoinRequestChanged'
@@ -120,6 +121,11 @@ components:
       title: 会话未读或底部导航计数变化
       payload:
         $ref: '#/components/schemas/ConversationUnreadChangedEvent'
+    ProfileUpdated:
+      name: profile.updated
+      title: 用户资料版本变化
+      payload:
+        $ref: '#/components/schemas/ProfileUpdatedEvent'
     FriendshipChanged:
       name: friendship.changed
       title: 好友关系变化
@@ -236,7 +242,7 @@ components:
 
     UserSummary:
       type: object
-      required: [userId, displayName]
+      required: [userId, displayName, profileVersion]
       properties:
         userId:
           type: string
@@ -248,6 +254,9 @@ components:
             - object
             - 'null'
           additionalProperties: true
+        profileVersion:
+          type: integer
+          minimum: 1
 
     MessageView:
       type: object
@@ -551,6 +560,24 @@ components:
                 navigationUnreadCount:
                   type: integer
                   minimum: 0
+
+    ProfileUpdatedEvent:
+      allOf:
+        - $ref: '#/components/schemas/ServerEventBase'
+        - type: object
+          properties:
+            event:
+              const: profile.updated
+            payload:
+              type: object
+              required: [userId, profileVersion]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                profileVersion:
+                  type: integer
+                  minimum: 1
 
     FriendshipChangedEvent:
       allOf:

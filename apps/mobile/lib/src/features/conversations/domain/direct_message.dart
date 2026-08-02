@@ -1,3 +1,5 @@
+import '../../media/domain/media_upload_models.dart';
+
 class DirectMessage {
   const DirectMessage({
     required this.messageId,
@@ -8,6 +10,8 @@ class DirectMessage {
     required this.text,
     required this.createdAt,
     required this.deliveryState,
+    this.senderProfileVersion = 1,
+    this.senderAvatar,
   });
 
   factory DirectMessage.fromJson(Map<String, dynamic> json) {
@@ -24,6 +28,8 @@ class DirectMessage {
       text: json['text'] as String? ?? '',
       createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
       deliveryState: json['deliveryState'] as String? ?? 'sent',
+      senderProfileVersion: senderMap['profileVersion'] as int? ?? 1,
+      senderAvatar: _optionalMedia(senderMap['avatar']),
     );
   }
 
@@ -35,7 +41,28 @@ class DirectMessage {
   final String text;
   final DateTime createdAt;
   final String deliveryState;
+  final int senderProfileVersion;
+  final MediaAsset? senderAvatar;
+
+  Map<String, dynamic> toJson() => {
+    'messageId': messageId,
+    'conversationId': conversationId,
+    'sequence': sequence,
+    'sender': {
+      'userId': senderUserId,
+      'displayName': senderName,
+      'profileVersion': senderProfileVersion,
+      if (senderAvatar != null) 'avatar': senderAvatar!.toJson(),
+    },
+    'type': 'text',
+    'text': text,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'deliveryState': deliveryState,
+  };
 }
+
+MediaAsset? _optionalMedia(Object? value) =>
+    value is Map ? MediaAsset.fromJson(Map<String, dynamic>.from(value)) : null;
 
 class DirectMessagePage {
   const DirectMessagePage({

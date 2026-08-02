@@ -132,6 +132,19 @@ class MediaAsset {
     expiresAt: _optionalDateTime(json['expiresAt']),
   );
 
+  Map<String, dynamic> toJson() => {
+    'mediaId': mediaId,
+    'status': status,
+    if (mediaType != null) 'mediaType': mediaType,
+    if (url != null) 'url': url.toString(),
+    if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl.toString(),
+    if (coverUrl != null) 'coverUrl': coverUrl.toString(),
+    if (width != null) 'width': width,
+    if (height != null) 'height': height,
+    if (durationMs != null) 'durationMs': durationMs,
+    if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
+  };
+
   static Uri? _optionalUri(Object? value) =>
       value is String && value.isNotEmpty ? Uri.parse(value) : null;
 

@@ -12,6 +12,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.avatar,
     this.onAvatarTap,
     this.senderLabel,
+    this.timestampLabel,
     super.key,
   });
 
@@ -22,6 +23,7 @@ class ChatMessageBubble extends StatelessWidget {
   final MediaAsset? avatar;
   final VoidCallback? onAvatarTap;
   final String? senderLabel;
+  final String? timestampLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -68,17 +70,31 @@ class ChatMessageBubble extends StatelessWidget {
       ),
     );
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        mainAxisAlignment: isMine
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: isMine
-            ? [bubble, const SizedBox(width: 8), avatarWidget]
-            : [avatarWidget, const SizedBox(width: 8), bubble],
-      ),
+    return Column(
+      children: [
+        if (timestampLabel != null) ...[
+          Padding(
+            key: const ValueKey('message-time-divider'),
+            padding: const EdgeInsets.only(top: 3, bottom: 12),
+            child: Text(
+              timestampLabel!,
+              style: const TextStyle(color: Color(0xFF929C97), fontSize: 11),
+            ),
+          ),
+        ],
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            mainAxisAlignment: isMine
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: isMine
+                ? [bubble, const SizedBox(width: 8), avatarWidget]
+                : [avatarWidget, const SizedBox(width: 8), bubble],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../media/domain/media_upload_models.dart';
@@ -25,10 +26,13 @@ class ProfileAvatarImage extends StatelessWidget {
         dimension: size,
         child: url == null
             ? _fallback()
-            : Image.network(
-                url.toString(),
+            : CachedNetworkImage(
+                imageUrl: url.toString(),
+                cacheKey: media!.mediaId,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _fallback(),
+                useOldImageOnUrlChange: true,
+                placeholder: (_, _) => _fallback(),
+                errorWidget: (_, _, _) => _fallback(),
               ),
       ),
     );
@@ -63,12 +67,15 @@ class ProfileBackgroundImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = media?.url ?? media?.thumbnailUrl;
     if (url == null) return _fallback();
-    return Image.network(
-      url.toString(),
+    return CachedNetworkImage(
+      imageUrl: url.toString(),
+      cacheKey: media!.mediaId,
       fit: fit,
       width: double.infinity,
       height: double.infinity,
-      errorBuilder: (_, _, _) => _fallback(),
+      useOldImageOnUrlChange: true,
+      placeholder: (_, _) => _fallback(),
+      errorWidget: (_, _, _) => _fallback(),
     );
   }
 

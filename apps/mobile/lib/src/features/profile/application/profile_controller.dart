@@ -6,7 +6,9 @@ import '../../media/application/media_upload_coordinator.dart';
 import '../../media/data/image_pipeline.dart';
 import '../../media/data/image_cropper.dart';
 import '../../media/domain/media_upload_models.dart';
+import '../../auth/application/auth_controller.dart';
 import '../data/profile_repository.dart';
+import '../data/profile_snapshot_store.dart';
 import '../domain/profile_models.dart';
 
 enum ProfileMediaSlot { avatar, background }
@@ -58,16 +60,43 @@ class ProfileState {
 }
 
 class ProfileController extends StateNotifier<ProfileState> {
-  ProfileController(this._repository, this._mediaUploads, this._imageCropper)
-    : super(const ProfileState()) {
-    unawaited(load());
+  ProfileController(
+    this._repository,
+    this._mediaUploads,
+    this._imageCropper, {
+    this.snapshotStore,
+    this.ownerUserId,
+  }) : super(const ProfileState()) {
+    unawaited(_initialize());
   }
 
   final ProfileRepository _repository;
   final MediaUploadWorkflow Function() _mediaUploads;
   final MediaImageCropper Function() _imageCropper;
+  final ProfileSnapshotStore? snapshotStore;
+  final String? ownerUserId;
+  Future<void>? _activeLoad;
 
-  Future<void> load({bool silent = false}) async {
+  Future<void> _initialize() async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    final cached = await _readCachedProfile();
+    if (cached != null) {
+      state = state.copyWith(profile: cached, isLoading: false);
+    }
+    await load(silent: cached != null);
+  }
+
+  Future<void> load({bool silent = false}) {
+    final active = _activeLoad;
+    if (active != null) return active;
+    final request = _load(silent: silent);
+    _activeLoad = request;
+    return request.whenComplete(() {
+      if (identical(_activeLoad, request)) _activeLoad = null;
+    });
+  }
+
+  Future<void> _load({required bool silent}) async {
     if (!silent) {
       state = state.copyWith(isLoading: true, clearError: true);
     }
@@ -83,6 +112,7 @@ class ProfileController extends StateNotifier<ProfileState> {
         isSaving: false,
         clearError: true,
       );
+      await _writeCachedProfile(results[0] as UserProfile);
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
@@ -109,6 +139,7 @@ class ProfileController extends StateNotifier<ProfileState> {
         signature: signature,
       );
       state = state.copyWith(profile: profile, isSaving: false);
+      await _writeCachedProfile(profile);
       return true;
     } catch (error) {
       state = state.copyWith(isSaving: false, errorMessage: error.toString());
@@ -180,6 +211,7 @@ class ProfileController extends StateNotifier<ProfileState> {
         clearMediaStatus: true,
         clearError: true,
       );
+      await _writeCachedProfile(profile);
       return ProfileMediaAction.updated;
     } catch (error) {
       state = state.copyWith(
@@ -218,6 +250,7 @@ class ProfileController extends StateNotifier<ProfileState> {
         clearMediaStatus: true,
         clearError: true,
       );
+      await _writeCachedProfile(profile);
       return true;
     } catch (error) {
       state = state.copyWith(
@@ -249,6 +282,31 @@ class ProfileController extends StateNotifier<ProfileState> {
       return false;
     }
   }
+
+  Future<UserProfile?> _readCachedProfile() async {
+    final store = snapshotStore;
+    final owner = ownerUserId;
+    if (store == null || owner == null || owner.isEmpty) {
+      return null;
+    }
+    try {
+      return await store.read(ownerUserId: owner, targetUserId: owner);
+    } catch (_) {
+      // A damaged or unavailable cache must never prevent a network refresh.
+      return null;
+    }
+  }
+
+  Future<void> _writeCachedProfile(UserProfile profile) async {
+    final store = snapshotStore;
+    final owner = ownerUserId;
+    if (store == null || owner == null || owner.isEmpty) return;
+    try {
+      await store.write(ownerUserId: owner, profile: profile);
+    } catch (_) {
+      // The server update already succeeded; cache persistence is best effort.
+    }
+  }
 }
 
 final profileControllerProvider =
@@ -257,5 +315,9 @@ final profileControllerProvider =
         ref.watch(profileRepositoryProvider),
         () => ref.read(mediaUploadCoordinatorProvider),
         () => ref.read(mediaImageCropperProvider),
+        snapshotStore: ref.watch(profileSnapshotStoreProvider),
+        ownerUserId: ref.watch(
+          authControllerProvider.select((state) => state.session?.userId),
+        ),
       ),
     );

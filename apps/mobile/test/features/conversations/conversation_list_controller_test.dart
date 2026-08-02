@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/application/conversation_list_controller.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_repository.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_list_snapshot_store.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_summary.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -75,6 +76,131 @@ void main() {
     controller.dispose();
     await realtime.close();
   });
+
+  test(
+    'relationship projection updates title, pin order and removal locally',
+    () async {
+      final realtime = StreamController<RealtimeEvent>.broadcast(sync: true);
+      final repository = _FakeConversationRepository([
+        ConversationListPage(
+          navigationUnread: 0,
+          hasMore: false,
+          items: [
+            _summary('conversation-1', '阿禾', minute: 1),
+            _summary('conversation-2', '小桃子', minute: 2),
+          ],
+        ),
+      ]);
+      final controller = ConversationListController(
+        repository,
+        realtime.stream,
+      );
+      await _waitFor(() => controller.state.items.length == 2);
+
+      controller.applyFriendProjection(
+        conversationId: 'conversation-1',
+        title: '备注后的阿禾',
+        pinned: true,
+      );
+
+      expect(controller.state.items.first.conversationId, 'conversation-1');
+      expect(controller.state.items.first.title, '备注后的阿禾');
+      expect(controller.state.items.first.pinned, isTrue);
+
+      controller.removeConversation('conversation-1');
+      expect(controller.state.items, hasLength(1));
+      expect(controller.state.items.single.conversationId, 'conversation-2');
+
+      controller.dispose();
+      await realtime.close();
+    },
+  );
+
+  test(
+    'cold start renders cached conversations before silent refresh',
+    () async {
+      final store = _MemoryConversationListSnapshotStore(
+        ConversationListSnapshot(
+          items: [_summary('conversation-1', 'Bb', minute: 1)],
+          navigationUnread: 3,
+        ),
+      );
+      final repository = _DelayedConversationRepository();
+      final controller = ConversationListController(
+        repository,
+        const Stream<RealtimeEvent>.empty(),
+        snapshotStore: store,
+        ownerUserId: 'owner-a',
+      );
+
+      await _waitFor(() => controller.state.items.isNotEmpty);
+      expect(controller.state.items.single.title, 'Bb');
+      expect(controller.state.navigationUnread, 3);
+      expect(controller.state.isLoading, isFalse);
+
+      repository.complete(_page(unread: 1, preview: '服务器新预览'));
+      await _waitFor(
+        () => controller.state.items.single.lastMessage?.preview == '服务器新预览',
+      );
+      expect(store.lastWritten?.navigationUnread, 1);
+      expect(store.lastOwnerUserId, 'owner-a');
+
+      controller.dispose();
+    },
+  );
+}
+
+class _DelayedConversationRepository implements ConversationRepository {
+  final _result = Completer<ConversationListPage>();
+
+  void complete(ConversationListPage page) => _result.complete(page);
+
+  @override
+  Future<ConversationListPage> loadConversations() => _result.future;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _MemoryConversationListSnapshotStore
+    implements ConversationListSnapshotStore {
+  _MemoryConversationListSnapshotStore(this.snapshot);
+
+  final ConversationListSnapshot? snapshot;
+  ConversationListSnapshot? lastWritten;
+  String? lastOwnerUserId;
+
+  @override
+  Future<ConversationListSnapshot?> read(String ownerUserId) async => snapshot;
+
+  @override
+  Future<void> write(
+    String ownerUserId,
+    ConversationListSnapshot snapshot,
+  ) async {
+    lastOwnerUserId = ownerUserId;
+    lastWritten = snapshot;
+  }
+}
+
+ConversationSummary _summary(
+  String conversationId,
+  String title, {
+  required int minute,
+}) {
+  return ConversationSummary(
+    conversationId: conversationId,
+    title: title,
+    unread: const ConversationUnread(count: 0, appearance: 'none'),
+    notificationMode: 'normal',
+    pinned: false,
+    lastMessage: ConversationPreview(
+      messageId: 'message-$conversationId',
+      sequence: minute,
+      preview: '消息',
+      createdAt: DateTime.utc(2026, 8, 2, 10, minute),
+    ),
+  );
 }
 
 ConversationListPage _page({required int unread, required String preview}) {
@@ -124,7 +250,13 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessagePage> loadMessages(String conversationId) {
+  Future<DirectMessagePage> loadMessages(
+    String conversationId, {
+    int? beforeSequence,
+    int? afterSequence,
+    int? anchorSequence,
+    int limit = 50,
+  }) {
     throw UnimplementedError();
   }
 

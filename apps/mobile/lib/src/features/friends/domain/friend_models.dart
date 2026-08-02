@@ -1,17 +1,35 @@
+import '../../media/domain/media_upload_models.dart';
+
 enum FriendRequestStatus { pending, accepted, rejected, cancelled, expired }
 
 class UserSummary {
-  const UserSummary({required this.userId, required this.displayName});
+  const UserSummary({
+    required this.userId,
+    required this.displayName,
+    this.profileVersion = 1,
+    this.avatar,
+  });
 
   factory UserSummary.fromJson(Map<String, dynamic> json) {
     return UserSummary(
       userId: json['userId'] as String,
       displayName: json['displayName'] as String,
+      profileVersion: json['profileVersion'] as int? ?? 1,
+      avatar: _optionalMedia(json['avatar']),
     );
   }
 
   final String userId;
   final String displayName;
+  final int profileVersion;
+  final MediaAsset? avatar;
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'displayName': displayName,
+    'profileVersion': profileVersion,
+    if (avatar != null) 'avatar': avatar!.toJson(),
+  };
 }
 
 class FriendRequest {
@@ -46,6 +64,16 @@ class FriendRequest {
   final String applicationNote;
   final DateTime createdAt;
   final DateTime? decidedAt;
+
+  Map<String, dynamic> toJson() => {
+    'requestId': requestId,
+    'sender': sender.toJson(),
+    'receiver': receiver.toJson(),
+    'status': status.name,
+    'applicationNote': applicationNote,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    if (decidedAt != null) 'decidedAt': decidedAt!.toUtc().toIso8601String(),
+  };
 }
 
 class FriendContact {
@@ -57,6 +85,8 @@ class FriendContact {
     required this.pinned,
     required this.directConversationId,
     this.remarkName,
+    this.profileVersion = 1,
+    this.avatar,
   });
 
   factory FriendContact.fromJson(Map<String, dynamic> json) {
@@ -68,6 +98,8 @@ class FriendContact {
       canViewMyPosts: json['canViewMyPosts'] as bool? ?? true,
       pinned: json['pinned'] as bool? ?? false,
       directConversationId: json['directConversationId'] as String? ?? '',
+      profileVersion: json['profileVersion'] as int? ?? 1,
+      avatar: _optionalMedia(json['avatar']),
     );
   }
 
@@ -78,6 +110,20 @@ class FriendContact {
   final bool canViewMyPosts;
   final bool pinned;
   final String directConversationId;
+  final int profileVersion;
+  final MediaAsset? avatar;
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'displayName': displayName,
+    'nickname': nickname,
+    'remarkName': remarkName,
+    'canViewMyPosts': canViewMyPosts,
+    'pinned': pinned,
+    'directConversationId': directConversationId,
+    'profileVersion': profileVersion,
+    if (avatar != null) 'avatar': avatar!.toJson(),
+  };
 
   String get visibleName {
     final remark = remarkName?.trim();
@@ -98,9 +144,14 @@ class FriendContact {
       canViewMyPosts: canViewMyPosts ?? this.canViewMyPosts,
       pinned: pinned ?? this.pinned,
       directConversationId: directConversationId,
+      profileVersion: profileVersion,
+      avatar: avatar,
     );
   }
 }
+
+MediaAsset? _optionalMedia(Object? value) =>
+    value is Map ? MediaAsset.fromJson(Map<String, dynamic>.from(value)) : null;
 
 class FriendDecision {
   const FriendDecision({
@@ -180,6 +231,14 @@ class BlockedUser {
   final PriorRelation priorRelation;
   final PriorRelation? restoredRelation;
   final bool directMessagingAllowed;
+
+  Map<String, dynamic> toJson() => {
+    'target': target.toJson(),
+    'state': state.name,
+    'priorRelation': priorRelation.name,
+    if (restoredRelation != null) 'restoredRelation': restoredRelation!.name,
+    'directMessagingAllowed': directMessagingAllowed,
+  };
 }
 
 class PageResult<T> {

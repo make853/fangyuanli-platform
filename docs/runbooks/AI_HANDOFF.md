@@ -95,10 +95,16 @@ make853/fangyuanli-platform
 - Flutter 共享鉴权客户端已成为好友、会话、资料、实时补偿和媒体模块的统一网络入口；会话加载只在 App 根组合层注入；
 - 持久化媒体任务带不可变 `ownerUserId`，账号切换会阻断原账号延迟请求，App 重启只恢复当前账号任务；旧版无归属任务不自动迁移；
 - 移动端网络与账号任务边界已记录在 `docs/architecture/decisions/0002-mobile-authenticated-client-and-account-scoped-tasks.md`。
+- 鉴权冷启动已改为本地优先：有效刷新凭证会立即恢复账号，不在启动页等待15分钟访问令牌续期；断网、超时、限流和服务端暂时故障不会误删本地登录，只有刷新凭证过期或被明确拒绝才退出。
 - COS 正式环境使用绑定 CVM 的专用 CAM 角色和自动轮换临时凭证，长期 SecretKey 只允许本地开发兼容；该决定记录在 `docs/architecture/decisions/0003-cos-cvm-role-credentials.md`；
 - COS 最小权限策略模板位于 `docs/security/tencent-cos-staging-policy.template.json`，部署后运行 `pnpm --filter @fangyuanli/api check:cos` 验证一次性 PUT、HEAD 和 DELETE。
 - staging 私有 COS、最小权限 CAM 角色和 CVM 实例角色已完成配置，真实 iPhone 模拟器上传验收已覆盖 iOS 压缩、COS 直传、上传中断后续传和过期凭证换新；测试入口位于 `apps/mobile/integration_test/media_upload_staging_test.dart`，不进入正式 App。
 - 图片处理 Worker、头像/背景墙绑定、签名读取和旧媒体延迟清理已完成；Flutter 已通过可替换的裁剪端口接入 1:1 头像裁剪，背景墙不强制裁剪；
+- 高频用户身份资料已从完整个人资料中分层：好友申请、联系人、会话和消息返回头像与资料版本；Flutter以媒体ID缓存头像并监听 `profile.updated` 静默刷新；架构决定见 `docs/architecture/decisions/0004-versioned-user-identity-projections.md`；
+- Flutter 已建立统一的本地 SQLite 数据库边界，完整资料按当前登录账号持久化并采用本地优先、后台静默刷新；缓存版本、故障降级和后续本地消息扩展规则记录在 `docs/architecture/decisions/0005-mobile-local-first-profile-snapshots.md`；
+- 私聊消息已加入同一 SQLite 数据库的版本2迁移：按账号与会话隔离、消息ID幂等、会话序号唯一；聊天页本地优先并通过 `afterSequence` 多页增量补拉，发送成功和实时消息都会写回本地。iPhone `profile` 模式已通过彻底退出后的冷启动无闪屏和飞行模式读取本地消息验收；离线期间产生新消息后的恢复增量补拉仍待人工验收。设计边界见 `docs/architecture/decisions/0006-mobile-local-message-snapshots-and-sequence-sync.md`；
+- 真机验收曾发现联系人列表仍依赖网络，Bb 会在冷启动先缺失再出现；数据库版本3已增加账号概览快照，好友申请、联系人、黑名单、会话列表和未读数改为本地先显示、后台静默更新，成功的备注/置顶/拉黑等本地投影立即持久化。账号隔离与冷启动自动化测试、真机彻底退出重开、飞行模式读取和恢复联网静默刷新现已全部通过。设计边界见 `docs/architecture/decisions/0007-mobile-account-overview-snapshots.md`；
+- 私聊缓存验收结论已推广为全部聊天的统一约束：广场、地点、活动、私聊和系统会话共用一套本地消息存储、序号同步、实时合并、未读与未来 outbox；各业务模块只提供位置、角色、禁言、状态和读写能力策略，不得复制缓存。当前 Flutter 的 `DirectMessage` 过渡命名须在首个真实群聊接入前无损升级，见 `docs/architecture/decisions/0008-unified-conversation-cache-and-sync-engine.md`；
 - staging 媒体验收已扩展为 A/B 双账号，覆盖好友完整资料、拉黑后最小头像资料、背景墙隔离和测试状态恢复；原生裁剪手势仍需在 iPhone 模拟器或真机人工确认一次。
 
 好友关系、私聊文字消息、实时推送、断线补偿、多连接同步、个人资料和资料图片已经通过真实服务器 A/B 闭环；Flutter 已完成登录、好友申请、联系人、关系设置、私聊实时收发、资料编辑，以及头像/背景墙的可恢复上传、处理、绑定和权限读取。个人历史动态与聊天媒体仍待后续接入。HTML 原型中的其余交互大部分仍是模拟状态。
@@ -123,9 +129,10 @@ make853/fangyuanli-platform
 
 好友关系、私聊文字消息、分页、未读游标、拉黑拦截、实时通道、断线补偿、多连接同步、个人资料与资料媒体闭环已经完成。接下来固定按以下顺序继续：
 
-1. 完成头像裁剪的 iPhone 人工视觉验收；
-2. 接入个人历史动态并复用现有资料可见性；
-3. 聊天图片、语音和视频复用现有媒体上传、处理、签名读取和清理基础设施。
+1. 增加向上加载更早消息和未读/搜索锚点定位，复用 `beforeSequence` 与 `anchorSequence`；
+2. 完成头像裁剪的 iPhone 人工视觉验收；
+3. 接入个人历史动态并复用现有资料可见性；
+4. 聊天图片、语音和视频复用现有媒体上传、处理、签名读取和清理基础设施，并在其上增加账号隔离的发送 outbox。
 
 ## 5. 工程原则
 

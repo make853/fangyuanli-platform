@@ -1,4 +1,5 @@
 import '../../../core/storage/session_store.dart';
+import '../../../core/network/api_failure.dart';
 import '../domain/auth_session.dart';
 import 'auth_api.dart';
 
@@ -16,7 +17,15 @@ class AuthRepository {
   Future<AuthSession?> restore() async {
     final session = await sessionStore.read();
     if (session == null) return null;
-    return ensureValid(session);
+    if (session.refreshTokenExpired(_clock())) {
+      await sessionStore.clear();
+      return null;
+    }
+
+    // Cold start must not wait for the network. The refresh token is the
+    // durable login credential; access-token renewal happens lazily when a
+    // request needs it. This lets cached screens render immediately offline.
+    return session;
   }
 
   Future<AuthSession?> ensureValid(
@@ -35,10 +44,23 @@ class AuthRepository {
       final refreshed = await api.refresh(session);
       await sessionStore.write(refreshed);
       return refreshed;
-    } catch (_) {
-      await sessionStore.clear();
-      return null;
+    } on ApiFailure catch (error) {
+      if (_credentialsWereRejected(error)) {
+        await sessionStore.clear();
+        return null;
+      }
+
+      // Connectivity and server availability are not logout signals. Keep the
+      // refresh credential so local snapshots remain available and a later
+      // request can retry renewal after the network recovers.
+      return session;
     }
+  }
+
+  static bool _credentialsWereRejected(ApiFailure error) {
+    return error.code == 'AUTH_REFRESH_INVALID' ||
+        error.statusCode == 401 ||
+        error.statusCode == 403;
   }
 
   Future<SmsChallenge> sendLoginCode(String phoneNumber) {

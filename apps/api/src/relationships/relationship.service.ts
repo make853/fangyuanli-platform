@@ -1,4 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { ProfileIdentityService } from "../profiles/profile-identity.service.js";
+import type { UserIdentityView } from "../profiles/profile.types.js";
 import { RelationshipRepository } from "./relationship.repository.js";
 import { RequestHasher } from "./request-hasher.js";
 import {
@@ -6,7 +8,8 @@ import {
   type BlockView,
   type FriendDecisionView,
   type FriendRequestView,
-  type FriendView
+  type FriendView,
+  type UserSummary
 } from "./relationship.types.js";
 
 const UUID_PATTERN =
@@ -22,7 +25,8 @@ type Page<T> = {
 export class RelationshipService {
   constructor(
     private readonly repository: RelationshipRepository,
-    private readonly requestHasher: RequestHasher
+    private readonly requestHasher: RequestHasher,
+    @Optional() private readonly identities?: ProfileIdentityService
   ) {}
 
   async createRequest(input: {
@@ -44,13 +48,14 @@ export class RelationshipService {
       );
     }
     const idempotencyKey = this.idempotencyKey(input.idempotencyKey);
-    return this.repository.createRequest({
+    const request = await this.repository.createRequest({
       senderUserId: input.senderUserId,
       targetUserId,
       applicationNote: note,
       idempotencyKeyHash: this.requestHasher.hash(idempotencyKey),
       now: new Date()
     });
+    return this.hydrateRequest(request);
   }
 
   async listRequests(input: {
@@ -76,7 +81,11 @@ export class RelationshipService {
       offset,
       limit
     });
-    return this.pageResult(result, offset, limit);
+    const page = this.pageResult(result, offset, limit);
+    return {
+      ...page,
+      items: await this.hydrateRequests(page.items)
+    };
   }
 
   async decideRequest(input: {
@@ -94,12 +103,16 @@ export class RelationshipService {
       );
     }
     this.idempotencyKey(input.idempotencyKey);
-    return this.repository.decideRequest({
+    const decision = await this.repository.decideRequest({
       requestId,
       receiverUserId: input.receiverUserId,
       decision: input.decision,
       now: new Date()
     });
+    return {
+      ...decision,
+      request: await this.hydrateRequest(decision.request)
+    };
   }
 
   async listFriends(input: {
@@ -119,7 +132,11 @@ export class RelationshipService {
       offset,
       limit
     });
-    return this.pageResult(result, offset, limit);
+    const page = this.pageResult(result, offset, limit);
+    return {
+      ...page,
+      items: await this.hydrateFriends(page.items)
+    };
   }
 
   async updateFriendSettings(input: {
@@ -190,12 +207,13 @@ export class RelationshipService {
     ) {
       throw new RelationshipDomainError("BLOCK_REASON_INVALID", "拉黑原因无效", 400);
     }
-    return this.repository.block({
+    const result = await this.repository.block({
       blockerUserId: input.blockerUserId,
       targetUserId,
       reasonCode: input.reasonCode as string | undefined,
       now: new Date()
     });
+    return this.hydrateBlock(result);
   }
 
   async unblock(input: {
@@ -205,11 +223,12 @@ export class RelationshipService {
   }): Promise<BlockView> {
     const targetUserId = this.uuid(input.targetUserId, "USER_ID_INVALID");
     this.idempotencyKey(input.idempotencyKey);
-    return this.repository.unblock({
+    const result = await this.repository.unblock({
       blockerUserId: input.blockerUserId,
       targetUserId,
       now: new Date()
     });
+    return this.hydrateBlock(result);
   }
 
   async listBlocks(input: {
@@ -223,7 +242,90 @@ export class RelationshipService {
       offset,
       limit
     });
-    return this.pageResult(result, offset, limit);
+    const page = this.pageResult(result, offset, limit);
+    return {
+      ...page,
+      items: await this.hydrateBlocks(page.items)
+    };
+  }
+
+  private async identityMap(
+    userIds: string[]
+  ): Promise<Map<string, UserIdentityView>> {
+    return this.identities?.getMany(userIds) ?? new Map<string, UserIdentityView>();
+  }
+
+  private applyIdentity<T extends UserSummary>(
+    summary: T,
+    identity: UserIdentityView | undefined,
+    preserveDisplayName = false
+  ): T {
+    if (!identity) return summary;
+    return {
+      ...summary,
+      displayName: preserveDisplayName
+        ? summary.displayName
+        : identity.displayName,
+      avatar: identity.avatar,
+      profileVersion: identity.profileVersion
+    };
+  }
+
+  private async hydrateRequest(
+    request: FriendRequestView
+  ): Promise<FriendRequestView> {
+    return (await this.hydrateRequests([request]))[0];
+  }
+
+  private async hydrateRequests(
+    requests: FriendRequestView[]
+  ): Promise<FriendRequestView[]> {
+    if (!this.identities) return requests;
+    const identities = await this.identityMap(
+      requests.flatMap((request) => [
+        request.sender.userId,
+        request.receiver.userId
+      ])
+    );
+    return requests.map((request) => ({
+      ...request,
+      sender: this.applyIdentity(
+        request.sender,
+        identities.get(request.sender.userId)
+      ),
+      receiver: this.applyIdentity(
+        request.receiver,
+        identities.get(request.receiver.userId)
+      )
+    }));
+  }
+
+  private async hydrateFriends(friends: FriendView[]): Promise<FriendView[]> {
+    if (!this.identities) return friends;
+    const identities = await this.identityMap(
+      friends.map((friend) => friend.userId)
+    );
+    return friends.map((friend) =>
+      this.applyIdentity(friend, identities.get(friend.userId), true)
+    );
+  }
+
+  private async hydrateBlock(block: BlockView): Promise<BlockView> {
+    return (await this.hydrateBlocks([block]))[0];
+  }
+
+  private async hydrateBlocks(blocks: BlockView[]): Promise<BlockView[]> {
+    if (!this.identities) return blocks;
+    const identities = await this.identityMap(
+      blocks.map((block) => block.target.userId)
+    );
+    return blocks.map((block) => ({
+      ...block,
+      target: this.applyIdentity(
+        block.target,
+        identities.get(block.target.userId)
+      )
+    }));
   }
 
   private uuid(value: unknown, code: string): string {

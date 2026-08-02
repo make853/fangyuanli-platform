@@ -33,6 +33,7 @@ enum AppRouteId {
   userProfile('/profile/user'),
   profileEdit('/profile/me/edit'),
   friendProfile('/friends/profile'),
+  friendProfileSettings('/friends/profile/settings'),
   friendRequests('/friends/requests'),
   systemInbox('/friends/system-inbox'),
   directChat('/friends/direct-chat'),

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module.js";
+import { ProfileModule } from "../profiles/profile.module.js";
 import { RealtimeInfrastructureModule } from "../realtime/realtime-infrastructure.module.js";
 import { RealtimeGateway } from "../realtime/realtime.gateway.js";
 import { SyncController } from "../realtime/sync.controller.js";
@@ -8,7 +9,7 @@ import { ConversationRepository } from "./conversation.repository.js";
 import { ConversationService } from "./conversation.service.js";
 
 @Module({
-  imports: [AuthModule, RealtimeInfrastructureModule],
+  imports: [AuthModule, ProfileModule, RealtimeInfrastructureModule],
   controllers: [ConversationController, SyncController],
   providers: [ConversationRepository, ConversationService, RealtimeGateway],
   exports: [ConversationService]

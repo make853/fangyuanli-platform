@@ -40,6 +40,20 @@ export type ProfileProjection = Omit<ProfileView, "avatar" | "background"> & {
   backgroundReference: MediaDeliveryReference | null;
 };
 
+export type UserIdentityProjection = {
+  userId: string;
+  displayName: string;
+  profileVersion: number;
+  avatarReference: MediaDeliveryReference | null;
+};
+
+export type UserIdentityView = {
+  userId: string;
+  displayName: string;
+  profileVersion: number;
+  avatar: MediaView | null;
+};
+
 export type PrivacySettingsView = {
   strangersCanViewProfile: boolean;
   searchableByFangyuanNumber: boolean;

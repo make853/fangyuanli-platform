@@ -1,6 +1,8 @@
 import 'package:fangyuanli_mobile/src/features/profile/data/profile_repository.dart';
 import 'package:fangyuanli_mobile/src/features/profile/domain/profile_models.dart';
 import 'package:fangyuanli_mobile/src/features/profile/presentation/my_screen.dart';
+import 'package:fangyuanli_mobile/src/features/profile/presentation/profile_media_widgets.dart';
+import 'package:fangyuanli_mobile/src/features/media/domain/media_upload_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,6 +92,19 @@ class _ProfileRepository implements ProfileRepository {
 void main() {
   testWidgets('从我的进入资料、编辑保存并按原路径返回', (tester) async {
     final repository = _ProfileRepository();
+    repository.profile = UserProfile(
+      userId: repository.profile.userId,
+      displayName: repository.profile.displayName,
+      fangyuanNumber: repository.profile.fangyuanNumber,
+      nickname: repository.profile.nickname,
+      gender: repository.profile.gender,
+      signature: repository.profile.signature,
+      visibility: repository.profile.visibility,
+      profileVersion: repository.profile.profileVersion,
+      relationship: repository.profile.relationship,
+      allowedActions: repository.profile.allowedActions,
+      avatar: const MediaAsset(mediaId: 'avatar-1', status: 'ready'),
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [profileRepositoryProvider.overrideWithValue(repository)],
@@ -99,6 +114,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('小桃子'), findsOneWidget);
+    final homeAvatar = tester.widget<ProfileAvatarImage>(
+      find.byKey(const ValueKey('my-profile-avatar')),
+    );
+    expect(homeAvatar.media?.mediaId, 'avatar-1');
     await tester.tap(find.text('小桃子'));
     await tester.pumpAndSettle();
     expect(find.text('个人资料'), findsOneWidget);
