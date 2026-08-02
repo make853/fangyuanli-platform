@@ -252,6 +252,47 @@ void main() {
     expect(find.text('消息 1'), findsNothing);
   });
 
+  testWidgets('处于最新位置时视口高度变化后仍保持最后一条完整可见', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final timelineController = ChatTimelineViewportController();
+    final messages = [
+      for (var index = 1; index <= 30; index += 1)
+        _message(sequence: index, text: '键盘消息 $index'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatMessageTimeline(
+            messages: messages,
+            controller: timelineController.scrollController,
+            itemBuilder: (context, message, previous) => ChatMessageBubble(
+              text: message.previewText,
+              deliveryState: message.deliveryState,
+              isMine: true,
+              avatarInitial: '我',
+            ),
+          ),
+        ),
+      ),
+    );
+    timelineController.scrollToLatest(jump: true);
+    await tester.pumpAndSettle();
+
+    tester.view.physicalSize = const Size(400, 560);
+    await tester.pumpAndSettle();
+
+    final position = timelineController.scrollController.position;
+    expect(position.pixels, position.maxScrollExtent);
+    expect(find.text('键盘消息 30'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    timelineController.dispose();
+  });
+
   testWidgets('查找聊天记录后返回选中的消息序号', (tester) async {
     int? selectedSequence;
 

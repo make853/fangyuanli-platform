@@ -38,10 +38,18 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
     _selectedPlazaId = widget.plazas.first.id;
   }
 
-  void _pending(String action) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$action将在广场纵切接入后启用')));
+  void _openPlazaInfo(PlazaSummary plaza) {
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.plazaInfo,
+      source: AppNavigationSource(
+        section: AppSection.plaza,
+        entryPoint: AppEntryPoint.channelChat,
+        routeId: AppRouteId.plazaChat,
+        entityId: plaza.id,
+      ),
+      builder: (_) => PlazaInfoScreen(plaza: plaza),
+    );
   }
 
   @override
@@ -53,15 +61,44 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-          child: SegmentedButton<_PlazaView>(
-            segments: const [
-              ButtonSegment(value: _PlazaView.chat, label: Text('聊天')),
-              ButtonSegment(value: _PlazaView.feed, label: Text('动态')),
-            ],
-            selected: {_view},
-            showSelectedIcon: false,
-            onSelectionChanged: (value) => setState(() => _view = value.first),
+          padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+          child: SizedBox(
+            height: 48,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SegmentedButton<_PlazaView>(
+                  segments: const [
+                    ButtonSegment(value: _PlazaView.chat, label: Text('聊天')),
+                    ButtonSegment(value: _PlazaView.feed, label: Text('动态')),
+                  ],
+                  selected: {_view},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (value) =>
+                      setState(() => _view = value.first),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: plazaState.isLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          key: const ValueKey('plaza-location-refresh'),
+                          tooltip: '刷新附近广场',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => ref
+                              .read(plazaControllerProvider.notifier)
+                              .refresh(silent: plazaState.plazas.isNotEmpty),
+                          icon: const Icon(Icons.my_location_rounded, size: 19),
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
         Expanded(
@@ -95,7 +132,7 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
       children: [
         SizedBox(
           key: const ValueKey('plaza-switcher'),
-          height: 98,
+          height: 76,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -121,80 +158,12 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                               .markLocallyRead(plazas[index].id);
                         }
                       }),
+                      onMore: () => _openPlazaInfo(plazas[index]),
                     ),
                   ),
                 ],
               ],
             ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 3, 8, 1),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _locationStatus(plazaState),
-                  style: const TextStyle(
-                    color: Color(0xFF78847E),
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-              if (!plazaState.isLoading)
-                IconButton(
-                  key: const ValueKey('plaza-location-refresh'),
-                  tooltip: '刷新附近广场',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => ref
-                      .read(plazaControllerProvider.notifier)
-                      .refresh(silent: plazaState.plazas.isNotEmpty),
-                  icon: const Icon(Icons.my_location_rounded, size: 18),
-                )
-              else
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 13),
-                  child: SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 6, 2),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  selected.name,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () => _pending('广场通知设置'),
-                child: const Text('通知设置'),
-              ),
-              IconButton(
-                tooltip: '广场信息',
-                onPressed: () => AppNavigation.push<void>(
-                  context,
-                  destination: AppRouteId.plazaInfo,
-                  source: AppNavigationSource(
-                    section: AppSection.plaza,
-                    entryPoint: AppEntryPoint.channelChat,
-                    routeId: AppRouteId.plazaChat,
-                    entityId: selected.id,
-                  ),
-                  builder: (_) => PlazaInfoScreen(plaza: selected),
-                ),
-                icon: const Icon(Icons.more_horiz_rounded),
-              ),
-            ],
           ),
         ),
         Expanded(
@@ -224,17 +193,6 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
       ],
     );
   }
-
-  String _locationStatus(PlazaState state) {
-    if (state.hasFreshEligibility) {
-      return '当前位置可进入的4个广场 · 均可发言';
-    }
-    if (state.isUsingCachedOverview) {
-      return state.isLoading ? '正在确认当前位置 · 先显示上次广场' : '上次进入的广场 · 点击定位刷新';
-    }
-    if (state.errorMessage != null) return '定位后显示真实的4个广场 · 点击重试';
-    return '正在获取附近广场';
-  }
 }
 
 class _PlazaSwitchCard extends StatelessWidget {
@@ -243,32 +201,34 @@ class _PlazaSwitchCard extends StatelessWidget {
     required this.selected,
     required this.unreadCount,
     required this.onTap,
+    required this.onMore,
   });
 
   final PlazaSummary plaza;
   final bool selected;
   final int unreadCount;
   final VoidCallback onTap;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: selected ? const Color(0xFFDDEEE7) : Colors.white,
-      borderRadius: BorderRadius.circular(17),
+      borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: ValueKey('plaza-switch-${plaza.id}'),
-        borderRadius: BorderRadius.circular(17),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Stack(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 10, 6, 8),
+              padding: const EdgeInsets.fromLTRB(8, 7, 6, 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: EdgeInsets.only(right: unreadCount > 0 ? 18 : 0),
+                    padding: const EdgeInsets.only(right: 22),
                     child: Text(
                       plaza.isPrimary ? '主广场' : '相邻',
                       maxLines: 1,
@@ -278,33 +238,41 @@ class _PlazaSwitchCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    plaza.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      height: 1.15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    plaza.activityLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF66736D),
-                      fontSize: 10,
+                  const SizedBox(height: 2),
+                  Padding(
+                    padding: EdgeInsets.only(right: unreadCount > 0 ? 16 : 0),
+                    child: Text(
+                      plaza.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        height: 1.12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
             Positioned(
+              right: 4,
+              top: 2,
+              child: SizedBox.square(
+                dimension: 27,
+                child: IconButton(
+                  key: ValueKey('plaza-more-${plaza.id}'),
+                  tooltip: '${plaza.name}信息',
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onMore,
+                  icon: const Icon(Icons.more_horiz_rounded, size: 17),
+                ),
+              ),
+            ),
+            Positioned(
               right: 5,
-              top: 6,
+              bottom: 5,
               child: UnreadCountBadge(count: unreadCount),
             ),
           ],

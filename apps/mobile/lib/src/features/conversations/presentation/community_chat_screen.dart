@@ -96,17 +96,18 @@ class CommunityChatBody extends StatefulWidget {
 class _CommunityChatBodyState extends State<CommunityChatBody> {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
-  final _scrollController = ScrollController();
   final _composerController = ChatComposerController();
+  late final ChatTimelineViewportController _timelineController;
   bool _announcementVisible = true;
 
   @override
   void initState() {
     super.initState();
+    _timelineController = ChatTimelineViewportController();
     // A kept-alive conversation can already contain cached messages on the
     // first frame. Short timelines remain at offset zero; long ones open at
     // their latest message.
-    _scrollToLatest(jump: true);
+    _timelineController.scrollToLatest(jump: true);
   }
 
   Future<void> _send() async {
@@ -119,29 +120,7 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
     if (!mounted || !succeeded) return;
     _textController.clear();
     _focusNode.requestFocus();
-    _scrollToLatest();
-  }
-
-  bool _isNearLatest() {
-    if (!_scrollController.hasClients) return true;
-    final position = _scrollController.position;
-    return position.maxScrollExtent - position.pixels <= 96;
-  }
-
-  void _scrollToLatest({bool jump = false}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final target = _scrollController.position.maxScrollExtent;
-      if (jump) {
-        _scrollController.jumpTo(target);
-      } else {
-        _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    _timelineController.scrollToLatest();
   }
 
   @override
@@ -151,7 +130,7 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
       _textController.clear();
       _composerController.dismiss(_focusNode);
       _announcementVisible = true;
-      _scrollToLatest(jump: true);
+      _timelineController.scrollToLatest(jump: true);
       return;
     }
 
@@ -162,10 +141,10 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
     if (newLatest?.sequence != oldLatest?.sequence) {
       final followsLatest =
           oldMessages.isEmpty ||
-          _isNearLatest() ||
+          _timelineController.isNearLatest ||
           newLatest?.senderUserId == widget.currentUserId;
       if (followsLatest) {
-        _scrollToLatest(jump: oldMessages.isEmpty);
+        _timelineController.scrollToLatest(jump: oldMessages.isEmpty);
       }
     }
   }
@@ -174,7 +153,7 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
-    _scrollController.dispose();
+    _timelineController.dispose();
     _composerController.dispose();
     super.dispose();
   }
@@ -265,7 +244,7 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
     }
     return ChatMessageTimeline(
       timelineKey: ValueKey('community-chat-${widget.channel.id}'),
-      controller: _scrollController,
+      controller: _timelineController.scrollController,
       messages: state.messages,
       itemBuilder: (_, message, previous) =>
           _liveMessage(message, previous: previous),

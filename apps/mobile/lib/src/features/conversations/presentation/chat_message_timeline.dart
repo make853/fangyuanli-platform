@@ -2,6 +2,55 @@ import 'package:flutter/material.dart';
 
 import '../domain/conversation_message.dart';
 
+/// Owns the common viewport-following behavior used by all chat scenes.
+///
+/// It keeps the latest message visible while the keyboard changes the usable
+/// height, but does not pull a user away from older messages they are reading.
+class ChatTimelineViewportController with WidgetsBindingObserver {
+  ChatTimelineViewportController() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  final ScrollController scrollController = ScrollController();
+  bool _disposed = false;
+
+  bool get isNearLatest {
+    if (!scrollController.hasClients) return true;
+    final position = scrollController.position;
+    return position.maxScrollExtent - position.pixels <= 96;
+  }
+
+  void scrollToLatest({bool jump = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed || !scrollController.hasClients) return;
+      final target = scrollController.position.maxScrollExtent;
+      if (jump) {
+        scrollController.jumpTo(target);
+      } else {
+        scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (isNearLatest) {
+      scrollToLatest(jump: true);
+    }
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
+    scrollController.dispose();
+  }
+}
+
 typedef ChatTimelineItemBuilder =
     Widget Function(
       BuildContext context,
