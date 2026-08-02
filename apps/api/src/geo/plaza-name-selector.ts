@@ -179,6 +179,7 @@ export class PlazaNameSelector {
   private rank(candidate: RawCandidate): PlazaNameCandidate | null {
     if (this.shouldReject(candidate)) return null;
 
+    const metroStation = this.isMetroStation(candidate);
     const community =
       this.includes(candidate.name, COMMUNITY_KEYWORDS) ||
       this.includes(candidate.type, COMMUNITY_TYPES);
@@ -207,8 +208,14 @@ export class PlazaNameSelector {
     let kind: PlazaNamingKind = "area";
 
     // A residential project containing “广场” is still a community. Type semantics
-    // take precedence over keyword coincidence.
-    if (village) {
+    // take precedence over keyword coincidence. Metro identity is checked first
+    // because stations named after schools, hospitals or communities must still
+    // remain recognizable as transport landmarks.
+    if (metroStation) {
+      score = candidate.origin === "aoi" ? 1750 : 1650;
+      source = "venue";
+      kind = "transit";
+    } else if (village) {
       score = 980;
       source = "community";
       kind = "village";
@@ -280,15 +287,16 @@ export class PlazaNameSelector {
 
   private shouldReject(candidate: RawCandidate): boolean {
     const { name, type } = candidate;
+    const metroStation = this.isMetroStation(candidate);
     if (
       this.isSubordinate(name) ||
       this.isOrganization(name) ||
       (candidate.origin !== "road" && this.isRoadName(name)) ||
       this.includes(name, MERCHANT_NAME_KEYWORDS) ||
-      this.includes(name, LOW_QUALITY_EDUCATION) ||
-      this.includes(type, LOW_QUALITY_EDUCATION) ||
-      (type.includes("培训机构") && /学院|学校/u.test(name)) ||
-      this.includes(type, MINOR_HEALTH_TYPES) ||
+      (!metroStation && this.includes(name, LOW_QUALITY_EDUCATION)) ||
+      (!metroStation && this.includes(type, LOW_QUALITY_EDUCATION)) ||
+      (!metroStation && type.includes("培训机构") && /学院|学校/u.test(name)) ||
+      (!metroStation && this.includes(type, MINOR_HEALTH_TYPES)) ||
       (type.includes("公交车站") && !/客运站|汽车站/u.test(name))
     ) {
       return true;
@@ -374,6 +382,10 @@ export class PlazaNameSelector {
 
   private isRoadName(name: string): boolean {
     return ROAD_SUFFIXES.some((suffix) => name.endsWith(suffix));
+  }
+
+  private isMetroStation(candidate: Pick<RawCandidate, "name" | "type">): boolean {
+    return candidate.type.includes("地铁站") || candidate.name.includes("地铁站");
   }
 
   private isOrganization(name: string): boolean {

@@ -28,7 +28,7 @@ export type PlazaNameCandidate = {
  * Persisted policy version. Increment only when existing automatic names should
  * be reconsidered; plaza identity and conversation identity never change.
  */
-export const PLAZA_NAMING_POLICY_VERSION = 4;
+export const PLAZA_NAMING_POLICY_VERSION = 5;
 
 /** External map boundary. Implementations must never expose provider IDs as names. */
 export abstract class PlazaNamingProvider {

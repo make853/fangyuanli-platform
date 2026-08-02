@@ -130,6 +130,36 @@ test("collapses metro exits into one stable station candidate", () => {
   );
 });
 
+test("ranks metro stations with city landmarks and always labels the metro identity", () => {
+  const candidates = new PlazaNameSelector().select({
+    pois: [
+      {
+        name: "市人民医院(地铁站)",
+        type: "交通设施服务;地铁站",
+        distance: "100"
+      },
+      {
+        name: "实验中学站(地铁站)",
+        type: "交通设施服务;地铁站",
+        distance: "100"
+      },
+      {
+        name: "城市中心广场",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "100"
+      }
+    ]
+  });
+
+  const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
+  assert.equal(byName.get("市人民医院地铁站广场")?.kind, "transit");
+  assert.equal(byName.get("实验中学地铁站广场")?.kind, "transit");
+  assert.equal(
+    byName.get("市人民医院地铁站广场")?.score,
+    byName.get("城市中心广场")?.score
+  );
+});
+
 test("filters local organizations and keeps community names low priority", () => {
   const candidates = new PlazaNameSelector().select({
     pois: [
