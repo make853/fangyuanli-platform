@@ -507,6 +507,8 @@ Table plaza_grids {
   center_longitude_gcj02 decimal(10,7) [not null]
   center_latitude_gcj02 decimal(10,7) [not null]
   status varchar(16) [not null, default: 'active']
+  naming_last_attempted_at timestamptz
+  naming_retry_after timestamptz
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
 

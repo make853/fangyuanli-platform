@@ -6,6 +6,7 @@ import { LocationContextReader } from "./location-context.js";
 import { PlazaAnchorPolicy } from "./plaza-anchor-policy.js";
 import type { PlazaContextRepository } from "./plaza-context.repository.js";
 import { PlazaGridProjector } from "./plaza-grid-projector.js";
+import type { PlazaNamingService } from "./plaza-naming.service.js";
 import type {
   PlazaAnchor,
   PlazaGridVersion,
@@ -27,6 +28,7 @@ const version: PlazaGridVersion = {
 class FakeRepository {
   savedAnchor: PlazaAnchor | null = null;
   existingAnchor: PlazaAnchor | null = null;
+  isSerializing = false;
   plazas: PlazaProjection[] = Array.from({ length: 4 }, (_, index) => ({
     plazaId: `019f0b00-0000-7000-8000-00000000001${index}`,
     conversationId: `019f0b00-0000-7000-8000-00000000002${index}`,
@@ -39,7 +41,12 @@ class FakeRepository {
   }));
 
   async serializeForUser<T>(_userId: string, work: () => Promise<T>): Promise<T> {
-    return work();
+    this.isSerializing = true;
+    try {
+      return await work();
+    } finally {
+      this.isSerializing = false;
+    }
   }
 
   async activeGridVersion(): Promise<PlazaGridVersion> {
@@ -63,7 +70,10 @@ class FakeRepository {
   }
 }
 
-function fixture(environment: NodeJS.ProcessEnv = {}): {
+function fixture(
+  environment: NodeJS.ProcessEnv = {},
+  naming?: Pick<PlazaNamingService, "enrich">
+): {
   repository: FakeRepository;
   service: GeoContextService;
 } {
@@ -77,7 +87,13 @@ function fixture(environment: NodeJS.ProcessEnv = {}): {
       projector,
       new PlazaAnchorPolicy(projector),
       new PlazaPolicy(environment),
-      LocationContextReader.withKeyForTesting(Buffer.alloc(32, 9))
+      LocationContextReader.withKeyForTesting(Buffer.alloc(32, 9)),
+      (naming ?? {
+        enrich: async () => {
+          assert.equal(repository.isSerializing, false);
+          return false;
+        }
+      }) as PlazaNamingService
     )
   };
 }
@@ -121,4 +137,24 @@ test("rejects poor accuracy before creating plazas or issuing a token", async ()
       error.code === "GEO_CONTEXT_ACCURACY_INSUFFICIENT"
   );
   assert.equal(repository.savedAnchor, null);
+});
+
+test("returns the plaza context without waiting for external naming", async () => {
+  let namingStarted = false;
+  const { service } = fixture({}, {
+    enrich: async () => {
+      namingStarted = true;
+      return new Promise<boolean>(() => undefined);
+    }
+  });
+
+  const result = await Promise.race([
+    service.create({ userId, body: request(), now }),
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error("geo context waited for plaza naming")), 100)
+    )
+  ]);
+
+  assert.equal(namingStarted, true);
+  assert.equal(result.plazas.length, 4);
 });

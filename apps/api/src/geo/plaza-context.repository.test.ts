@@ -54,6 +54,18 @@ class FakeDatabase {
       });
       return { rows, rowCount: rows.length };
     }
+    if (normalized.startsWith("WITH claimable AS")) {
+      const coordinates = values[1] as string[];
+      const rows = coordinates.map((coordinate, index) => {
+        const [gridX, gridY] = coordinate.split(":");
+        return {
+          plaza_id: `019f0b00-0000-7000-8000-00000000003${index}`,
+          grid_x: gridX,
+          grid_y: gridY
+        } as R;
+      });
+      return { rows, rowCount: rows.length };
+    }
     return { rows: [], rowCount: 0 };
   }
 }
@@ -107,4 +119,31 @@ test("serializes anchor updates per user through a transaction lock", async () =
     ),
     true
   );
+});
+
+test("atomically claims neutral plazas before external naming lookups", async () => {
+  const database = new FakeDatabase();
+  const repository = new PlazaContextRepository(
+    database as unknown as DatabaseService,
+    new PlazaGridProjector()
+  );
+
+  const claimed = await repository.claimNeutralPlazasByCells({
+    version,
+    cells: [
+      { gridX: 1, gridY: 2 },
+      { gridX: 2, gridY: 2 }
+    ]
+  });
+
+  assert.deepEqual(
+    claimed.map(({ gridX, gridY }) => ({ gridX, gridY })),
+    [
+      { gridX: 1, gridY: 2 },
+      { gridX: 2, gridY: 2 }
+    ]
+  );
+  const claimSql = database.statements.find((sql) => sql.startsWith("WITH claimable AS"));
+  assert.match(claimSql ?? "", /FOR UPDATE SKIP LOCKED/);
+  assert.match(claimSql ?? "", /naming_retry_after/);
 });
