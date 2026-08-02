@@ -58,3 +58,16 @@ test("contains only points inside the cell and assigns shared edges once", () =>
   assert.equal(projector.contains(left, version, sharedEdge), false);
   assert.equal(projector.contains(right, version, sharedEdge), true);
 });
+
+test("exposes reusable cell bounds and normalized marker positions", () => {
+  const projector = new PlazaGridProjector();
+  const cell = { gridX: 25_000, gridY: 7_000 };
+  const center = projector.center(cell, version);
+  const bounds = projector.bounds(cell, version);
+  const position = projector.positionWithinCell(center, cell, version);
+
+  assert.equal(projector.contains(cell, version, bounds.southwest), true);
+  assert.equal(projector.contains(cell, version, bounds.northeast), false);
+  assert.ok(Math.abs(position.xFraction - 0.5) < 1e-9);
+  assert.ok(Math.abs(position.yFraction - 0.5) < 1e-9);
+});
