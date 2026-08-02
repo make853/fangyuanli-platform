@@ -7,6 +7,7 @@ import {
 } from "../src/database/environment.js";
 import { PlazaGridProjector } from "../src/geo/plaza-grid-projector.js";
 import { PlazaRegionAuditor } from "../src/geo/plaza-region-audit.js";
+import { parsePlazaRegionAuditArguments } from "../src/geo/plaza-region-audit-command.js";
 import type {
   PlazaGridVersion,
   PlazaAnchor
@@ -17,12 +18,6 @@ import type {
 } from "../src/geo/plaza-naming.provider.js";
 
 const { Client } = pg;
-
-type Arguments = {
-  userId: string | null;
-  latest: boolean;
-  output: string;
-};
 
 type AnchorAuditRow = {
   user_id: string;
@@ -47,41 +42,13 @@ type PlazaAuditRow = {
   naming_latitude_gcj02: string | null;
 };
 
-function parseArguments(argv: string[]): Arguments {
-  let userId: string | null = null;
-  let latest = false;
-  let output = "";
-  for (let index = 0; index < argv.length; index += 1) {
-    const value = argv[index];
-    if (value === "--latest") {
-      latest = true;
-    } else if (value === "--user-id") {
-      userId = argv[++index]?.trim() || null;
-    } else if (value === "--output") {
-      output = argv[++index]?.trim() || "";
-    } else {
-      throw new Error(`Unknown or incomplete argument: ${value ?? ""}`);
-    }
-  }
-  if (Number(latest) + Number(Boolean(userId)) !== 1) {
-    throw new Error("Choose exactly one of --latest or --user-id <uuid>");
-  }
-  if (userId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(userId)) {
-    throw new Error("--user-id must be a UUID");
-  }
-  if (!output || path.extname(output).toLowerCase() !== ".svg") {
-    throw new Error("--output must point to an .svg file");
-  }
-  return { userId, latest, output: path.resolve(output) };
-}
-
 loadRepositoryEnvironment();
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("Plaza region auditing is disabled in production");
 }
 
-const arguments_ = parseArguments(process.argv.slice(2));
+const arguments_ = parsePlazaRegionAuditArguments(process.argv.slice(2));
 const client = new Client({
   application_name: "fangyuanli-plaza-region-audit",
   connectionString: requireDatabaseUrl(process.env)

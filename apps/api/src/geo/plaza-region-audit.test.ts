@@ -5,6 +5,7 @@ import {
   PlazaRegionAuditor,
   type PlazaRegionAuditEntryInput
 } from "./plaza-region-audit.js";
+import { parsePlazaRegionAuditArguments } from "./plaza-region-audit-command.js";
 import type { PlazaGridVersion } from "./plaza-context.types.js";
 
 const version: PlazaGridVersion = {
@@ -119,5 +120,29 @@ test("rejects incomplete or duplicated four-plaza snapshots", () => {
   assert.throws(
     () => auditor.build({ ...input, plazas: [complete[0]!, complete[0]!, complete[2]!, complete[3]!] }),
     /four distinct cells/u
+  );
+});
+
+test("accepts the pnpm argument separator without weakening validation", () => {
+  const parsed = parsePlazaRegionAuditArguments([
+    "--",
+    "--latest",
+    "--output",
+    "./temporary-audit.svg"
+  ]);
+
+  assert.equal(parsed.latest, true);
+  assert.equal(parsed.userId, null);
+  assert.match(parsed.output, /temporary-audit\.svg$/u);
+  assert.throws(
+    () =>
+      parsePlazaRegionAuditArguments([
+        "--latest",
+        "--user-id",
+        "019f0b00-0000-7000-8000-000000000010",
+        "--output",
+        "audit.svg"
+      ]),
+    /exactly one/u
   );
 });
