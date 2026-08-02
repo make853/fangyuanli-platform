@@ -78,6 +78,17 @@ const SUBORDINATE_KEYWORDS = [
   "相亲角",
   "治安派出所"
 ] as const;
+const ORGANIZATION_KEYWORDS = [
+  "支部委员会",
+  "居民委员会",
+  "村民委员会",
+  "委员会",
+  "党群服务中心",
+  "社区服务中心",
+  "办事处",
+  "警务室",
+  "派出所"
+] as const;
 const ROAD_SUFFIXES = ["路", "街", "大道", "巷", "胡同", "公路"] as const;
 
 @Injectable()
@@ -110,7 +121,11 @@ export class PlazaNameSelector {
   }
 
   private rank(candidate: RawCandidate): PlazaNameCandidate | null {
-    if (this.isSubordinate(candidate.name) || this.isRoadName(candidate.name)) {
+    if (
+      this.isSubordinate(candidate.name) ||
+      this.isOrganization(candidate.name) ||
+      this.isRoadName(candidate.name)
+    ) {
       return null;
     }
     const venue = this.includes(candidate.name, VENUE_KEYWORDS);
@@ -129,17 +144,16 @@ export class PlazaNameSelector {
     } else if (venue && !unstableType) {
       score = candidate.origin === "aoi" ? 1200 : 1080;
       source = "venue";
+    } else if (community) {
+      score = 280;
+      source = "community";
     } else if (
       candidate.origin === "aoi" &&
-      !community &&
       (candidate.area >= 20_000 || stableType)
     ) {
       score = 930;
     } else if (candidate.origin === "poi" && stableType && !unstableType) {
       score = 760;
-    } else if (community) {
-      score = 280;
-      source = "community";
     } else if (candidate.origin === "building" && stableType) {
       score = 520;
     } else {
@@ -165,11 +179,13 @@ export class PlazaNameSelector {
     item: Record<string, unknown>,
     origin: RawCandidate["origin"]
   ): RawCandidate | null {
-    const name = this.text(item.name);
+    const type = this.text(item.type) ?? "";
+    const rawName = this.text(item.name);
+    const name = rawName ? this.normalizeName(rawName, type) : null;
     if (!name || [...name].length < 2 || [...name].length > 48) return null;
     return {
       name,
-      type: this.text(item.type) ?? "",
+      type,
       distance: this.number(item.distance),
       area: this.number(item.area),
       origin
@@ -210,6 +226,24 @@ export class PlazaNameSelector {
 
   private isRoadName(name: string): boolean {
     return ROAD_SUFFIXES.some((suffix) => name.endsWith(suffix));
+  }
+
+  private isOrganization(name: string): boolean {
+    return name.startsWith("中共") || this.includes(name, ORGANIZATION_KEYWORDS);
+  }
+
+  private normalizeName(name: string, type: string): string {
+    if (!type.includes("地铁站")) return name;
+
+    const withoutExit = name.replace(
+      /[-—·\s]*(?:(?:[A-Za-z]\d*|\d+|[一二三四五六七八九十]+)号?(?:出入口|口))$/u,
+      ""
+    );
+    const withoutMarker = withoutExit
+      .replace(/[（(]地铁站[）)]$/u, "")
+      .replace(/地铁站$/u, "")
+      .replace(/站$/u, "");
+    return withoutMarker ? `${withoutMarker}地铁站` : name;
   }
 
   private isSubordinate(name: string): boolean {
