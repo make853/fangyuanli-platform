@@ -543,7 +543,9 @@ Table place_pois {
   amap_poi_id varchar(128) [not null, unique]
   name varchar(160) [not null]
   address varchar(300)
-  map_point geometry [not null]
+  longitude_gcj02 decimal(10,7) [not null]
+  latitude_gcj02 decimal(10,7) [not null]
+  coordinate_system varchar(16) [not null, default: 'gcj02']
   amap_category_code varchar(64)
   amap_category_name varchar(160)
   display_category_key varchar(64) [not null, ref: > place_categories.key]
@@ -552,7 +554,7 @@ Table place_pois {
   updated_at timestamptz [not null]
 
   Indexes {
-    map_point [type: gist]
+    (latitude_gcj02, longitude_gcj02)
     (display_category_key, name)
   }
 }
@@ -563,9 +565,10 @@ Table place_groups {
   conversation_id uuid [not null, unique, ref: > conversations.id]
   certification_status place_certification_status [not null, default: 'unverified']
   visibility_status place_visibility_status [not null, default: 'active']
-  visibility_radius_meters int
+  visibility_radius_meters int [not null, default: 500]
   speak_policy speak_policy [not null, default: 'nearby_and_members']
   last_effective_activity_at timestamptz
+  version int [not null, default: 1]
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
 }
