@@ -19,7 +19,10 @@ import { PlazaPolicy } from "./plaza-policy.js";
     PlazaAnchorPolicy,
     PlazaContextRepository,
     PlazaGridProjector,
-    PlazaPolicy
+    {
+      provide: PlazaPolicy,
+      useFactory: () => new PlazaPolicy()
+    }
   ],
   exports: [LocationContextReader]
 })
