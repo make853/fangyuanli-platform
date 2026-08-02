@@ -7,6 +7,16 @@ const MAX_MERCATOR_LATITUDE = 85.05112878;
 
 type ProjectedPoint = { x: number; y: number };
 
+export type PlazaCellBounds = {
+  southwest: Gcj02Point;
+  northeast: Gcj02Point;
+};
+
+export type PlazaCellPosition = {
+  xFraction: number;
+  yFraction: number;
+};
+
 /**
  * Versioned technical projection for the first square-grid rollout.
  *
@@ -17,9 +27,7 @@ type ProjectedPoint = { x: number; y: number };
 @Injectable()
 export class PlazaGridProjector {
   cellsFor(point: Gcj02Point, version: PlazaGridVersion): PlazaCell[] {
-    if (version.projectionKey !== "gcj02-web-mercator-v1") {
-      throw new Error(`Unsupported plaza projection: ${version.projectionKey}`);
-    }
+    this.assertSupported(version);
     const projected = this.project(point);
     const side = version.sideLengthMeters;
     const gridX = Math.floor(projected.x / side);
@@ -58,6 +66,35 @@ export class PlazaGridProjector {
     });
   }
 
+  bounds(cell: PlazaCell, version: PlazaGridVersion): PlazaCellBounds {
+    this.assertSupported(version);
+    const side = version.sideLengthMeters;
+    return {
+      southwest: this.unproject({
+        x: cell.gridX * side,
+        y: cell.gridY * side
+      }),
+      northeast: this.unproject({
+        x: (cell.gridX + 1) * side,
+        y: (cell.gridY + 1) * side
+      })
+    };
+  }
+
+  positionWithinCell(
+    point: Gcj02Point,
+    cell: PlazaCell,
+    version: PlazaGridVersion
+  ): PlazaCellPosition {
+    this.assertSupported(version);
+    const projected = this.project(point);
+    const side = version.sideLengthMeters;
+    return {
+      xFraction: (projected.x - cell.gridX * side) / side,
+      yFraction: (projected.y - cell.gridY * side) / side
+    };
+  }
+
   /**
    * Uses the same left-closed/right-open projected bounds as cellsFor(). A
    * point on a shared edge therefore belongs to exactly one plaza cell.
@@ -67,9 +104,7 @@ export class PlazaGridProjector {
     version: PlazaGridVersion,
     point: Gcj02Point
   ): boolean {
-    if (version.projectionKey !== "gcj02-web-mercator-v1") {
-      throw new Error(`Unsupported plaza projection: ${version.projectionKey}`);
-    }
+    this.assertSupported(version);
     const projected = this.project(point);
     const side = version.sideLengthMeters;
     const minimumX = cell.gridX * side;
@@ -80,6 +115,12 @@ export class PlazaGridProjector {
       projected.y >= minimumY &&
       projected.y < minimumY + side
     );
+  }
+
+  private assertSupported(version: PlazaGridVersion): void {
+    if (version.projectionKey !== "gcj02-web-mercator-v1") {
+      throw new Error(`Unsupported plaza projection: ${version.projectionKey}`);
+    }
   }
 
   distanceMeters(left: Gcj02Point, right: Gcj02Point): number {

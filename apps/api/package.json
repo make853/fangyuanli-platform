@@ -14,6 +14,7 @@
     "accept:messages:ab": "node scripts/accept-direct-messages.mjs",
     "accept:realtime:ab": "node scripts/accept-realtime-messages.mjs",
     "accept:profiles:ab": "node scripts/accept-profiles.mjs",
+    "audit:plazas": "tsx scripts/audit-plaza-regions.ts",
     "check:cos": "tsx scripts/check-cos-storage.ts",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed:ab": "tsx src/database/seed-ab.ts",
