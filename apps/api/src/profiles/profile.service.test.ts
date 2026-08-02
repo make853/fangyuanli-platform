@@ -6,6 +6,7 @@ import type {
   MediaView
 } from "../media/media.types.js";
 import type { ProfileRepository } from "./profile.repository.js";
+import type { RealtimeTransport } from "../realtime/realtime-transport.js";
 import { ProfileService } from "./profile.service.js";
 import {
   ProfileDomainError,
@@ -87,6 +88,7 @@ class FakeProfileRepository {
   getProfileCalls: Array<[string, string]> = [];
   profileUpdates: Array<{ userId: string; patch: ProfilePatch }> = [];
   privacyUpdates: Array<{ userId: string; patch: PrivacyPatch }> = [];
+  friendUserIds = [targetUserId];
 
   async getProfile(viewer: string, target: string): Promise<ProfileProjection> {
     this.getProfileCalls.push([viewer, target]);
@@ -111,6 +113,10 @@ class FakeProfileRepository {
   ): Promise<PrivacySettingsView> {
     this.privacyUpdates.push({ userId: ownerUserId, patch });
     return this.privacyResult;
+  }
+
+  async listActiveFriendUserIds(): Promise<string[]> {
+    return this.friendUserIds;
   }
 }
 
@@ -235,6 +241,42 @@ test("delivers signed media views without exposing storage keys", async () => {
   assert.equal(result.avatar?.url, `https://media.example/${avatar.mediaId}`);
   assert.equal(result.background, null);
   assert.deepEqual(delivery.calls, [avatar]);
+});
+
+test("publishes a lightweight profile version event after persistence", async () => {
+  const repository = new FakeProfileRepository();
+  repository.profileResult = projection({ profileVersion: 8 });
+  const delivery = new FakeMediaDeliveryService();
+  const published: Array<{ userId: string; event: string; payload: unknown }> = [];
+  const realtime = {
+    async publish(target: string, event: string, payload: unknown) {
+      published.push({ userId: target, event, payload });
+    }
+  };
+  const service = new ProfileService(
+    repository as unknown as ProfileRepository,
+    delivery as unknown as MediaDeliveryService,
+    realtime as unknown as RealtimeTransport
+  );
+
+  await service.updateMine({
+    userId,
+    idempotencyKey: "profile-update-realtime",
+    body: { expectedVersion: 1, signature: "新的签名" }
+  });
+
+  assert.deepEqual(published, [
+    {
+      userId,
+      event: "profile.updated",
+      payload: { userId, profileVersion: 8 }
+    },
+    {
+      userId: targetUserId,
+      event: "profile.updated",
+      payload: { userId, profileVersion: 8 }
+    }
+  ]);
 });
 
 test("updates only supplied privacy switches", async () => {

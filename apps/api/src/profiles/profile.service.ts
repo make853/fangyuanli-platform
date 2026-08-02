@@ -1,6 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { MediaDeliveryService } from "../media/media-delivery.service.js";
 import { MediaDeliveryError } from "../media/media.types.js";
+import { RealtimeTransport } from "../realtime/realtime-transport.js";
 import { ProfileRepository } from "./profile.repository.js";
 import {
   ProfileDomainError,
@@ -18,9 +19,12 @@ const GENDERS = new Set<Gender>(["unspecified", "male", "female", "custom"]);
 
 @Injectable()
 export class ProfileService {
+  private readonly logger = new Logger(ProfileService.name);
+
   constructor(
     private readonly repository: ProfileRepository,
-    private readonly mediaDelivery: MediaDeliveryService
+    private readonly mediaDelivery: MediaDeliveryService,
+    @Optional() private readonly realtime?: RealtimeTransport
   ) {}
 
   async getMine(userId: string): Promise<ProfileView> {
@@ -150,9 +154,11 @@ export class ProfileService {
     if (patch.gender && patch.gender !== "custom") {
       patch.customGender = null;
     }
-    return this.deliver(
+    const profile = await this.deliver(
       await this.repository.updateProfile(input.userId, patch, new Date())
     );
+    await this.publishProfileUpdated(profile.userId, profile.profileVersion);
+    return profile;
   }
 
   getPrivacy(userId: string): Promise<PrivacySettingsView> {
@@ -231,6 +237,30 @@ export class ProfileService {
         "IDEMPOTENCY_KEY_REQUIRED",
         "请求缺少有效的幂等键",
         400
+      );
+    }
+  }
+
+  private async publishProfileUpdated(
+    userId: string,
+    profileVersion: number
+  ): Promise<void> {
+    if (!this.realtime) return;
+    try {
+      const friendUserIds = await this.repository.listActiveFriendUserIds(userId);
+      await Promise.all(
+        [userId, ...friendUserIds].map((targetUserId) =>
+          this.realtime!.publish(targetUserId, "profile.updated", {
+            userId,
+            profileVersion
+          })
+        )
+      );
+    } catch (error) {
+      this.logger.error(
+        `Profile persisted but realtime publish failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }

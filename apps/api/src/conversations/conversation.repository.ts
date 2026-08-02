@@ -74,7 +74,8 @@ function messageView(row: MessageRow, now = new Date()): MessageView {
         ? {
             userId: row.sender_user_id,
             displayName: row.sender_name,
-            avatar: null
+            avatar: null,
+            profileVersion: 1
           }
         : null,
     type: "text",
@@ -539,8 +540,10 @@ export class ConversationRepository {
     return {
       conversationId: row.conversation_id,
       type: "direct",
+      peerUserId: row.other_user_id,
       title: row.remark_name ?? row.other_nickname,
       avatar: null,
+      profileVersion: 1,
       lastMessage: row.last_message_id
         ? {
             messageId: row.last_message_id,

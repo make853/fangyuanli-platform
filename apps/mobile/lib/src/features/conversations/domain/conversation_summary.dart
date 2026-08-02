@@ -1,3 +1,5 @@
+import '../../media/domain/media_upload_models.dart';
+
 class ConversationUnread {
   const ConversationUnread({
     required this.count,
@@ -49,6 +51,9 @@ class ConversationSummary {
     required this.notificationMode,
     required this.pinned,
     this.lastMessage,
+    this.peerUserId,
+    this.profileVersion = 1,
+    this.avatar,
   });
 
   factory ConversationSummary.fromJson(Map<String, dynamic> json) {
@@ -64,6 +69,9 @@ class ConversationSummary {
       ),
       notificationMode: json['notificationMode'] as String? ?? 'normal',
       pinned: json['pinned'] as bool? ?? false,
+      peerUserId: json['peerUserId'] as String?,
+      profileVersion: json['profileVersion'] as int? ?? 1,
+      avatar: _optionalMedia(json['avatar']),
       lastMessage: rawLastMessage is Map
           ? ConversationPreview.fromJson(
               Map<String, dynamic>.from(rawLastMessage),
@@ -78,6 +86,9 @@ class ConversationSummary {
   final String notificationMode;
   final bool pinned;
   final ConversationPreview? lastMessage;
+  final String? peerUserId;
+  final int profileVersion;
+  final MediaAsset? avatar;
 
   ConversationSummary copyWith({String? title, bool? pinned}) {
     return ConversationSummary(
@@ -87,9 +98,15 @@ class ConversationSummary {
       notificationMode: notificationMode,
       pinned: pinned ?? this.pinned,
       lastMessage: lastMessage,
+      peerUserId: peerUserId,
+      profileVersion: profileVersion,
+      avatar: avatar,
     );
   }
 }
+
+MediaAsset? _optionalMedia(Object? value) =>
+    value is Map ? MediaAsset.fromJson(Map<String, dynamic>.from(value)) : null;
 
 class ConversationListPage {
   const ConversationListPage({

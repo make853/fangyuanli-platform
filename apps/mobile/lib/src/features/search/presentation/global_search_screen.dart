@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/application/conversation_list_controller.dart';
+import '../../conversations/domain/conversation_summary.dart';
 import '../../conversations/presentation/direct_chat_screen.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/domain/friend_models.dart';
@@ -158,6 +159,7 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
         final userId = ref.read(authControllerProvider).session?.userId;
         final conversationId = item.conversationId;
         if (userId == null || conversationId == null) return;
+        final conversation = _conversation(conversationId);
         AppNavigation.push<void>(
           context,
           destination: AppRouteId.directChat,
@@ -166,6 +168,8 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
             conversationId: conversationId,
             title: item.title,
             currentUserId: userId,
+            peerUserId: conversation?.peerUserId,
+            peerAvatar: conversation?.avatar,
           ),
         );
       case GlobalSearchCategory.systemConversations:
@@ -188,6 +192,14 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
           ),
         );
     }
+  }
+
+  ConversationSummary? _conversation(String conversationId) {
+    for (final conversation
+        in ref.read(conversationListControllerProvider).items) {
+      if (conversation.conversationId == conversationId) return conversation;
+    }
+    return null;
   }
 
   FriendContact? _contact(String userId) {

@@ -7,7 +7,6 @@ import '../../friends/domain/friend_models.dart';
 import '../../friends/presentation/friend_profile_screen.dart';
 import '../../media/domain/media_upload_models.dart';
 import '../../profile/application/profile_controller.dart';
-import '../../profile/data/profile_repository.dart';
 import '../../profile/presentation/profile_detail_screen.dart';
 import '../application/direct_chat_controller.dart';
 import '../domain/direct_message.dart';
@@ -21,12 +20,16 @@ class DirectChatScreen extends ConsumerStatefulWidget {
     required this.conversationId,
     required this.title,
     required this.currentUserId,
+    this.peerUserId,
+    this.peerAvatar,
     super.key,
   });
 
   final String conversationId;
   final String title;
   final String currentUserId;
+  final String? peerUserId;
+  final MediaAsset? peerAvatar;
 
   @override
   ConsumerState<DirectChatScreen> createState() => _DirectChatScreenState();
@@ -161,17 +164,6 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
     final provider = directChatControllerProvider(widget.conversationId);
     final state = ref.watch(provider);
     final ownProfile = ref.watch(profileControllerProvider).profile;
-    String? peerUserId;
-    for (final message in state.messages) {
-      if (message.senderUserId != null &&
-          message.senderUserId != widget.currentUserId) {
-        peerUserId = message.senderUserId;
-        break;
-      }
-    }
-    final peerProfile = peerUserId == null
-        ? null
-        : ref.watch(userProfileProvider(peerUserId)).asData?.value;
     FriendContact? currentContact;
     for (final contact in ref.watch(friendsControllerProvider).contacts) {
       if (contact.directConversationId == widget.conversationId) {
@@ -213,7 +205,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
                 controller: _scrollController,
                 ownAvatar: ownProfile?.avatar,
                 ownInitial: ownProfile?.initial ?? '我',
-                peerAvatar: peerProfile?.avatar,
+                peerAvatar: currentContact?.avatar ?? widget.peerAvatar,
                 onAvatarTap: _openProfile,
                 keyForSequence: (sequence) =>
                     _messageKeys.putIfAbsent(sequence, GlobalKey.new),
@@ -291,7 +283,7 @@ class _MessageList extends StatelessWidget {
         text: message.text,
         deliveryState: message.deliveryState,
         isMine: isMine,
-        avatar: isMine ? ownAvatar : peerAvatar,
+        avatar: isMine ? ownAvatar : peerAvatar ?? message.senderAvatar,
         avatarInitial: isMine ? ownInitial : _initial(message.senderName),
         onAvatarTap: () => onAvatarTap(message.senderUserId),
         timestampLabel: showTime

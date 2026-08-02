@@ -10,7 +10,8 @@ import {
   type ProfilePatch,
   type ProfileProjection,
   type ProfileView,
-  type RelationshipState
+  type RelationshipState,
+  type UserIdentityProjection
 } from "./profile.types.js";
 
 type ProfileRow = {
@@ -47,6 +48,21 @@ type ProfileRow = {
   can_view_my_posts: boolean;
 };
 
+type UserIdentityRow = {
+  user_id: string;
+  nickname: string;
+  profile_version: number;
+  avatar_id: string | null;
+  avatar_media_type: MediaType | null;
+  avatar_status: MediaStatus | null;
+  avatar_display_object_key: string | null;
+  avatar_thumbnail_object_key: string | null;
+  avatar_cover_object_key: string | null;
+  avatar_width: number | null;
+  avatar_height: number | null;
+  avatar_duration_ms: number | null;
+};
+
 type PrivacyRow = {
   strangers_can_view_profile: boolean;
   searchable_by_fangyuan_number: boolean;
@@ -63,6 +79,56 @@ export class ProfileRepository {
     targetUserId: string
   ): Promise<ProfileProjection> {
     return this.loadProfile(this.database, viewerUserId, targetUserId);
+  }
+
+  async getIdentityProjections(
+    userIds: string[]
+  ): Promise<UserIdentityProjection[]> {
+    const uniqueUserIds = [...new Set(userIds)];
+    if (uniqueUserIds.length === 0) return [];
+    const result = await this.database.query<UserIdentityRow>(
+      `SELECT u.id AS user_id,
+              p.nickname,
+              p.profile_version,
+              avatar.id AS avatar_id,
+              avatar.media_type AS avatar_media_type,
+              avatar.processing_status AS avatar_status,
+              avatar.display_object_key AS avatar_display_object_key,
+              avatar.thumbnail_object_key AS avatar_thumbnail_object_key,
+              avatar.cover_object_key AS avatar_cover_object_key,
+              avatar.width AS avatar_width,
+              avatar.height AS avatar_height,
+              avatar.duration_ms AS avatar_duration_ms
+         FROM users u
+         JOIN user_profiles p ON p.user_id = u.id
+         LEFT JOIN media_assets avatar
+           ON avatar.id = p.avatar_media_id
+          AND avatar.deleted_at IS NULL
+        WHERE u.id = ANY($1::uuid[])
+          AND u.status = 'active'
+          AND u.deleted_at IS NULL`,
+      [uniqueUserIds]
+    );
+    return result.rows.map((row) => ({
+      userId: row.user_id,
+      displayName: row.nickname,
+      profileVersion: row.profile_version,
+      avatarReference: this.identityAvatarReference(row)
+    }));
+  }
+
+  async listActiveFriendUserIds(userId: string): Promise<string[]> {
+    const result = await this.database.query<{ friend_user_id: string }>(
+      `SELECT CASE
+                WHEN f.user_low_id = $1 THEN f.user_high_id
+                ELSE f.user_low_id
+              END AS friend_user_id
+         FROM friendships f
+        WHERE f.status = 'active'
+          AND (f.user_low_id = $1 OR f.user_high_id = $1)`,
+      [userId]
+    );
+    return result.rows.map((row) => row.friend_user_id);
   }
 
   async updateProfile(
@@ -374,6 +440,25 @@ export class ProfileRepository {
       width: row[`${slot}_width`],
       height: row[`${slot}_height`],
       durationMs: row[`${slot}_duration_ms`]
+    };
+  }
+
+  private identityAvatarReference(
+    row: UserIdentityRow
+  ): MediaDeliveryReference | null {
+    if (!row.avatar_id || !row.avatar_media_type || !row.avatar_status) {
+      return null;
+    }
+    return {
+      mediaId: row.avatar_id,
+      mediaType: row.avatar_media_type,
+      status: row.avatar_status,
+      displayObjectKey: row.avatar_display_object_key,
+      thumbnailObjectKey: row.avatar_thumbnail_object_key,
+      coverObjectKey: row.avatar_cover_object_key,
+      width: row.avatar_width,
+      height: row.avatar_height,
+      durationMs: row.avatar_duration_ms
     };
   }
 

@@ -11,7 +11,8 @@ export class ConversationDomainError extends Error {
 export type UserSummary = {
   userId: string;
   displayName: string;
-  avatar: null;
+  avatar: MediaView | null;
+  profileVersion: number;
 };
 
 export type UnreadState = {
@@ -40,8 +41,10 @@ export type MessageView = {
 export type ConversationSummary = {
   conversationId: string;
   type: "direct";
+  peerUserId: string;
   title: string;
-  avatar: null;
+  avatar: MediaView | null;
+  profileVersion: number;
   lastMessage: {
     messageId: string;
     sequence: number;
@@ -76,3 +79,4 @@ export type RealtimeConversationState = {
   unread: UnreadState;
   navigationUnreadCount: number;
 };
+import type { MediaView } from "../media/media.types.js";

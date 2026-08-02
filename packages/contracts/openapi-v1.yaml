@@ -2008,7 +2008,7 @@ components:
 
     UserSummary:
       type: object
-      required: [userId, displayName, avatar]
+      required: [userId, displayName, avatar, profileVersion]
       properties:
         userId:
           type: string
@@ -2019,6 +2019,9 @@ components:
           anyOf:
             - $ref: '#/components/schemas/MediaView'
             - type: 'null'
+        profileVersion:
+          type: integer
+          minimum: 1
 
     RelationshipView:
       type: object
@@ -2372,7 +2375,7 @@ components:
     ConversationSummary:
       type: object
       required:
-        [conversationId, type, title, unread, notificationMode, pinned, allowedActions]
+        [conversationId, type, peerUserId, title, avatar, profileVersion, unread, notificationMode, pinned, allowedActions]
       properties:
         conversationId:
           type: string
@@ -2380,12 +2383,18 @@ components:
         type:
           type: string
           enum: [plaza, place, activity, direct, system]
+        peerUserId:
+          type: string
+          format: uuid
         title:
           type: string
         avatar:
           anyOf:
             - $ref: '#/components/schemas/MediaView'
             - type: 'null'
+        profileVersion:
+          type: integer
+          minimum: 1
         lastMessage:
           anyOf:
             - $ref: '#/components/schemas/MessagePreview'

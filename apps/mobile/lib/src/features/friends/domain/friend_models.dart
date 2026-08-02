@@ -1,17 +1,28 @@
+import '../../media/domain/media_upload_models.dart';
+
 enum FriendRequestStatus { pending, accepted, rejected, cancelled, expired }
 
 class UserSummary {
-  const UserSummary({required this.userId, required this.displayName});
+  const UserSummary({
+    required this.userId,
+    required this.displayName,
+    this.profileVersion = 1,
+    this.avatar,
+  });
 
   factory UserSummary.fromJson(Map<String, dynamic> json) {
     return UserSummary(
       userId: json['userId'] as String,
       displayName: json['displayName'] as String,
+      profileVersion: json['profileVersion'] as int? ?? 1,
+      avatar: _optionalMedia(json['avatar']),
     );
   }
 
   final String userId;
   final String displayName;
+  final int profileVersion;
+  final MediaAsset? avatar;
 }
 
 class FriendRequest {
@@ -57,6 +68,8 @@ class FriendContact {
     required this.pinned,
     required this.directConversationId,
     this.remarkName,
+    this.profileVersion = 1,
+    this.avatar,
   });
 
   factory FriendContact.fromJson(Map<String, dynamic> json) {
@@ -68,6 +81,8 @@ class FriendContact {
       canViewMyPosts: json['canViewMyPosts'] as bool? ?? true,
       pinned: json['pinned'] as bool? ?? false,
       directConversationId: json['directConversationId'] as String? ?? '',
+      profileVersion: json['profileVersion'] as int? ?? 1,
+      avatar: _optionalMedia(json['avatar']),
     );
   }
 
@@ -78,6 +93,8 @@ class FriendContact {
   final bool canViewMyPosts;
   final bool pinned;
   final String directConversationId;
+  final int profileVersion;
+  final MediaAsset? avatar;
 
   String get visibleName {
     final remark = remarkName?.trim();
@@ -98,9 +115,14 @@ class FriendContact {
       canViewMyPosts: canViewMyPosts ?? this.canViewMyPosts,
       pinned: pinned ?? this.pinned,
       directConversationId: directConversationId,
+      profileVersion: profileVersion,
+      avatar: avatar,
     );
   }
 }
+
+MediaAsset? _optionalMedia(Object? value) =>
+    value is Map ? MediaAsset.fromJson(Map<String, dynamic>.from(value)) : null;
 
 class FriendDecision {
   const FriendDecision({

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
 import 'package:fangyuanli_mobile/src/features/friends/application/friends_controller.dart';
 import 'package:fangyuanli_mobile/src/features/friends/data/relationship_repository.dart';
 import 'package:fangyuanli_mobile/src/features/friends/domain/friend_models.dart';
@@ -12,6 +15,8 @@ class _FakeRelationshipRepository implements RelationshipRepository {
   bool canViewMyPosts = true;
   bool pinned = false;
   final blockedUsers = <BlockedUser>[];
+  int loadFriendsCount = 0;
+  int profileVersion = 1;
 
   @override
   Future<BlockedUser> blockUser(String targetUserId) async {
@@ -60,6 +65,7 @@ class _FakeRelationshipRepository implements RelationshipRepository {
 
   @override
   Future<PageResult<FriendContact>> loadFriends() async {
+    loadFriendsCount += 1;
     return PageResult(
       items: accepted
           ? [
@@ -71,6 +77,7 @@ class _FakeRelationshipRepository implements RelationshipRepository {
                 canViewMyPosts: canViewMyPosts,
                 pinned: pinned,
                 directConversationId: 'conversation-1',
+                profileVersion: profileVersion,
               ),
             ]
           : const [],
@@ -213,4 +220,37 @@ void main() {
     expect(controller.state.blockedUsers, isEmpty);
     expect(controller.state.contacts.single.userId, 'remote-user');
   });
+
+  test('好友资料版本事件会静默刷新联系人摘要', () async {
+    final realtime = StreamController<RealtimeEvent>.broadcast();
+    final repository = _FakeRelationshipRepository(request: pendingRequest)
+      ..accepted = true;
+    final controller = FriendsController(
+      repository,
+      realtimeEvents: realtime.stream,
+    );
+    await _waitFor(() => controller.state.contacts.isNotEmpty);
+    final initialLoadCount = repository.loadFriendsCount;
+    repository.profileVersion = 2;
+
+    realtime.add(
+      const RealtimeEvent(
+        name: 'profile.updated',
+        payload: {'userId': 'remote-user', 'profileVersion': 2},
+      ),
+    );
+
+    await _waitFor(() => repository.loadFriendsCount > initialLoadCount);
+    expect(controller.state.contacts.single.profileVersion, 2);
+    controller.dispose();
+    await realtime.close();
+  });
+}
+
+Future<void> _waitFor(bool Function() condition) async {
+  for (var attempt = 0; attempt < 100; attempt++) {
+    if (condition()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  fail('condition was not reached');
 }

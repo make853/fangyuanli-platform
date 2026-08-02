@@ -76,7 +76,8 @@ class ConversationListController extends StateNotifier<ConversationListState> {
       return;
     }
     if (event.name == 'message.created' ||
-        event.name == 'conversation.snapshot') {
+        event.name == 'conversation.snapshot' ||
+        event.name == 'profile.updated') {
       _scheduleReload();
     }
   }

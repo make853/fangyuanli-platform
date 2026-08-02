@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { RelationshipRepository } from "./relationship.repository.js";
+import type { ProfileIdentityService } from "../profiles/profile-identity.service.js";
 import { RelationshipService } from "./relationship.service.js";
 import { RelationshipDomainError } from "./relationship.types.js";
 import { RequestHasher } from "./request-hasher.js";
@@ -113,4 +114,66 @@ test("encodes the next page cursor without exposing an offset contract", async (
     cursor: first.nextCursor ?? undefined
   });
   assert.equal(capturedOffset, 1);
+});
+
+test("hydrates friend avatars without overwriting a local remark", async () => {
+  process.env.REQUEST_HASH_KEY = "request-hash-key-for-tests-only-123456";
+  const repository = {
+    async listFriends() {
+      return {
+        items: [
+          {
+            userId: userB,
+            displayName: "小远",
+            nickname: "远山",
+            remarkName: "小远",
+            avatar: null,
+            profileVersion: 1,
+            canViewMyPosts: true,
+            pinned: false,
+            directConversationId: "33333333-3333-4333-8333-333333333333",
+            updatedAt: "2026-08-02T00:00:00.000Z"
+          }
+        ],
+        hasMore: false
+      };
+    }
+  };
+  const identities = {
+    async getMany() {
+      return new Map([
+        [
+          userB,
+          {
+            userId: userB,
+            displayName: "远山",
+            profileVersion: 4,
+            avatar: {
+              mediaId: "44444444-4444-4444-8444-444444444444",
+              mediaType: "image",
+              status: "ready",
+              url: "https://media.example/avatar.webp",
+              thumbnailUrl: "https://media.example/avatar-thumb.webp",
+              coverUrl: null,
+              width: 128,
+              height: 128,
+              durationMs: null,
+              expiresAt: "2026-08-02T00:10:00.000Z"
+            }
+          }
+        ]
+      ]);
+    }
+  };
+  const service = new RelationshipService(
+    repository as unknown as RelationshipRepository,
+    new RequestHasher(),
+    identities as unknown as ProfileIdentityService
+  );
+
+  const result = await service.listFriends({ userId: userA });
+
+  assert.equal(result.items[0].displayName, "小远");
+  assert.equal(result.items[0].profileVersion, 4);
+  assert.equal(result.items[0].avatar?.mediaId, "44444444-4444-4444-8444-444444444444");
 });

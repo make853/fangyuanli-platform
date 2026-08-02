@@ -99,6 +99,7 @@ make853/fangyuanli-platform
 - COS 最小权限策略模板位于 `docs/security/tencent-cos-staging-policy.template.json`，部署后运行 `pnpm --filter @fangyuanli/api check:cos` 验证一次性 PUT、HEAD 和 DELETE。
 - staging 私有 COS、最小权限 CAM 角色和 CVM 实例角色已完成配置，真实 iPhone 模拟器上传验收已覆盖 iOS 压缩、COS 直传、上传中断后续传和过期凭证换新；测试入口位于 `apps/mobile/integration_test/media_upload_staging_test.dart`，不进入正式 App。
 - 图片处理 Worker、头像/背景墙绑定、签名读取和旧媒体延迟清理已完成；Flutter 已通过可替换的裁剪端口接入 1:1 头像裁剪，背景墙不强制裁剪；
+- 高频用户身份资料已从完整个人资料中分层：好友申请、联系人、会话和消息返回头像与资料版本；Flutter以媒体ID缓存头像并监听 `profile.updated` 静默刷新；架构决定见 `docs/architecture/decisions/0004-versioned-user-identity-projections.md`；
 - staging 媒体验收已扩展为 A/B 双账号，覆盖好友完整资料、拉黑后最小头像资料、背景墙隔离和测试状态恢复；原生裁剪手势仍需在 iPhone 模拟器或真机人工确认一次。
 
 好友关系、私聊文字消息、实时推送、断线补偿、多连接同步、个人资料和资料图片已经通过真实服务器 A/B 闭环；Flutter 已完成登录、好友申请、联系人、关系设置、私聊实时收发、资料编辑，以及头像/背景墙的可恢复上传、处理、绑定和权限读取。个人历史动态与聊天媒体仍待后续接入。HTML 原型中的其余交互大部分仍是模拟状态。

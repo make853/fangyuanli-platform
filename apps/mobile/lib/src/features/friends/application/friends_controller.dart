@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/realtime/realtime_controller.dart';
+import '../../../core/realtime/realtime_event.dart';
 import '../data/relationship_repository.dart';
 import '../domain/friend_models.dart';
 
@@ -51,11 +53,15 @@ class FriendsState {
 }
 
 class FriendsController extends StateNotifier<FriendsState> {
-  FriendsController(this._repository) : super(const FriendsState()) {
+  FriendsController(this._repository, {Stream<RealtimeEvent>? realtimeEvents})
+    : super(const FriendsState()) {
+    _subscription = realtimeEvents?.listen(_onRealtimeEvent);
     unawaited(load());
   }
 
   final RelationshipRepository _repository;
+  StreamSubscription<RealtimeEvent>? _subscription;
+  Timer? _profileReloadTimer;
 
   FriendContact? contactForUser(String userId) {
     for (final contact in state.contacts) {
@@ -85,6 +91,15 @@ class FriendsController extends StateNotifier<FriendsState> {
       );
     } catch (error) {
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
+    }
+  }
+
+  Future<void> refreshContacts() async {
+    try {
+      final page = await _repository.loadFriends();
+      state = state.copyWith(contacts: page.items, clearError: true);
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
     }
   }
 
@@ -252,9 +267,31 @@ class FriendsController extends StateNotifier<FriendsState> {
     if (left.pinned != right.pinned) return left.pinned ? -1 : 1;
     return left.visibleName.compareTo(right.visibleName);
   }
+
+  void _onRealtimeEvent(RealtimeEvent event) {
+    if (event.name != 'profile.updated') return;
+    final userId = event.payload['userId'];
+    if (userId is! String || contactForUser(userId) == null) return;
+    _profileReloadTimer?.cancel();
+    _profileReloadTimer = Timer(
+      const Duration(milliseconds: 180),
+      () => unawaited(refreshContacts()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _profileReloadTimer?.cancel();
+    unawaited(_subscription?.cancel());
+    super.dispose();
+  }
 }
 
 final friendsControllerProvider =
-    StateNotifierProvider.autoDispose<FriendsController, FriendsState>(
-      (ref) => FriendsController(ref.watch(relationshipRepositoryProvider)),
-    );
+    StateNotifierProvider.autoDispose<FriendsController, FriendsState>((ref) {
+      final realtime = ref.watch(realtimeControllerProvider.notifier);
+      return FriendsController(
+        ref.watch(relationshipRepositoryProvider),
+        realtimeEvents: realtime.events,
+      );
+    });

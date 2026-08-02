@@ -6,6 +6,7 @@ import '../../auth/application/auth_controller.dart';
 import '../../conversations/application/conversation_list_controller.dart';
 import '../../conversations/domain/conversation_summary.dart';
 import '../../conversations/presentation/direct_chat_screen.dart';
+import '../../profile/presentation/profile_media_widgets.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 import 'friend_profile_screen.dart';
@@ -209,6 +210,8 @@ class _ConversationTile extends StatelessWidget {
               conversationId: conversation.conversationId,
               title: conversation.title,
               currentUserId: currentUserId,
+              peerUserId: conversation.peerUserId,
+              peerAvatar: conversation.avatar,
             ),
           );
         },
@@ -216,18 +219,13 @@ class _ConversationTile extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 23,
-                backgroundColor: const Color(0xFFDDEEE7),
-                child: Text(
-                  conversation.title.trim().isEmpty
-                      ? '友'
-                      : conversation.title.trim().characters.first,
-                  style: const TextStyle(
-                    color: Color(0xFF167A5B),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              ProfileAvatarImage(
+                media: conversation.avatar,
+                initial: conversation.title.trim().isEmpty
+                    ? '友'
+                    : conversation.title.trim().characters.first,
+                size: 46,
+                borderRadius: 23,
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -460,7 +458,14 @@ class _ContactTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              _InitialAvatar(name: contact.visibleName),
+              ProfileAvatarImage(
+                media: contact.avatar,
+                initial: contact.visibleName.trim().isEmpty
+                    ? '友'
+                    : contact.visibleName.trim().characters.first,
+                size: 44,
+                borderRadius: 22,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -505,28 +510,6 @@ class _ContactTile extends StatelessWidget {
               const Icon(Icons.chevron_right_rounded, color: Color(0xFFA1AAA5)),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InitialAvatar extends StatelessWidget {
-  const _InitialAvatar({required this.name});
-
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    final initial = name.trim().isEmpty ? '友' : name.trim().characters.first;
-    return CircleAvatar(
-      radius: 22,
-      backgroundColor: const Color(0xFFDDEEE7),
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Color(0xFF167A5B),
-          fontWeight: FontWeight.w700,
         ),
       ),
     );

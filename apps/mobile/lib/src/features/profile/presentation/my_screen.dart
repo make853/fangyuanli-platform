@@ -545,12 +545,11 @@ class _BlockedUserTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: const Color(0xFFEEF1EF),
-            child: Text(
-              initial,
-              style: const TextStyle(color: Color(0xFF66736D)),
-            ),
+          ProfileAvatarImage(
+            media: blocked.target.avatar,
+            initial: initial,
+            size: 40,
+            borderRadius: 20,
           ),
           const SizedBox(width: 12),
           Expanded(

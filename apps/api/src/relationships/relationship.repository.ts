@@ -28,7 +28,7 @@ function pair(userA: string, userB: string): [string, string] {
 }
 
 function userSummary(id: string, displayName: string): UserSummary {
-  return { userId: id, displayName, avatar: null };
+  return { userId: id, displayName, avatar: null, profileVersion: 1 };
 }
 
 function requestView(row: RequestRow): FriendRequestView {

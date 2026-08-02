@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ConversationService } from "./conversation.service.js";
+import type { ProfileIdentityService } from "../profiles/profile-identity.service.js";
 import {
   ConversationDomainError,
   type MessageView
@@ -72,10 +73,10 @@ test("keeps media message types closed until the media pipeline is ready", async
   );
 });
 
-test("requires one message paging mode at a time", () => {
+test("requires one message paging mode at a time", async () => {
   const service = new ConversationService({} as never);
-  assert.throws(
-    () => service.listMessages({
+  await assert.rejects(
+    service.listMessages({
       userId,
       conversationId,
       beforeSequence: "10",
@@ -235,4 +236,72 @@ test("publishes the resulting unread state to all devices after mark-read", asyn
   });
 
   assert.deepEqual(events, ["conversation.unread.changed"]);
+});
+
+test("hydrates a conversation from the shared identity projection", async () => {
+  const otherUserId = "019f0000-0000-7000-8000-00000000000b";
+  const repository = {
+    async listConversations() {
+      return {
+        items: [
+          {
+            conversationId,
+            type: "direct",
+            peerUserId: otherUserId,
+            title: "远山",
+            avatar: null,
+            profileVersion: 1,
+            lastMessage: null,
+            unread: { count: 0, appearance: "none", firstUnreadSequence: null },
+            notificationMode: "normal",
+            pinned: false,
+            allowedActions: ["viewMessages"]
+          }
+        ],
+        hasMore: false,
+        navigationUnread: 0
+      };
+    }
+  };
+  const identities = {
+    async getMany() {
+      return new Map([
+        [
+          otherUserId,
+          {
+            userId: otherUserId,
+            displayName: "远山",
+            profileVersion: 9,
+            avatar: {
+              mediaId: "019f0000-0000-7000-8000-00000000000f",
+              mediaType: "image",
+              status: "ready",
+              url: "https://media.example/avatar.webp",
+              thumbnailUrl: null,
+              coverUrl: null,
+              width: 128,
+              height: 128,
+              durationMs: null,
+              expiresAt: "2026-08-02T00:10:00.000Z"
+            }
+          }
+        ]
+      ]);
+    }
+  };
+  const service = new ConversationService(
+    repository as never,
+    undefined,
+    identities as unknown as ProfileIdentityService
+  );
+
+  const result = (await service.listConversations({ userId })) as {
+    items: Array<{ profileVersion: number; avatar: { mediaId: string } | null }>;
+  };
+
+  assert.equal(result.items[0].profileVersion, 9);
+  assert.equal(
+    result.items[0].avatar?.mediaId,
+    "019f0000-0000-7000-8000-00000000000f"
+  );
 });

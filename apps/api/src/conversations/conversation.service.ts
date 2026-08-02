@@ -1,8 +1,11 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
+import { ProfileIdentityService } from "../profiles/profile-identity.service.js";
+import type { UserIdentityView } from "../profiles/profile.types.js";
 import { RealtimeTransport } from "../realtime/realtime-transport.js";
 import { ConversationRepository } from "./conversation.repository.js";
 import {
   ConversationDomainError,
+  type ConversationSummary,
   type MessageView
 } from "./conversation.types.js";
 
@@ -15,7 +18,8 @@ export class ConversationService {
 
   constructor(
     private readonly repository: ConversationRepository,
-    @Optional() private readonly realtime?: RealtimeTransport
+    @Optional() private readonly realtime?: RealtimeTransport,
+    @Optional() private readonly identities?: ProfileIdentityService
   ) {}
 
   async listConversations(input: {
@@ -30,7 +34,7 @@ export class ConversationService {
       limit
     });
     return {
-      items: result.items,
+      items: await this.hydrateConversations(result.items),
       hasMore: result.hasMore,
       nextCursor: result.hasMore
         ? Buffer.from(String(offset + limit)).toString("base64url")
@@ -39,23 +43,27 @@ export class ConversationService {
     };
   }
 
-  getConversation(userId: string, conversationId: unknown): Promise<unknown> {
-    return this.repository.getConversation(
+  async getConversation(userId: string, conversationId: unknown): Promise<unknown> {
+    const conversation = await this.repository.getConversation(
       userId,
       this.uuid(conversationId, "CONVERSATION_ID_INVALID")
     );
+    return this.hydrateConversation(conversation);
   }
 
-  syncConversationSnapshots(userId: string): Promise<{
+  async syncConversationSnapshots(userId: string): Promise<{
     items: unknown[];
     hasMore: boolean;
   }> {
-    return this.repository
-      .listConversations({ userId, offset: 0, limit: 200 })
-      .then((result) => ({
-        items: result.items,
-        hasMore: result.hasMore
-      }));
+    const result = await this.repository.listConversations({
+      userId,
+      offset: 0,
+      limit: 200
+    });
+    return {
+      items: await this.hydrateConversations(result.items),
+      hasMore: result.hasMore
+    };
   }
 
   async sendMessage(input: {
@@ -104,13 +112,14 @@ export class ConversationService {
       replyToMessageId,
       now: new Date()
     });
+    const message = await this.hydrateMessage(persisted.message);
     if (persisted.created) {
-      await this.publishMessageCreated(input.userId, persisted.message);
+      await this.publishMessageCreated(input.userId, message);
     }
-    return persisted.message;
+    return message;
   }
 
-  listMessages(input: {
+  async listMessages(input: {
     userId: string;
     conversationId?: unknown;
     beforeSequence?: string;
@@ -130,7 +139,7 @@ export class ConversationService {
         400
       );
     }
-    return this.repository.listMessages({
+    const page = await this.repository.listMessages({
       userId: input.userId,
       conversationId: this.uuid(
         input.conversationId,
@@ -140,6 +149,66 @@ export class ConversationService {
       afterSequence: this.optionalSequence(input.afterSequence, 0),
       anchorSequence: this.optionalSequence(input.anchorSequence, 1),
       limit: this.limit(input.limit, 50, 100)
+    });
+    return {
+      ...page,
+      items: await this.hydrateMessages(page.items)
+    };
+  }
+
+  private async identityMap(
+    userIds: string[]
+  ): Promise<Map<string, UserIdentityView>> {
+    return this.identities?.getMany(userIds) ?? new Map<string, UserIdentityView>();
+  }
+
+  private async hydrateConversation<T extends ConversationSummary>(
+    conversation: T
+  ): Promise<T> {
+    return (await this.hydrateConversations([conversation]))[0] as T;
+  }
+
+  private async hydrateConversations<T extends ConversationSummary>(
+    conversations: T[]
+  ): Promise<T[]> {
+    const identities = await this.identityMap(
+      conversations.map((conversation) => conversation.peerUserId)
+    );
+    return conversations.map((conversation) => {
+      const identity = identities.get(conversation.peerUserId);
+      if (!identity) return conversation;
+      return {
+        ...conversation,
+        avatar: identity.avatar,
+        profileVersion: identity.profileVersion
+      };
+    });
+  }
+
+  private async hydrateMessage(message: MessageView): Promise<MessageView> {
+    return (await this.hydrateMessages([message]))[0];
+  }
+
+  private async hydrateMessages(messages: MessageView[]): Promise<MessageView[]> {
+    const identities = await this.identityMap(
+      messages.flatMap((message) =>
+        message.sender ? [message.sender.userId] : []
+      )
+    );
+    return messages.map((message) => {
+      const sender = message.sender;
+      if (!sender) return message;
+      const identity = identities.get(sender.userId);
+      if (!identity) return message;
+      return {
+        ...message,
+        sender: {
+          ...sender,
+          displayName: identity.displayName,
+          avatar: identity.avatar,
+          profileVersion: identity.profileVersion
+        }
+      };
     });
   }
 

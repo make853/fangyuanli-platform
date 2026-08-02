@@ -97,6 +97,8 @@ class FriendProfileScreen extends ConsumerWidget {
         conversationId: contact.directConversationId,
         title: contact.visibleName,
         currentUserId: userId,
+        peerUserId: contact.userId,
+        peerAvatar: contact.avatar,
       ),
     );
   }
