@@ -58,6 +58,30 @@ export class PlazaGridProjector {
     });
   }
 
+  /**
+   * Uses the same left-closed/right-open projected bounds as cellsFor(). A
+   * point on a shared edge therefore belongs to exactly one plaza cell.
+   */
+  contains(
+    cell: PlazaCell,
+    version: PlazaGridVersion,
+    point: Gcj02Point
+  ): boolean {
+    if (version.projectionKey !== "gcj02-web-mercator-v1") {
+      throw new Error(`Unsupported plaza projection: ${version.projectionKey}`);
+    }
+    const projected = this.project(point);
+    const side = version.sideLengthMeters;
+    const minimumX = cell.gridX * side;
+    const minimumY = cell.gridY * side;
+    return (
+      projected.x >= minimumX &&
+      projected.x < minimumX + side &&
+      projected.y >= minimumY &&
+      projected.y < minimumY + side
+    );
+  }
+
   distanceMeters(left: Gcj02Point, right: Gcj02Point): number {
     const latitude1 = (left.latitude * Math.PI) / 180;
     const latitude2 = (right.latitude * Math.PI) / 180;

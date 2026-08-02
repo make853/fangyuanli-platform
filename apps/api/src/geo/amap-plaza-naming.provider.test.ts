@@ -37,9 +37,11 @@ test("requests GCJ-02 reverse geocoding and returns ranked stable names", async 
           info: "OK",
           pois: [
             {
+              id: "poi-square",
               name: "滨江城市广场",
               type: "风景名胜;公园广场;城市广场",
-              distance: "500"
+              distance: "500",
+              location: "121.474000,31.230600"
             }
           ]
         });
@@ -50,10 +52,12 @@ test("requests GCJ-02 reverse geocoding and returns ranked stable names", async 
         regeocode: {
           aois: [
             {
+              id: "aoi-stadium",
               name: "滨江体育中心",
               type: "体育休闲服务;体育场馆",
               area: "85000",
-              distance: "30"
+              distance: "30",
+              location: "121.473900,31.230500"
             }
           ],
           pois: []
@@ -76,6 +80,13 @@ test("requests GCJ-02 reverse geocoding and returns ranked stable names", async 
   assert.equal(aroundUrl?.searchParams.get("sortrule"), "weight");
   assert.equal(aroundUrl?.searchParams.get("page_size"), "25");
   assert.equal(candidates[0]?.name, "滨江体育中心广场");
+  assert.deepEqual(candidates[0]?.point, {
+    coordinateSystem: "gcj02",
+    longitude: 121.4739,
+    latitude: 31.2305
+  });
+  assert.equal(candidates[0]?.provider, "amap");
+  assert.equal(candidates[0]?.providerPlaceId, "aoi-stadium");
   assert.equal(
     candidates.some((candidate) => candidate.name === "滨江城市广场"),
     true
@@ -97,7 +108,8 @@ test("uses regional landmarks when reverse geocoding is unavailable", async () =
           {
             name: "民生广场",
             type: "风景名胜;公园广场;城市广场",
-            distance: "800"
+            distance: "800",
+            location: "121.474000,31.230600"
           }
         ]
       });

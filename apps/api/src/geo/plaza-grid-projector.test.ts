@@ -40,3 +40,21 @@ test("round trips grid centers and measures short GCJ-02 distances", () => {
     }) > 100
   );
 });
+
+test("contains only points inside the cell and assigns shared edges once", () => {
+  const projector = new PlazaGridProjector();
+  const left = { gridX: 25_000, gridY: 7_000 };
+  const right = { gridX: 25_001, gridY: 7_000 };
+  const leftCenter = projector.center(left, version);
+  const rightCenter = projector.center(right, version);
+  const sharedEdge = {
+    coordinateSystem: "gcj02" as const,
+    longitude: (leftCenter.longitude + rightCenter.longitude) / 2,
+    latitude: leftCenter.latitude
+  };
+
+  assert.equal(projector.contains(left, version, leftCenter), true);
+  assert.equal(projector.contains(left, version, rightCenter), false);
+  assert.equal(projector.contains(left, version, sharedEdge), false);
+  assert.equal(projector.contains(right, version, sharedEdge), true);
+});

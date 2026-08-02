@@ -9,6 +9,7 @@ import type {
   PlazaGridVersion,
   PlazaProjection
 } from "./plaza-context.types.js";
+import type { Gcj02Point } from "./location-context.js";
 import type {
   PlazaNamingKind,
   PlazaNamingSource
@@ -250,6 +251,9 @@ export class PlazaContextRepository {
     name: string;
     source: PlazaNamingSource;
     kind: PlazaNamingKind;
+    point: Gcj02Point;
+    provider: "amap" | null;
+    providerPlaceId: string | null;
     policyVersion: number;
   }): Promise<boolean> {
     const result = await this.database.query(
@@ -257,13 +261,59 @@ export class PlazaContextRepository {
           SET display_name = $2,
               naming_source = $3,
               naming_kind = $4,
-              naming_policy_version = $5,
+              naming_provider = $5,
+              naming_provider_place_id = $6,
+              naming_longitude_gcj02 = $7,
+              naming_latitude_gcj02 = $8,
+              naming_policy_version = $9,
               naming_retry_after = NULL,
               updated_at = now()
         WHERE id = $1
-          AND (naming_source = 'neutral' OR naming_policy_version < $5)
+          AND (naming_source = 'neutral' OR naming_policy_version < $9)
           AND status = 'active'`,
-      [input.plazaId, input.name, input.source, input.kind, input.policyVersion]
+      [
+        input.plazaId,
+        input.name,
+        input.source,
+        input.kind,
+        input.provider,
+        input.providerPlaceId,
+        input.point.longitude,
+        input.point.latitude,
+        input.policyVersion
+      ]
+    );
+    return result.rowCount === 1;
+  }
+
+  async applyNeutralPlazaName(input: {
+    plazaId: string;
+    version: PlazaGridVersion;
+    cell: PlazaCell;
+    retryAfter: Date;
+    policyVersion: number;
+  }): Promise<boolean> {
+    const result = await this.database.query(
+      `UPDATE plaza_grids
+          SET display_name = $2,
+              naming_source = 'neutral',
+              naming_kind = NULL,
+              naming_provider = NULL,
+              naming_provider_place_id = NULL,
+              naming_longitude_gcj02 = NULL,
+              naming_latitude_gcj02 = NULL,
+              naming_policy_version = $3,
+              naming_retry_after = $4,
+              updated_at = now()
+        WHERE id = $1
+          AND (naming_source = 'neutral' OR naming_policy_version < $3)
+          AND status = 'active'`,
+      [
+        input.plazaId,
+        this.neutralName(input.version, input.cell),
+        input.policyVersion,
+        input.retryAfter
+      ]
     );
     return result.rowCount === 1;
   }

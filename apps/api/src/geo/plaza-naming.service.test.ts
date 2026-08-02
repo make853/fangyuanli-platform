@@ -38,18 +38,24 @@ test("uses distinct stable candidates without changing plaza identity", async ()
   } as unknown as PlazaContextRepository;
   const provider = {
     isConfigured: () => true,
-    candidates: async () => [
+    candidates: async (point: ReturnType<PlazaGridProjector["center"]>) => [
       {
         name: "滨江体育中心广场",
         source: "venue" as const,
         kind: "culture_scenic" as const,
-        score: 1000
+        score: 1000,
+        point,
+        provider: "amap" as const,
+        providerPlaceId: "venue-1"
       },
       {
         name: "滨江商圈广场",
         source: "landmark" as const,
         kind: "area" as const,
-        score: 800
+        score: 800,
+        point,
+        provider: "amap" as const,
+        providerPlaceId: "area-1"
       }
     ]
   } as PlazaNamingProvider;
@@ -73,6 +79,9 @@ test("uses distinct stable candidates without changing plaza identity", async ()
       name: "滨江体育中心广场",
       source: "venue",
       kind: "culture_scenic",
+      point: new PlazaGridProjector().center({ gridX: 0, gridY: 0 }, version),
+      provider: "amap",
+      providerPlaceId: "venue-1",
       policyVersion: PLAZA_NAMING_POLICY_VERSION
     },
     {
@@ -80,6 +89,9 @@ test("uses distinct stable candidates without changing plaza identity", async ()
       name: "滨江商圈广场",
       source: "landmark",
       kind: "area",
+      point: new PlazaGridProjector().center({ gridX: 1, gridY: 0 }, version),
+      provider: "amap",
+      providerPlaceId: "area-1",
       policyVersion: PLAZA_NAMING_POLICY_VERSION
     }
   ]);
@@ -150,4 +162,91 @@ test("does not claim naming work when the provider is not configured", async () 
     false
   );
   assert.equal(claimed, false);
+});
+
+test("never assigns a landmark outside the plaza cell", async () => {
+  const renamed: string[] = [];
+  const neutralized: string[] = [];
+  const repository = {
+    claimPlazasForNamingByCells: async () => [
+      { plazaId: "plaza-0", gridX: 0, gridY: 0 }
+    ],
+    applyPlazaNameCandidate: async (input: { name: string }) => {
+      renamed.push(input.name);
+      return true;
+    },
+    applyNeutralPlazaName: async (input: { plazaId: string }) => {
+      neutralized.push(input.plazaId);
+      return true;
+    }
+  } as unknown as PlazaContextRepository;
+  const projector = new PlazaGridProjector();
+  const provider = {
+    isConfigured: () => true,
+    candidates: async () => [
+      {
+        name: "逍遥苑广场",
+        source: "venue" as const,
+        kind: "public_square" as const,
+        score: 1800,
+        point: projector.center({ gridX: 1, gridY: 0 }, version),
+        provider: "amap" as const
+      }
+    ]
+  } as PlazaNamingProvider;
+
+  const changed = await new PlazaNamingService(
+    provider,
+    repository,
+    projector
+  ).enrich({
+    version,
+    cells: [{ gridX: 0, gridY: 0 }],
+    plazas: [plazas[0]!]
+  });
+
+  assert.equal(changed, true);
+  assert.deepEqual(renamed, []);
+  assert.deepEqual(neutralized, ["plaza-0"]);
+});
+
+test("keeps only the inside candidate before joint assignment", async () => {
+  const renamed: string[] = [];
+  const repository = {
+    claimPlazasForNamingByCells: async () => [
+      { plazaId: "plaza-0", gridX: 0, gridY: 0 }
+    ],
+    applyPlazaNameCandidate: async (input: { name: string }) => {
+      renamed.push(input.name);
+      return true;
+    }
+  } as unknown as PlazaContextRepository;
+  const projector = new PlazaGridProjector();
+  const provider = {
+    isConfigured: () => true,
+    candidates: async () => [
+      {
+        name: "格外高分广场",
+        source: "venue" as const,
+        kind: "public_square" as const,
+        score: 2000,
+        point: projector.center({ gridX: 1, gridY: 0 }, version)
+      },
+      {
+        name: "格内社区广场",
+        source: "community" as const,
+        kind: "community" as const,
+        score: 900,
+        point: projector.center({ gridX: 0, gridY: 0 }, version)
+      }
+    ]
+  } as PlazaNamingProvider;
+
+  await new PlazaNamingService(provider, repository, projector).enrich({
+    version,
+    cells: [{ gridX: 0, gridY: 0 }],
+    plazas: [plazas[0]!]
+  });
+
+  assert.deepEqual(renamed, ["格内社区广场"]);
 });

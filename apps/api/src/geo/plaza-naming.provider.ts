@@ -22,13 +22,18 @@ export type PlazaNameCandidate = {
   source: PlazaNamingSource;
   kind: PlazaNamingKind;
   score: number;
+  /** Provider coordinate used by the domain boundary policy. */
+  point?: Gcj02Point;
+  /** Optional provider audit metadata; never used as plaza identity. */
+  provider?: "amap";
+  providerPlaceId?: string;
 };
 
 /**
  * Persisted policy version. Increment only when existing automatic names should
  * be reconsidered; plaza identity and conversation identity never change.
  */
-export const PLAZA_NAMING_POLICY_VERSION = 5;
+export const PLAZA_NAMING_POLICY_VERSION = 6;
 
 /** External map boundary. Implementations must never expose provider IDs as names. */
 export abstract class PlazaNamingProvider {
