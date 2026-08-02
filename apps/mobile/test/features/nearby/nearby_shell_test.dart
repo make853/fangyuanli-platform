@@ -1,13 +1,23 @@
 import 'package:fangyuanli_mobile/src/features/activities/presentation/activities_screen.dart';
 import 'package:fangyuanli_mobile/src/features/places/presentation/places_screen.dart';
+import 'package:fangyuanli_mobile/src/features/plaza/data/device_location_source.dart';
+import 'package:fangyuanli_mobile/src/features/plaza/domain/geo_context_models.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/presentation/plaza_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('广场四频道同屏，切换后展示对应频道且未读消失', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: PlazaScreen())),
+      ProviderScope(
+        overrides: [
+          deviceLocationSourceProvider.overrideWithValue(
+            _UnavailableLocationSource(),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: PlazaScreen())),
+      ),
     );
 
     expect(find.byKey(const ValueKey('plaza-switch-primary')), findsOneWidget);
@@ -69,4 +79,13 @@ void main() {
     expect(find.text('滨河健身广场'), findsOneWidget);
     expect(find.text('隆江猪脚饭'), findsNothing);
   });
+}
+
+class _UnavailableLocationSource implements DeviceLocationSource {
+  const _UnavailableLocationSource();
+
+  @override
+  Future<DevicePosition> currentPosition() {
+    throw const DeviceLocationUnavailable('测试环境没有定位');
+  }
 }

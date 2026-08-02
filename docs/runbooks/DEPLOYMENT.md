@@ -30,13 +30,14 @@ pnpm install --frozen-lockfile
 pnpm verify
 pnpm test
 pnpm build:api
+pnpm db:migrate
 sudo install -m 0644 deploy/systemd/fangyuanli-api.service \
   /etc/systemd/system/fangyuanli-api.service
 sudo install -m 0644 deploy/systemd/fangyuanli-worker.service \
   /etc/systemd/system/fangyuanli-worker.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now fangyuanli-api.service
-sudo systemctl enable --now fangyuanli-worker.service
+sudo systemctl enable fangyuanli-api.service fangyuanli-worker.service
+sudo systemctl restart fangyuanli-api.service fangyuanli-worker.service
 curl --fail http://127.0.0.1:3000/health
 ```
 
