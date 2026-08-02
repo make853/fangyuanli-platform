@@ -43,6 +43,22 @@ class DirectMessage {
   final String deliveryState;
   final int senderProfileVersion;
   final MediaAsset? senderAvatar;
+
+  Map<String, dynamic> toJson() => {
+    'messageId': messageId,
+    'conversationId': conversationId,
+    'sequence': sequence,
+    'sender': {
+      'userId': senderUserId,
+      'displayName': senderName,
+      'profileVersion': senderProfileVersion,
+      if (senderAvatar != null) 'avatar': senderAvatar!.toJson(),
+    },
+    'type': 'text',
+    'text': text,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'deliveryState': deliveryState,
+  };
 }
 
 MediaAsset? _optionalMedia(Object? value) =>

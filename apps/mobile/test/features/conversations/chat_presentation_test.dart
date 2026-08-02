@@ -3,7 +3,11 @@ import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_c
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_message_bubble.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_time.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/direct_chat_settings_screen.dart';
+import 'package:fangyuanli_mobile/src/features/friends/application/friends_controller.dart';
+import 'package:fangyuanli_mobile/src/features/friends/data/relationship_repository.dart';
+import 'package:fangyuanli_mobile/src/features/friends/domain/friend_models.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -169,6 +173,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedSequence, 2);
   });
+
+  testWidgets('聊天设置卡片使用 Material 承载点击反馈', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          friendsControllerProvider.overrideWith(
+            (ref) => FriendsController(_EmptyRelationshipRepository()),
+          ),
+        ],
+        child: const MaterialApp(
+          home: DirectChatSettingsScreen(
+            conversationId: 'conversation-1',
+            title: '小桃子',
+            messages: [],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('查找聊天记录'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class _EmptyRelationshipRepository implements RelationshipRepository {
+  @override
+  Future<PageResult<FriendRequest>> loadReceivedRequests() async {
+    return const PageResult(items: <FriendRequest>[], hasMore: false);
+  }
+
+  @override
+  Future<PageResult<FriendContact>> loadFriends() async {
+    return const PageResult(items: <FriendContact>[], hasMore: false);
+  }
+
+  @override
+  Future<PageResult<BlockedUser>> loadBlocks() async {
+    return const PageResult(items: <BlockedUser>[], hasMore: false);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 DirectMessage _message({

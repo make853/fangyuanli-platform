@@ -10,7 +10,13 @@ import '../domain/direct_message.dart';
 abstract interface class ConversationRepository {
   Future<ConversationListPage> loadConversations();
 
-  Future<DirectMessagePage> loadMessages(String conversationId);
+  Future<DirectMessagePage> loadMessages(
+    String conversationId, {
+    int? beforeSequence,
+    int? afterSequence,
+    int? anchorSequence,
+    int limit = 50,
+  });
 
   Future<DirectMessage> sendText(String conversationId, String text);
 
@@ -46,10 +52,20 @@ class HttpConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessagePage> loadMessages(String conversationId) async {
+  Future<DirectMessagePage> loadMessages(
+    String conversationId, {
+    int? beforeSequence,
+    int? afterSequence,
+    int? anchorSequence,
+    int limit = 50,
+  }) async {
+    final query = <String, dynamic>{'limit': limit};
+    if (beforeSequence != null) query['beforeSequence'] = beforeSequence;
+    if (afterSequence != null) query['afterSequence'] = afterSequence;
+    if (anchorSequence != null) query['anchorSequence'] = anchorSequence;
     final envelope = await _client.get(
       '/conversations/$conversationId/messages',
-      queryParameters: const {'limit': 50},
+      queryParameters: query,
     );
     final data = _data(envelope);
     final rawItems = data['items'];

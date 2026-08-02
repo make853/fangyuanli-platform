@@ -18,6 +18,12 @@ class ConversationUnread {
   final int count;
   final String appearance;
   final int? firstUnreadSequence;
+
+  Map<String, dynamic> toJson() => {
+    'count': count,
+    'appearance': appearance,
+    if (firstUnreadSequence != null) 'firstUnreadSequence': firstUnreadSequence,
+  };
 }
 
 class ConversationPreview {
@@ -41,6 +47,13 @@ class ConversationPreview {
   final int sequence;
   final String preview;
   final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+    'messageId': messageId,
+    'sequence': sequence,
+    'preview': preview,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+  };
 }
 
 class ConversationSummary {
@@ -89,6 +102,18 @@ class ConversationSummary {
   final String? peerUserId;
   final int profileVersion;
   final MediaAsset? avatar;
+
+  Map<String, dynamic> toJson() => {
+    'conversationId': conversationId,
+    'title': title,
+    'unread': unread.toJson(),
+    'notificationMode': notificationMode,
+    'pinned': pinned,
+    if (lastMessage != null) 'lastMessage': lastMessage!.toJson(),
+    'peerUserId': peerUserId,
+    'profileVersion': profileVersion,
+    if (avatar != null) 'avatar': avatar!.toJson(),
+  };
 
   ConversationSummary copyWith({String? title, bool? pinned}) {
     return ConversationSummary(

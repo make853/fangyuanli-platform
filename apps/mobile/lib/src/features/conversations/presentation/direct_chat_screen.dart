@@ -250,7 +250,11 @@ class _MessageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.isLoading && state.messages.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return ListView(
+        key: const ValueKey('chat-stable-loading-surface'),
+        controller: controller,
+        reverse: true,
+      );
     }
     if (state.messages.isEmpty) {
       return const Center(

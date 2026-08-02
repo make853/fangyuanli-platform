@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/application/conversation_list_controller.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_repository.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_list_snapshot_store.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_summary.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -114,6 +115,72 @@ void main() {
       await realtime.close();
     },
   );
+
+  test(
+    'cold start renders cached conversations before silent refresh',
+    () async {
+      final store = _MemoryConversationListSnapshotStore(
+        ConversationListSnapshot(
+          items: [_summary('conversation-1', 'Bb', minute: 1)],
+          navigationUnread: 3,
+        ),
+      );
+      final repository = _DelayedConversationRepository();
+      final controller = ConversationListController(
+        repository,
+        const Stream<RealtimeEvent>.empty(),
+        snapshotStore: store,
+        ownerUserId: 'owner-a',
+      );
+
+      await _waitFor(() => controller.state.items.isNotEmpty);
+      expect(controller.state.items.single.title, 'Bb');
+      expect(controller.state.navigationUnread, 3);
+      expect(controller.state.isLoading, isFalse);
+
+      repository.complete(_page(unread: 1, preview: '服务器新预览'));
+      await _waitFor(
+        () => controller.state.items.single.lastMessage?.preview == '服务器新预览',
+      );
+      expect(store.lastWritten?.navigationUnread, 1);
+      expect(store.lastOwnerUserId, 'owner-a');
+
+      controller.dispose();
+    },
+  );
+}
+
+class _DelayedConversationRepository implements ConversationRepository {
+  final _result = Completer<ConversationListPage>();
+
+  void complete(ConversationListPage page) => _result.complete(page);
+
+  @override
+  Future<ConversationListPage> loadConversations() => _result.future;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _MemoryConversationListSnapshotStore
+    implements ConversationListSnapshotStore {
+  _MemoryConversationListSnapshotStore(this.snapshot);
+
+  final ConversationListSnapshot? snapshot;
+  ConversationListSnapshot? lastWritten;
+  String? lastOwnerUserId;
+
+  @override
+  Future<ConversationListSnapshot?> read(String ownerUserId) async => snapshot;
+
+  @override
+  Future<void> write(
+    String ownerUserId,
+    ConversationListSnapshot snapshot,
+  ) async {
+    lastOwnerUserId = ownerUserId;
+    lastWritten = snapshot;
+  }
 }
 
 ConversationSummary _summary(
@@ -183,7 +250,13 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessagePage> loadMessages(String conversationId) {
+  Future<DirectMessagePage> loadMessages(
+    String conversationId, {
+    int? beforeSequence,
+    int? afterSequence,
+    int? anchorSequence,
+    int limit = 50,
+  }) {
     throw UnimplementedError();
   }
 

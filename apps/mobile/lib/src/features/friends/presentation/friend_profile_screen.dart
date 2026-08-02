@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/presentation/direct_chat_screen.dart';
-import '../../profile/data/profile_repository.dart';
+import '../../profile/application/user_profile_controller.dart';
 import '../../profile/presentation/profile_detail_screen.dart';
 import '../application/friend_relationship_coordinator.dart';
 import '../application/friends_controller.dart';
@@ -19,8 +21,30 @@ class FriendProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(friendsControllerProvider);
     final contact = _currentContact(state);
-    final provider = userProfileProvider(contact.userId);
+    final provider = userProfileControllerProvider(contact.userId);
     final profile = ref.watch(provider);
+    ref.listen<int>(
+      friendsControllerProvider.select(
+        (value) => _currentContact(value).profileVersion,
+      ),
+      (previous, next) {
+        final loadedVersion = ref.read(provider).profile?.profileVersion ?? 0;
+        if (next > loadedVersion) {
+          unawaited(ref.read(provider.notifier).load(silent: true));
+        }
+      },
+    );
+
+    final messageButton = SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: contact.directConversationId.isEmpty
+            ? null
+            : () => _openChat(context, ref, contact),
+        icon: const Icon(Icons.chat_bubble_outline_rounded),
+        label: const Text('发消息'),
+      ),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -35,39 +59,30 @@ class FriendProfileScreen extends ConsumerWidget {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(provider);
-          await ref.read(provider.future);
+          await ref.read(provider.notifier).load(silent: true);
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 28),
           children: [
-            switch (profile) {
-              AsyncData(:final value) => ProfileDetailContent(
+            if (profile.profile case final value?)
+              ProfileDetailContent(
                 profile: value,
                 displayName: contact.visibleName,
-                actionSection: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: contact.directConversationId.isEmpty
-                        ? null
-                        : () => _openChat(context, ref, contact),
-                    icon: const Icon(Icons.chat_bubble_outline_rounded),
-                    label: const Text('发消息'),
-                  ),
-                ),
-              ),
-              AsyncError() => _ProfileLoadFailure(
+                actionSection: messageButton,
+              )
+            else if (profile.errorMessage != null)
+              _ProfileLoadFailure(
                 onRetry: () async {
-                  ref.invalidate(provider);
-                  await ref.read(provider.future);
+                  await ref.read(provider.notifier).load();
                 },
+              )
+            else
+              ProfileIdentityPreview(
+                displayName: contact.visibleName,
+                avatar: contact.avatar,
+                actionSection: messageButton,
               ),
-              _ => const Padding(
-                padding: EdgeInsets.only(top: 120),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            },
           ],
         ),
       ),

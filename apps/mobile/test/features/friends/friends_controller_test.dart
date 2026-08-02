@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
 import 'package:fangyuanli_mobile/src/features/friends/application/friends_controller.dart';
+import 'package:fangyuanli_mobile/src/features/friends/data/friends_snapshot_store.dart';
 import 'package:fangyuanli_mobile/src/features/friends/data/relationship_repository.dart';
 import 'package:fangyuanli_mobile/src/features/friends/domain/friend_models.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -240,15 +241,110 @@ void main() {
       ),
     );
 
-    await _waitFor(() => repository.loadFriendsCount > initialLoadCount);
-    expect(controller.state.contacts.single.profileVersion, 2);
+    await _waitFor(
+      () =>
+          repository.loadFriendsCount > initialLoadCount &&
+          controller.state.contacts.single.profileVersion == 2,
+    );
     controller.dispose();
     await realtime.close();
   });
+
+  test('冷启动先显示本地好友，再静默替换服务器快照', () async {
+    final cached = FriendContact(
+      userId: 'remote-user',
+      displayName: 'Bb',
+      nickname: 'Bb',
+      canViewMyPosts: true,
+      pinned: false,
+      directConversationId: 'conversation-1',
+    );
+    final store = _MemoryFriendsSnapshotStore(
+      FriendsSnapshot(
+        requests: const [],
+        contacts: [cached],
+        blockedUsers: const [],
+      ),
+    );
+    final repository = _DelayedRelationshipRepository();
+    final controller = FriendsController(
+      repository,
+      snapshotStore: store,
+      ownerUserId: 'owner-a',
+    );
+
+    await _waitFor(() => controller.state.contacts.isNotEmpty);
+    expect(controller.state.contacts.single.displayName, 'Bb');
+    expect(controller.state.isLoading, isFalse);
+
+    repository.complete();
+    await _waitFor(() => controller.state.contacts.single.profileVersion == 2);
+    expect(store.lastWritten?.contacts.single.profileVersion, 2);
+    expect(store.lastOwnerUserId, 'owner-a');
+
+    controller.dispose();
+  });
+}
+
+class _DelayedRelationshipRepository implements RelationshipRepository {
+  final _gate = Completer<void>();
+
+  void complete() => _gate.complete();
+
+  @override
+  Future<PageResult<FriendRequest>> loadReceivedRequests() async {
+    await _gate.future;
+    return const PageResult(items: [], hasMore: false);
+  }
+
+  @override
+  Future<PageResult<FriendContact>> loadFriends() async {
+    await _gate.future;
+    return PageResult(
+      items: [
+        FriendContact(
+          userId: 'remote-user',
+          displayName: 'Bb',
+          nickname: 'Bb',
+          canViewMyPosts: true,
+          pinned: false,
+          directConversationId: 'conversation-1',
+          profileVersion: 2,
+        ),
+      ],
+      hasMore: false,
+    );
+  }
+
+  @override
+  Future<PageResult<BlockedUser>> loadBlocks() async {
+    await _gate.future;
+    return const PageResult(items: [], hasMore: false);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _MemoryFriendsSnapshotStore implements FriendsSnapshotStore {
+  _MemoryFriendsSnapshotStore(this.snapshot);
+
+  final FriendsSnapshot? snapshot;
+  FriendsSnapshot? lastWritten;
+  String? lastOwnerUserId;
+
+  @override
+  Future<FriendsSnapshot?> read(String ownerUserId) async => snapshot;
+
+  @override
+  Future<void> write(String ownerUserId, FriendsSnapshot snapshot) async {
+    lastOwnerUserId = ownerUserId;
+    lastWritten = snapshot;
+  }
 }
 
 Future<void> _waitFor(bool Function() condition) async {
-  for (var attempt = 0; attempt < 100; attempt++) {
+  for (var attempt = 0; attempt < 400; attempt++) {
     if (condition()) return;
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }

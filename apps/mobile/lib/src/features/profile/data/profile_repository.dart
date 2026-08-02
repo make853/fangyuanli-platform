@@ -108,8 +108,3 @@ class HttpProfileRepository implements ProfileRepository {
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return HttpProfileRepository(ref.watch(authenticatedApiClientProvider));
 });
-
-final userProfileProvider = FutureProvider.autoDispose
-    .family<UserProfile, String>(
-      (ref, userId) => ref.watch(profileRepositoryProvider).loadUser(userId),
-    );

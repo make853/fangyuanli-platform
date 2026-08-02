@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
 import '../../../core/presentation/feature_entry.dart';
+import '../../media/domain/media_upload_models.dart';
 import '../application/profile_controller.dart';
-import '../data/profile_repository.dart';
+import '../application/user_profile_controller.dart';
 import '../domain/profile_models.dart';
 import 'profile_edit_screen.dart';
 import 'profile_media_widgets.dart';
@@ -104,35 +105,137 @@ class UserProfileDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final provider = userProfileProvider(userId);
+    final provider = userProfileControllerProvider(userId);
     final state = ref.watch(provider);
     return Scaffold(
       appBar: AppBar(title: const Text('个人资料')),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(provider);
-          await ref.read(provider.future);
+          await ref.read(provider.notifier).load(silent: true);
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 28),
           children: [
-            switch (state) {
-              AsyncData(:final value) => ProfileDetailContent(profile: value),
-              AsyncError(:final error) => _LoadFailure(
+            if (state.profile case final profile?)
+              ProfileDetailContent(profile: profile)
+            else if (state.errorMessage case final error?)
+              _LoadFailure(
                 message: '个人资料加载失败：$error',
                 onRetry: () async {
-                  ref.invalidate(provider);
-                  await ref.read(provider.future);
+                  await ref.read(provider.notifier).load();
                 },
-              ),
-              _ => const Padding(
+              )
+            else
+              const Padding(
                 padding: EdgeInsets.only(top: 120),
                 child: Center(child: CircularProgressIndicator()),
               ),
-            },
           ],
         ),
+      ),
+    );
+  }
+}
+
+class ProfileIdentityPreview extends StatelessWidget {
+  const ProfileIdentityPreview({
+    required this.displayName,
+    this.avatar,
+    this.actionSection,
+    super.key,
+  });
+
+  final String displayName;
+  final MediaAsset? avatar;
+  final Widget? actionSection;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = displayName.trim();
+    final initial = normalized.isEmpty ? '友' : normalized.characters.first;
+    return Column(
+      key: const ValueKey('profile-identity-preview'),
+      children: [
+        SizedBox(
+          height: 192,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Positioned.fill(
+                bottom: 38,
+                child: ColoredBox(color: Color(0xFFD6E7DF)),
+              ),
+              Positioned(
+                left: 20,
+                bottom: 0,
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(29),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: ProfileAvatarImage(
+                      media: avatar,
+                      initial: initial,
+                      size: 92,
+                      borderRadius: 26,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const _ProfileLoadingLine(width: 190),
+                const SizedBox(height: 12),
+                const _ProfileLoadingLine(width: 132),
+              ],
+            ),
+          ),
+        ),
+        if (actionSection case final section?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: section,
+          ),
+      ],
+    );
+  }
+}
+
+class _ProfileLoadingLine extends StatelessWidget {
+  const _ProfileLoadingLine({required this.width});
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: 12,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9EFEC),
+        borderRadius: BorderRadius.circular(6),
       ),
     );
   }

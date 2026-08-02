@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/application/direct_chat_controller.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_repository.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/data/direct_message_store.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_summary.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
 import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
@@ -52,6 +53,28 @@ void main() {
     controller.dispose();
   });
 
+  test('silent refresh keeps cached messages visible', () async {
+    final repository = _FakeConversationRepository();
+    final controller = DirectChatController(
+      repository,
+      'conversation-1',
+      const Stream<RealtimeEvent>.empty(),
+    );
+
+    await repository.loaded.future;
+    await Future<void>.delayed(Duration.zero);
+    final refresh = controller.load(silent: true);
+
+    expect(controller.state.messages.single.text, '你好');
+    expect(controller.state.isLoading, isFalse);
+    expect(controller.state.isRefreshing, isTrue);
+    await refresh;
+    expect(controller.state.isRefreshing, isFalse);
+    expect(repository.loadMessagesCount, 2);
+
+    controller.dispose();
+  });
+
   test(
     'appends a matching realtime message without a manual refresh',
     () async {
@@ -89,6 +112,119 @@ void main() {
       controller.dispose();
     },
   );
+
+  test(
+    'renders a persistent snapshot before incrementally syncing newer messages',
+    () async {
+      final cached = _message(
+        id: 'message-cached',
+        sequence: 7,
+        senderUserId: 'user-b',
+        text: '本地消息',
+      );
+      final store = _MemoryDirectMessageStore(
+        DirectMessageSnapshot(messages: [cached], hasEarlier: true),
+      );
+      final repository = _IncrementalConversationRepository();
+      final controller = DirectChatController(
+        repository,
+        'conversation-1',
+        const Stream<RealtimeEvent>.empty(),
+        messageStore: store,
+        ownerUserId: 'owner-a',
+      );
+
+      await _waitFor(() => repository.afterSequence == 7);
+      expect(controller.state.messages.single.text, '本地消息');
+      expect(controller.state.isLoading, isFalse);
+      expect(controller.state.isRefreshing, isTrue);
+
+      repository.complete(
+        DirectMessagePage(
+          items: [
+            _message(
+              id: 'message-new',
+              sequence: 8,
+              senderUserId: 'user-b',
+              text: '服务器新增',
+            ),
+          ],
+          hasEarlier: true,
+          hasLater: false,
+        ),
+      );
+      await _waitFor(() => controller.state.messages.length == 2);
+
+      expect(controller.state.messages.map((message) => message.sequence), [
+        7,
+        8,
+      ]);
+      expect(store.lastWritten.map((message) => message.sequence), [7, 8]);
+      expect(store.lastOwnerUserId, 'owner-a');
+      expect(controller.state.hasEarlier, isTrue);
+
+      controller.dispose();
+    },
+  );
+}
+
+class _IncrementalConversationRepository implements ConversationRepository {
+  final _response = Completer<DirectMessagePage>();
+  int? afterSequence;
+
+  void complete(DirectMessagePage page) => _response.complete(page);
+
+  @override
+  Future<DirectMessagePage> loadMessages(
+    String conversationId, {
+    int? beforeSequence,
+    int? afterSequence,
+    int? anchorSequence,
+    int limit = 50,
+  }) {
+    this.afterSequence = afterSequence;
+    return _response.future;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _MemoryDirectMessageStore implements DirectMessageStore {
+  _MemoryDirectMessageStore(this.snapshot);
+
+  final DirectMessageSnapshot? snapshot;
+  List<DirectMessage> lastWritten = const [];
+  String? lastOwnerUserId;
+
+  @override
+  Future<DirectMessageSnapshot?> readRecent({
+    required String ownerUserId,
+    required String conversationId,
+    int limit = 50,
+  }) async => snapshot;
+
+  @override
+  Future<void> write({
+    required String ownerUserId,
+    required String conversationId,
+    required Iterable<DirectMessage> messages,
+    required bool hasEarlier,
+  }) async {
+    lastOwnerUserId = ownerUserId;
+    lastWritten = messages.toList(growable: false);
+  }
+
+  @override
+  Future<void> clearOwner(String ownerUserId) async {}
+}
+
+Future<void> _waitFor(bool Function() condition) async {
+  for (var attempt = 0; attempt < 50; attempt += 1) {
+    if (condition()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+  }
+  fail('condition was not met');
 }
 
 class _FakeConversationRepository implements ConversationRepository {
@@ -97,6 +233,7 @@ class _FakeConversationRepository implements ConversationRepository {
   final bool failMarkRead;
   final Completer<void> loaded = Completer<void>();
   int? lastReadSequence;
+  int loadMessagesCount = 0;
 
   @override
   Future<ConversationListPage> loadConversations() {
@@ -110,7 +247,14 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessagePage> loadMessages(String conversationId) async {
+  Future<DirectMessagePage> loadMessages(
+    String conversationId, {
+    int? beforeSequence,
+    int? afterSequence,
+    int? anchorSequence,
+    int limit = 50,
+  }) async {
+    loadMessagesCount += 1;
     if (!loaded.isCompleted) loaded.complete();
     return DirectMessagePage(
       items: [

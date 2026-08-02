@@ -23,6 +23,13 @@ class UserSummary {
   final String displayName;
   final int profileVersion;
   final MediaAsset? avatar;
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'displayName': displayName,
+    'profileVersion': profileVersion,
+    if (avatar != null) 'avatar': avatar!.toJson(),
+  };
 }
 
 class FriendRequest {
@@ -57,6 +64,16 @@ class FriendRequest {
   final String applicationNote;
   final DateTime createdAt;
   final DateTime? decidedAt;
+
+  Map<String, dynamic> toJson() => {
+    'requestId': requestId,
+    'sender': sender.toJson(),
+    'receiver': receiver.toJson(),
+    'status': status.name,
+    'applicationNote': applicationNote,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    if (decidedAt != null) 'decidedAt': decidedAt!.toUtc().toIso8601String(),
+  };
 }
 
 class FriendContact {
@@ -95,6 +112,18 @@ class FriendContact {
   final String directConversationId;
   final int profileVersion;
   final MediaAsset? avatar;
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'displayName': displayName,
+    'nickname': nickname,
+    'remarkName': remarkName,
+    'canViewMyPosts': canViewMyPosts,
+    'pinned': pinned,
+    'directConversationId': directConversationId,
+    'profileVersion': profileVersion,
+    if (avatar != null) 'avatar': avatar!.toJson(),
+  };
 
   String get visibleName {
     final remark = remarkName?.trim();
@@ -202,6 +231,14 @@ class BlockedUser {
   final PriorRelation priorRelation;
   final PriorRelation? restoredRelation;
   final bool directMessagingAllowed;
+
+  Map<String, dynamic> toJson() => {
+    'target': target.toJson(),
+    'state': state.name,
+    'priorRelation': priorRelation.name,
+    if (restoredRelation != null) 'restoredRelation': restoredRelation!.name,
+    'directMessagingAllowed': directMessagingAllowed,
+  };
 }
 
 class PageResult<T> {
