@@ -9,6 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('广场四频道同屏，切换后展示对应频道且未读消失', (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -22,6 +26,15 @@ void main() {
 
     expect(find.byKey(const ValueKey('plaza-switch-primary')), findsOneWidget);
     expect(find.byKey(const ValueKey('plaza-switch-east')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plaza-switch-river')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plaza-switch-culture')), findsOneWidget);
+    final screenWidth =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    for (final id in ['primary', 'east', 'river', 'culture']) {
+      final rect = tester.getRect(find.byKey(ValueKey('plaza-switch-$id')));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(screenWidth));
+    }
     expect(find.text('12'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('plaza-switch-east')));

@@ -79,27 +79,31 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
     return Column(
       children: [
         SizedBox(
+          key: const ValueKey('plaza-switcher'),
           height: 98,
-          child: ListView.separated(
-            key: const ValueKey('plaza-switcher'),
-            scrollDirection: Axis.horizontal,
+          child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: plazas.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 9),
-            itemBuilder: (context, index) {
-              final plaza = plazas[index];
-              return _PlazaSwitchCard(
-                plaza: plaza,
-                selected: plaza.id == selected.id,
-                unreadCount: _readPlazaIds.contains(plaza.id)
-                    ? 0
-                    : plaza.unreadCount,
-                onTap: () => setState(() {
-                  _selectedPlazaId = plaza.id;
-                  _readPlazaIds.add(plaza.id);
-                }),
-              );
-            },
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var index = 0; index < plazas.length; index++) ...[
+                  if (index > 0) const SizedBox(width: 7),
+                  Expanded(
+                    child: _PlazaSwitchCard(
+                      plaza: plazas[index],
+                      selected: plazas[index].id == selected.id,
+                      unreadCount: _readPlazaIds.contains(plazas[index].id)
+                          ? 0
+                          : plazas[index].unreadCount,
+                      onTap: () => setState(() {
+                        _selectedPlazaId = plazas[index].id;
+                        _readPlazaIds.add(plazas[index].id);
+                      }),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
         Padding(
@@ -218,54 +222,62 @@ class _PlazaSwitchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 116,
-      child: Material(
-        color: selected ? const Color(0xFFDDEEE7) : Colors.white,
+    return Material(
+      color: selected ? const Color(0xFFDDEEE7) : Colors.white,
+      borderRadius: BorderRadius.circular(17),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: ValueKey('plaza-switch-${plaza.id}'),
         borderRadius: BorderRadius.circular(17),
-        child: InkWell(
-          key: ValueKey('plaza-switch-${plaza.id}'),
-          borderRadius: BorderRadius.circular(17),
-          onTap: onTap,
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 11, 9, 9),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+        onTap: onTap,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 6, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(right: unreadCount > 0 ? 18 : 0),
+                    child: Text(
                       plaza.isPrimary ? '主广场' : '相邻',
+                      maxLines: 1,
                       style: const TextStyle(
                         color: Color(0xFF78847E),
                         fontSize: 10,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      plaza.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    plaza.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.15,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const Spacer(),
-                    Text(
-                      plaza.activityLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF66736D),
-                        fontSize: 11,
-                      ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    plaza.activityLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF66736D),
+                      fontSize: 10,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Positioned(
-                right: 7,
-                top: 7,
-                child: UnreadCountBadge(count: unreadCount),
-              ),
-            ],
-          ),
+            ),
+            Positioned(
+              right: 5,
+              top: 6,
+              child: UnreadCountBadge(count: unreadCount),
+            ),
+          ],
         ),
       ),
     );
