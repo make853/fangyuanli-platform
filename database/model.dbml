@@ -487,11 +487,12 @@ Ref: message_media.media_asset_id > media_assets.id
 
 Table plaza_grid_versions {
   id uuid [pk]
-  version_number int [not null, unique]
-  side_meters int [not null]
-  projection_definition text [not null]
-  status varchar(16) [not null]
-  activated_at timestamptz
+  version int [not null, unique]
+  coordinate_system varchar(16) [not null, default: 'gcj02']
+  projection_key varchar(64) [not null]
+  side_length_meters int [not null]
+  projection_definition jsonb [not null]
+  status varchar(16) [not null, default: 'active']
   created_at timestamptz [not null]
 }
 
@@ -500,34 +501,34 @@ Table plaza_grids {
   grid_version_id uuid [not null, ref: > plaza_grid_versions.id]
   grid_x bigint [not null]
   grid_y bigint [not null]
-  center_point geometry [not null, note: '具体 SRID 待地理技术验证']
-  boundary geometry
-  display_name varchar(80) [not null]
-  naming_source varchar(32)
-  naming_source_id varchar(128)
   conversation_id uuid [not null, unique, ref: > conversations.id]
+  display_name varchar(96) [not null]
+  naming_source varchar(24) [not null, default: 'neutral']
+  center_longitude_gcj02 decimal(10,7) [not null]
+  center_latitude_gcj02 decimal(10,7) [not null]
   status varchar(16) [not null, default: 'active']
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
 
   Indexes {
     (grid_version_id, grid_x, grid_y) [unique]
-    center_point [type: gist]
   }
 }
 
 Table user_plaza_anchors {
   user_id uuid [pk, ref: > users.id]
   grid_version_id uuid [not null, ref: > plaza_grid_versions.id]
-  main_plaza_id uuid [not null, ref: > plaza_grids.id]
-  neighbor_plaza_ids jsonb [not null, note: '固定顺序的三个相邻广场 ID']
-  anchor_point geometry [not null]
-  anchor_radius_meters int [not null]
-  last_accuracy_meters int
-  policy_version int [not null]
+  anchor_longitude_gcj02 decimal(10,7) [not null]
+  anchor_latitude_gcj02 decimal(10,7) [not null]
+  plaza_ids uuid[] [not null, note: '主广场在前，后三项为相邻广场']
+  pending_plaza_ids uuid[]
+  pending_confirmation_count int [not null, default: 0]
+  pending_first_seen_at timestamptz
+  last_accuracy_meters decimal(8,2) [not null]
+  anchor_policy_version int [not null]
   created_at timestamptz [not null]
   last_confirmed_at timestamptz [not null]
-  expires_at timestamptz
+  updated_at timestamptz [not null]
 }
 
 Table place_categories {
