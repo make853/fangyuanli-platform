@@ -45,3 +45,56 @@ test("prioritizes stable venues and filters small merchants and roads", () => {
       candidates.findIndex((candidate) => candidate.name === "滨江商圈广场")
   );
 });
+
+test("prefers a city plaza over its entrances, fountains and minor attractions", () => {
+  const candidates = new PlazaNameSelector().select({
+    aois: [
+      {
+        name: "上海市人民政府",
+        type: "130102",
+        area: "34587",
+        distance: "0"
+      }
+    ],
+    pois: [
+      {
+        name: "上海人民广场",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "226"
+      },
+      {
+        name: "上海人民广场音乐喷泉",
+        type: "风景名胜;公园广场;城市广场",
+        distance: "138"
+      },
+      {
+        name: "人民广场地铁站1号口",
+        type: "交通设施服务;地铁站;出入口",
+        distance: "267"
+      },
+      {
+        name: "人民公园-西山亭",
+        type: "风景名胜;风景名胜相关;旅游景点",
+        distance: "40"
+      }
+    ],
+    addressComponent: {
+      businessAreas: [
+        { name: "淮海路" },
+        { name: "人民广场商圈" }
+      ]
+    }
+  });
+
+  assert.equal(candidates[0]?.name, "上海人民广场");
+  assert.equal(
+    candidates.some((candidate) =>
+      /音乐喷泉|号口|西山亭|淮海路/u.test(candidate.name)
+    ),
+    false
+  );
+  assert.equal(
+    candidates.some((candidate) => candidate.name === "人民广场商圈广场"),
+    true
+  );
+});
