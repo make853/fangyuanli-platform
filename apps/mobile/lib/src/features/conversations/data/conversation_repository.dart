@@ -5,12 +5,12 @@ import '../../../core/network/api_failure.dart';
 import '../../../core/network/authenticated_api_client.dart';
 import '../../../core/network/authenticated_api_client_provider.dart';
 import '../domain/conversation_summary.dart';
-import '../domain/direct_message.dart';
+import '../domain/conversation_message.dart';
 
 abstract interface class ConversationRepository {
   Future<ConversationListPage> loadConversations();
 
-  Future<DirectMessagePage> loadMessages(
+  Future<ConversationMessagePage> loadMessages(
     String conversationId, {
     int? beforeSequence,
     int? afterSequence,
@@ -18,7 +18,7 @@ abstract interface class ConversationRepository {
     int limit = 50,
   });
 
-  Future<DirectMessage> sendText(String conversationId, String text);
+  Future<ConversationMessage> sendText(String conversationId, String text);
 
   Future<void> markRead(String conversationId, int lastReadSequence);
 }
@@ -52,7 +52,7 @@ class HttpConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessagePage> loadMessages(
+  Future<ConversationMessagePage> loadMessages(
     String conversationId, {
     int? beforeSequence,
     int? afterSequence,
@@ -72,10 +72,10 @@ class HttpConversationRepository implements ConversationRepository {
     if (rawItems is! List) {
       throw const ApiFailure(message: '服务器返回的消息格式不正确');
     }
-    return DirectMessagePage(
+    return ConversationMessagePage(
       items: [
         for (final item in rawItems)
-          DirectMessage.fromJson(Map<String, dynamic>.from(item as Map)),
+          ConversationMessage.fromJson(Map<String, dynamic>.from(item as Map)),
       ],
       hasEarlier: data['hasEarlier'] as bool? ?? false,
       hasLater: data['hasLater'] as bool? ?? false,
@@ -83,13 +83,16 @@ class HttpConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessage> sendText(String conversationId, String text) async {
+  Future<ConversationMessage> sendText(
+    String conversationId,
+    String text,
+  ) async {
     final envelope = await _client.post(
       '/conversations/$conversationId/messages',
       idempotent: true,
       data: {'clientMessageId': _uuid.v4(), 'type': 'text', 'text': text},
     );
-    return DirectMessage.fromJson(_data(envelope));
+    return ConversationMessage.fromJson(_data(envelope));
   }
 
   @override

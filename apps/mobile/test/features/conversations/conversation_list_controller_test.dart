@@ -5,7 +5,7 @@ import 'package:fangyuanli_mobile/src/features/conversations/application/convers
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_repository.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_list_snapshot_store.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_summary.dart';
-import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_message.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -250,7 +250,7 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessagePage> loadMessages(
+  Future<ConversationMessagePage> loadMessages(
     String conversationId, {
     int? beforeSequence,
     int? afterSequence,
@@ -266,7 +266,7 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessage> sendText(String conversationId, String text) {
+  Future<ConversationMessage> sendText(String conversationId, String text) {
     throw UnimplementedError();
   }
 }

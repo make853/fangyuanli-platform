@@ -1,4 +1,4 @@
-import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_message.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_composer.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_message_bubble.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_time.dart';
@@ -218,12 +218,12 @@ class _EmptyRelationshipRepository implements RelationshipRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-DirectMessage _message({
+ConversationMessage _message({
   String senderUserId = 'user-a',
   required String text,
   int sequence = 1,
 }) {
-  return DirectMessage(
+  return ConversationMessage(
     messageId: 'message-$sequence',
     conversationId: 'conversation-1',
     sequence: sequence,

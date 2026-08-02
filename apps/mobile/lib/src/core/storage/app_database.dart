@@ -16,7 +16,7 @@ class AppDatabase {
     Future<String> Function()? pathLoader,
   }) : _pathLoader = pathLoader ?? _defaultPath;
 
-  static const schemaVersion = 3;
+  static const schemaVersion = 4;
 
   final DatabaseFactory? databaseFactoryOverride;
   final Future<String> Function() _pathLoader;
@@ -107,6 +107,24 @@ class AppDatabase {
     ''');
   }
 
+  static Future<void> _createVersionFour(Database database) async {
+    // The v2 tables originally carried a direct-chat name even though their
+    // keys and payloads were already conversation-scoped. Rename them in place
+    // so installed users keep every cached message while all conversation
+    // scenes share one physical store.
+    await database.execute(
+      'ALTER TABLE direct_message_threads RENAME TO conversation_threads',
+    );
+    await database.execute(
+      'ALTER TABLE direct_messages RENAME TO conversation_messages',
+    );
+    await database.execute('DROP INDEX idx_direct_messages_sequence');
+    await database.execute('''
+      CREATE INDEX idx_conversation_messages_sequence
+      ON conversation_messages (owner_user_id, conversation_id, sequence DESC)
+    ''');
+  }
+
   static Future<void> _upgrade(
     Database database,
     int oldVersion,
@@ -126,6 +144,10 @@ class AppDatabase {
     if (migratedVersion < 3) {
       await _createVersionThree(database);
       migratedVersion = 3;
+    }
+    if (migratedVersion < 4) {
+      await _createVersionFour(database);
+      migratedVersion = 4;
     }
     if (migratedVersion != newVersion) {
       throw StateError(

@@ -9,7 +9,7 @@ import '../../media/domain/media_upload_models.dart';
 import '../../profile/application/profile_controller.dart';
 import '../../profile/presentation/profile_detail_screen.dart';
 import '../application/direct_chat_controller.dart';
-import '../domain/direct_message.dart';
+import '../domain/conversation_message.dart';
 import 'chat_composer.dart';
 import 'chat_message_bubble.dart';
 import 'chat_time.dart';
@@ -275,7 +275,10 @@ class _MessageList extends StatelessWidget {
     );
   }
 
-  Widget _message(DirectMessage message, {required DirectMessage? previous}) {
+  Widget _message(
+    ConversationMessage message, {
+    required ConversationMessage? previous,
+  }) {
     final isMine = message.senderUserId == userId;
     final showTime = ChatTimePresentation.shouldShowDivider(
       message.createdAt,
@@ -284,7 +287,7 @@ class _MessageList extends StatelessWidget {
     return KeyedSubtree(
       key: keyForSequence(message.sequence),
       child: ChatMessageBubble(
-        text: message.text,
+        text: message.previewText,
         deliveryState: message.deliveryState,
         isMine: isMine,
         avatar: isMine ? ownAvatar : peerAvatar ?? message.senderAvatar,
