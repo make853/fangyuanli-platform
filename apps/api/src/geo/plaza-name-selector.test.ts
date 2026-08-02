@@ -310,6 +310,20 @@ test("keeps the representative public, heritage, commercial and community choice
   assert.equal(byName.get("绿洲社区广场")?.kind, "community");
 });
 
+test("keeps station and scenic semantics when AMap also types them as city plazas", () => {
+  const candidates = new PlazaNameSelector().select({
+    pois: [
+      { name: "民权北站站前广场", type: "风景名胜;公园广场;城市广场", distance: "500" },
+      { name: "葡萄酒厂遗址广场", type: "风景名胜;公园广场;城市广场", distance: "600" },
+      { name: "民生广场", type: "风景名胜;公园广场;城市广场", distance: "700" }
+    ]
+  });
+
+  assert.equal(candidates.find((item) => item.name === "民权北站站前广场")?.kind, "transit");
+  assert.equal(candidates.find((item) => item.name === "葡萄酒厂遗址广场")?.kind, "culture_scenic");
+  assert.equal(candidates.find((item) => item.name === "民生广场")?.kind, "public_square");
+});
+
 test("uses villages before road intersections and plain roads as final fallbacks", () => {
   const candidates = new PlazaNameSelector().select({
     aois: [
