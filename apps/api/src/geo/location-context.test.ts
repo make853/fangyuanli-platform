@@ -13,7 +13,13 @@ const snapshot: LocationSnapshot = {
   latitude: 23.129112,
   accuracyMeters: 18,
   capturedAt: new Date("2026-08-02T08:00:00.000Z"),
-  expiresAt: new Date("2026-08-02T08:10:00.000Z")
+  expiresAt: new Date("2026-08-02T08:10:00.000Z"),
+  authorizedPlazaIds: [
+    "019f0000-0000-7000-8000-000000000101",
+    "019f0000-0000-7000-8000-000000000102",
+    "019f0000-0000-7000-8000-000000000103",
+    "019f0000-0000-7000-8000-000000000104"
+  ]
 };
 
 test("encrypts a location snapshot and resolves it only for its owner", async () => {

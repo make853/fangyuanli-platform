@@ -37,6 +37,8 @@ class FakeRepository {
     gridY: 0,
     latestSequence: index === 0 ? 8 : 0,
     lastReadSequence: index === 0 ? 3 : 0,
+    unreadCount: index === 0 ? 5 : 0,
+    firstUnreadSequence: index === 0 ? 4 : null,
     notificationMode: index === 0 ? "muted" : "normal"
   }));
 

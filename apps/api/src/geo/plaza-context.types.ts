@@ -32,6 +32,8 @@ export type PlazaProjection = PlazaCell & {
   name: string;
   latestSequence: number;
   lastReadSequence: number;
+  unreadCount: number;
+  firstUnreadSequence: number | null;
   notificationMode: "normal" | "muted";
 };
 

@@ -23,6 +23,8 @@ const plazas: PlazaProjection[] = [0, 1].map((index) => ({
   gridY: 0,
   latestSequence: 0,
   lastReadSequence: 0,
+  unreadCount: 0,
+  firstUnreadSequence: null,
   notificationMode: "normal"
 }));
 

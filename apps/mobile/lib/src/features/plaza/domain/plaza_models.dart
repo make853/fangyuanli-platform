@@ -84,6 +84,21 @@ class PlazaSummary {
   String get activityLabel =>
       activePeople == null ? (canSpeak ? '可发言' : '仅查看') : '$activePeople人活跃';
 
+  PlazaSummary copyWithUnread(PlazaUnreadState unread) {
+    return PlazaSummary(
+      id: id,
+      conversationId: conversationId,
+      name: name,
+      isPrimary: isPrimary,
+      activePeople: activePeople,
+      unreadCount: unread.count,
+      canView: canView,
+      canSpeak: canSpeak,
+      unreadAppearance: unread.appearance,
+      firstUnreadSequence: unread.firstUnreadSequence,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'plazaId': id,
     'conversationId': conversationId,

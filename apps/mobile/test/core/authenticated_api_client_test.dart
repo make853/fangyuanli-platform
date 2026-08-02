@@ -59,6 +59,32 @@ void main() {
     );
     expect(adapter.calls, 0);
   });
+
+  test('merges a plaza location context with authenticated headers', () async {
+    final adapter = _RecordingAdapter();
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'))
+      ..httpClientAdapter = adapter;
+    final client = AuthenticatedApiClient(
+      environment: const AppEnvironment(
+        flavor: AppFlavor.staging,
+        apiBaseUrl: 'https://api.example.test',
+        realtimeUrl: 'wss://api.example.test/ws/v1',
+      ),
+      loadSession: ({bool forceRefresh = false}) async => _session,
+      dio: dio,
+    );
+
+    await client.get(
+      '/conversations/plaza-1/messages',
+      headers: const {'x-location-context': 'opaque-plaza-context'},
+    );
+
+    expect(
+      adapter.options.headers['x-location-context'],
+      'opaque-plaza-context',
+    );
+    expect(adapter.options.headers['authorization'], 'Bearer access-token');
+  });
 }
 
 final _session = AuthSession(

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:fangyuanli_mobile/src/core/config/app_environment.dart';
 import 'package:fangyuanli_mobile/src/core/network/authenticated_api_client.dart';
+import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/application/plaza_controller.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/device_location_source.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/geo_context_repository.dart';
@@ -171,6 +172,74 @@ void main() {
 
     expect(json, isNot(contains('locationContextToken')));
     expect(PlazaOverviewSnapshot.fromJson(json).plazas, hasLength(4));
+  });
+
+  test('广场未读实时事件只更新对应卡片并区分红点灰点', () async {
+    final events = StreamController<RealtimeEvent>();
+    const plazas = [
+      PlazaSummary(
+        id: 'plaza-1',
+        conversationId: 'conversation-1',
+        name: '主广场',
+        isPrimary: true,
+      ),
+      PlazaSummary(
+        id: 'plaza-2',
+        conversationId: 'conversation-2',
+        name: '相邻广场',
+        isPrimary: false,
+      ),
+    ];
+    final controller = PlazaController(
+      _CompletingLocationSource(),
+      _FakeGeoContextRepository(
+        GeoContext(
+          locationContextToken: 'token',
+          expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+          anchor: const GeoAnchorState(
+            radiusMeters: 150,
+            isReused: true,
+            recalculationPending: false,
+          ),
+          plazas: const [],
+        ),
+      ),
+      snapshotStore: _MemoryPlazaSnapshotStore(
+        const PlazaOverviewSnapshot(plazas: plazas, anchorRadiusMeters: 150),
+      ),
+      ownerUserId: 'user-a',
+      refreshOnInitialize: false,
+      realtimeEvents: events.stream,
+    );
+    await _waitFor(() => controller.state.plazas.length == 2);
+
+    events.add(
+      const RealtimeEvent(
+        name: 'conversation.unread.changed',
+        payload: {
+          'conversationId': 'conversation-2',
+          'navigationKey': 'plaza',
+          'navigationUnreadCount': 0,
+          'unread': {
+            'count': 3,
+            'appearance': 'gray',
+            'firstUnreadSequence': 7,
+          },
+        },
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.plazas.first.unreadCount, 0);
+    expect(controller.state.plazas.last.unreadCount, 3);
+    expect(
+      controller.state.plazas.last.unreadAppearance,
+      UnreadAppearance.gray,
+    );
+    expect(controller.state.navigationUnread, 0);
+
+    await events.close();
+    controller.dispose();
   });
 }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/application/direct_chat_controller.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/application/conversation_sync_controller.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_repository.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_message_store.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_summary.dart';
@@ -166,6 +167,34 @@ void main() {
       controller.dispose();
     },
   );
+
+  test(
+    'plaza adapter reuses the sync engine and forwards its location context',
+    () async {
+      final repository = _FakeConversationRepository();
+      final controller = ConversationSyncController(
+        repository,
+        'plaza-conversation-1',
+        const Stream<RealtimeEvent>.empty(),
+        accessContext: const ConversationAccessContext.plaza(
+          locationContextToken: 'opaque-location-context',
+        ),
+      );
+
+      await repository.loaded.future;
+      await Future<void>.delayed(Duration.zero);
+      expect(repository.lastAccess?.scene, ConversationScene.plaza);
+      expect(
+        repository.lastAccess?.locationContextToken,
+        'opaque-location-context',
+      );
+
+      expect(await controller.send('广场消息'), isTrue);
+      expect(repository.lastAccess?.scene, ConversationScene.plaza);
+
+      controller.dispose();
+    },
+  );
 }
 
 class _IncrementalConversationRepository implements ConversationRepository {
@@ -181,6 +210,7 @@ class _IncrementalConversationRepository implements ConversationRepository {
     int? afterSequence,
     int? anchorSequence,
     int limit = 50,
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
   }) {
     this.afterSequence = afterSequence;
     return _response.future;
@@ -234,6 +264,7 @@ class _FakeConversationRepository implements ConversationRepository {
   final Completer<void> loaded = Completer<void>();
   int? lastReadSequence;
   int loadMessagesCount = 0;
+  ConversationAccessContext? lastAccess;
 
   @override
   Future<ConversationListPage> loadConversations() {
@@ -253,7 +284,9 @@ class _FakeConversationRepository implements ConversationRepository {
     int? afterSequence,
     int? anchorSequence,
     int limit = 50,
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
   }) async {
+    lastAccess = access;
     loadMessagesCount += 1;
     if (!loaded.isCompleted) loaded.complete();
     return ConversationMessagePage(
@@ -271,7 +304,12 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<void> markRead(String conversationId, int lastReadSequence) async {
+  Future<void> markRead(
+    String conversationId,
+    int lastReadSequence, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  }) async {
+    lastAccess = access;
     if (failMarkRead) throw StateError('read receipt unavailable');
     this.lastReadSequence = lastReadSequence;
   }
@@ -279,8 +317,10 @@ class _FakeConversationRepository implements ConversationRepository {
   @override
   Future<ConversationMessage> sendText(
     String conversationId,
-    String text,
-  ) async {
+    String text, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  }) async {
+    lastAccess = access;
     return _message(
       id: 'message-2',
       sequence: 2,

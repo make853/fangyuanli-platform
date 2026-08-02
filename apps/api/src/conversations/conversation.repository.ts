@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../database/database.service.js";
 import type { QueryExecutor } from "../database/database.types.js";
 import {
+  ConversationAccessService,
+  type ConversationAccess
+} from "./conversation-access.service.js";
+import {
   ConversationDomainError,
   type ConversationDetail,
   type ConversationSummary,
@@ -47,17 +51,6 @@ type ConversationRow = {
   conversation_created_at: Date;
 };
 
-type ParticipantRow = {
-  latest_sequence: string | number;
-  conversation_status: string;
-  friendship_id: string;
-  friendship_status: "active" | "deleted";
-  user_low_id: string;
-  user_high_id: string;
-  other_user_id: string;
-  blocked: boolean;
-};
-
 function number(value: string | number | null): number {
   return value === null ? 0 : Number(value);
 }
@@ -98,7 +91,10 @@ function messageView(row: MessageRow, now = new Date()): MessageView {
 
 @Injectable()
 export class ConversationRepository {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly access: ConversationAccessService
+  ) {}
 
   async listConversations(input: {
     userId: string;
@@ -203,15 +199,16 @@ export class ConversationRepository {
     clientMessageId: string;
     text: string;
     replyToMessageId: string | null;
+    locationContextToken?: string;
     now: Date;
   }): Promise<{ message: MessageView; created: boolean }> {
     return this.database.transaction(async (client) => {
-      const participant = await this.requireParticipant(
-        client,
-        input.userId,
-        input.conversationId,
-        true
-      );
+      const viewAccess = await this.access.authorize(client, {
+        userId: input.userId,
+        conversationId: input.conversationId,
+        capability: "view",
+        lockConversation: true
+      });
       const existing = await client.query<MessageRow>(
         `${this.messageSelect()}
           WHERE m.sender_user_id = $1 AND m.client_message_id = $2`,
@@ -230,20 +227,27 @@ export class ConversationRepository {
           created: false
         };
       }
-      if (participant.blocked) {
+      const sendAccess = await this.access.authorize(client, {
+        userId: input.userId,
+        conversationId: input.conversationId,
+        capability: "send",
+        locationContextToken: input.locationContextToken
+      });
+      if (sendAccess.currentRole === "blocked") {
         throw new ConversationDomainError(
           "DIRECT_MESSAGE_BLOCKED",
           "当前关系不允许发送消息",
           403
         );
       }
-      if (
-        participant.conversation_status !== "active" ||
-        participant.friendship_status !== "active"
-      ) {
+      if (!sendAccess.canSendMessage) {
         throw new ConversationDomainError(
-          "DIRECT_MESSAGE_REQUIRES_FRIEND",
-          "只有好友可以发送私聊消息",
+          sendAccess.type === "direct"
+            ? "DIRECT_MESSAGE_REQUIRES_FRIEND"
+            : "PLAZA_MESSAGE_NOT_ALLOWED",
+          sendAccess.type === "direct"
+            ? "只有好友可以发送私聊消息"
+            : "当前不能在此广场发言",
           403
         );
       }
@@ -279,8 +283,11 @@ export class ConversationRepository {
            send_status, created_at
          ) VALUES (
            $1, $2, $3, $4, $5, 'text', $6, $7,
-           'direct_text_6m',
-           $8::timestamptz + interval '6 months',
+           $9,
+           $8::timestamptz + CASE
+             WHEN $9 = 'plaza_text_1y' THEN interval '1 year'
+             ELSE interval '6 months'
+           END,
            'sent',
            $8::timestamptz
          )`,
@@ -292,27 +299,24 @@ export class ConversationRepository {
           input.clientMessageId,
           input.text,
           input.replyToMessageId,
-          input.now
+          input.now,
+          sendAccess.type === "plaza" ? "plaza_text_1y" : "direct_text_6m"
         ]
       );
-      await client.query(
-        `INSERT INTO conversation_read_cursors (
-           conversation_id, user_id, last_read_sequence,
-           first_unread_sequence, updated_at
-         ) VALUES ($1, $2, 0, $3, $4)
-         ON CONFLICT (conversation_id, user_id) DO UPDATE
-           SET first_unread_sequence = COALESCE(
-                 conversation_read_cursors.first_unread_sequence,
-                 EXCLUDED.first_unread_sequence
-               ),
-               updated_at = EXCLUDED.updated_at`,
-        [
-          input.conversationId,
-          participant.other_user_id,
-          sequence,
-          input.now
-        ]
+      await this.seedRecipientUnread(
+        client,
+        sendAccess,
+        input.userId,
+        sequence,
+        input.now
       );
+      if (viewAccess.type === "plaza") {
+        await this.access.recordHistoryEntry(client, {
+          userId: input.userId,
+          conversationId: input.conversationId,
+          now: input.now
+        });
+      }
       return {
         message: await this.getMessage(client, messageId),
         created: true
@@ -322,26 +326,41 @@ export class ConversationRepository {
 
   async participantUserIds(
     userId: string,
-    conversationId: string
+    conversationId: string,
+    locationContextToken?: string
   ): Promise<string[]> {
-    const participant = await this.requireParticipant(
-      this.database,
+    const authorized = await this.access.authorize(this.database, {
       userId,
       conversationId,
-      false
-    );
-    return [participant.user_low_id, participant.user_high_id];
+      capability: "view",
+      locationContextToken
+    });
+    return this.access.recipientUserIds(this.database, authorized, userId);
   }
 
   async realtimeConversationState(
     userId: string,
     conversationId: string
   ): Promise<RealtimeConversationState> {
-    const conversation = await this.getConversation(userId, conversationId);
+    const authorized = await this.access.authorize(this.database, {
+      userId,
+      conversationId,
+      capability: "view"
+    });
+    const unread = await this.unreadState(
+      this.database,
+      conversationId,
+      userId,
+      authorized.notificationMode === "muted" ? "muted" : "normal"
+    );
     return {
       conversationId,
-      unread: conversation.unread,
-      navigationUnreadCount: await this.navigationUnread(userId)
+      unread,
+      navigationKey: authorized.navigationKey,
+      navigationUnreadCount:
+        authorized.type === "plaza"
+          ? await this.plazaNavigationUnread(userId)
+          : await this.navigationUnread(userId)
     };
   }
 
@@ -352,17 +371,25 @@ export class ConversationRepository {
     afterSequence?: number;
     anchorSequence?: number;
     limit: number;
+    locationContextToken?: string;
   }): Promise<{
     items: MessageView[];
     hasEarlier: boolean;
     hasLater: boolean;
   }> {
-    await this.requireParticipant(
-      this.database,
-      input.userId,
-      input.conversationId,
-      false
-    );
+    const authorized = await this.access.authorize(this.database, {
+      userId: input.userId,
+      conversationId: input.conversationId,
+      capability: "view",
+      locationContextToken: input.locationContextToken
+    });
+    if (authorized.type === "plaza") {
+      await this.access.recordHistoryEntry(this.database, {
+        userId: input.userId,
+        conversationId: input.conversationId,
+        now: new Date()
+      });
+    }
     let rows: MessageRow[];
     if (input.anchorSequence !== undefined) {
       const anchorExists = await this.database.query(
@@ -458,16 +485,18 @@ export class ConversationRepository {
     userId: string;
     conversationId: string;
     lastReadSequence: number;
+    locationContextToken?: string;
     now: Date;
   }): Promise<ReadCursorView> {
     return this.database.transaction(async (client) => {
-      const participant = await this.requireParticipant(
-        client,
-        input.userId,
-        input.conversationId,
-        true
-      );
-      const latestSequence = number(participant.latest_sequence);
+      const authorized = await this.access.authorize(client, {
+        userId: input.userId,
+        conversationId: input.conversationId,
+        capability: "read",
+        locationContextToken: input.locationContextToken,
+        lockConversation: true
+      });
+      const latestSequence = authorized.latestSequence;
       if (input.lastReadSequence > latestSequence) {
         throw new ConversationDomainError(
           "READ_SEQUENCE_AHEAD",
@@ -489,7 +518,7 @@ export class ConversationRepository {
         client,
         input.conversationId,
         input.userId,
-        "normal",
+        authorized.notificationMode === "muted" ? "muted" : "normal",
         previousSequence
       );
       const resolvedSequence = Math.max(
@@ -500,7 +529,7 @@ export class ConversationRepository {
         client,
         input.conversationId,
         input.userId,
-        "normal",
+        authorized.notificationMode === "muted" ? "muted" : "normal",
         resolvedSequence
       );
       await client.query(
@@ -639,45 +668,83 @@ export class ConversationRepository {
     return number(result.rows[0].unread_count);
   }
 
-  private async requireParticipant(
-    client: QueryExecutor,
-    userId: string,
-    conversationId: string,
-    lockConversation: boolean
-  ): Promise<ParticipantRow> {
-    const result = await client.query<ParticipantRow>(
-      `SELECT c.latest_sequence, c.status AS conversation_status,
-              f.id AS friendship_id, f.status AS friendship_status,
-              dc.user_low_id, dc.user_high_id,
-              CASE WHEN dc.user_low_id = $2
-                   THEN dc.user_high_id ELSE dc.user_low_id END AS other_user_id,
-              EXISTS (
-                SELECT 1 FROM block_relations br
-                 WHERE br.removed_at IS NULL
-                   AND (
-                     (br.blocker_user_id = dc.user_low_id
-                       AND br.blocked_user_id = dc.user_high_id)
-                     OR
-                     (br.blocker_user_id = dc.user_high_id
-                       AND br.blocked_user_id = dc.user_low_id)
-                   )
-              ) AS blocked
-         FROM conversations c
-         JOIN direct_conversations dc ON dc.conversation_id = c.id
-         JOIN friendships f ON f.id = dc.friendship_id
-        WHERE c.id = $1
-          AND (dc.user_low_id = $2 OR dc.user_high_id = $2)
-        ${lockConversation ? "FOR UPDATE OF c" : ""}`,
-      [conversationId, userId]
+  private async plazaNavigationUnread(userId: string): Promise<number> {
+    const result = await this.database.query<{ unread_count: string | number }>(
+      `SELECT count(*) AS unread_count
+         FROM user_plaza_anchors anchor
+         JOIN plaza_grids grid
+           ON grid.grid_version_id = anchor.grid_version_id
+          AND grid.id = ANY(anchor.plaza_ids)
+         JOIN messages message ON message.conversation_id = grid.conversation_id
+         LEFT JOIN conversation_read_cursors cursor
+           ON cursor.conversation_id = grid.conversation_id
+          AND cursor.user_id = anchor.user_id
+         LEFT JOIN conversation_notification_settings setting
+           ON setting.conversation_id = grid.conversation_id
+          AND setting.user_id = anchor.user_id
+         LEFT JOIN user_privacy_settings privacy
+           ON privacy.user_id = anchor.user_id
+        WHERE anchor.user_id = $1
+          AND grid.status = 'active'
+          AND message.sender_user_id IS DISTINCT FROM $1
+          AND message.sequence > COALESCE(cursor.last_read_sequence, 0)
+          AND message.deleted_at IS NULL
+          AND (message.expires_at IS NULL OR message.expires_at > now())
+          AND CASE
+                WHEN setting.notification_override = 'normal' THEN true
+                WHEN setting.notification_override = 'muted' THEN false
+                WHEN COALESCE(privacy.global_group_muted, false) THEN false
+                ELSE true
+              END`,
+      [userId]
     );
-    if (!result.rows[0]) {
-      throw new ConversationDomainError(
-        "CONVERSATION_NOT_FOUND",
-        "会话不存在",
-        404
+    return number(result.rows[0].unread_count);
+  }
+
+  private async seedRecipientUnread(
+    client: QueryExecutor,
+    access: ConversationAccess,
+    senderUserId: string,
+    sequence: number,
+    now: Date
+  ): Promise<void> {
+    if (access.type === "direct") {
+      if (!access.peerUserId) return;
+      await client.query(
+        `INSERT INTO conversation_read_cursors (
+           conversation_id, user_id, last_read_sequence,
+           first_unread_sequence, updated_at
+         ) VALUES ($1, $2, 0, $3, $4)
+         ON CONFLICT (conversation_id, user_id) DO UPDATE
+           SET first_unread_sequence = COALESCE(
+                 conversation_read_cursors.first_unread_sequence,
+                 EXCLUDED.first_unread_sequence
+               ),
+               updated_at = EXCLUDED.updated_at`,
+        [access.conversationId, access.peerUserId, sequence, now]
       );
+      return;
     }
-    return result.rows[0];
+    await client.query(
+      `INSERT INTO conversation_read_cursors (
+         conversation_id, user_id, last_read_sequence,
+         first_unread_sequence, updated_at
+       )
+       SELECT $1, anchor.user_id, 0, $3, $4
+         FROM plaza_grids grid
+         JOIN user_plaza_anchors anchor
+           ON anchor.grid_version_id = grid.grid_version_id
+          AND grid.id = ANY(anchor.plaza_ids)
+        WHERE grid.conversation_id = $1
+          AND anchor.user_id <> $2
+       ON CONFLICT (conversation_id, user_id) DO UPDATE
+         SET first_unread_sequence = COALESCE(
+               conversation_read_cursors.first_unread_sequence,
+               EXCLUDED.first_unread_sequence
+             ),
+             updated_at = EXCLUDED.updated_at`,
+      [access.conversationId, senderUserId, sequence, now]
+    );
   }
 
   private async getMessage(

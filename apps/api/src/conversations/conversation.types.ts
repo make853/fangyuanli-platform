@@ -77,6 +77,7 @@ export type ReadCursorView = {
 export type RealtimeConversationState = {
   conversationId: string;
   unread: UnreadState;
+  navigationKey: "friends" | "plaza";
   navigationUnreadCount: number;
 };
 import type { MediaView } from "../media/media.types.js";

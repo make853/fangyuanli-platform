@@ -109,7 +109,8 @@ export class GeoContextService {
             ...point,
             accuracyMeters: request.accuracyMeters,
             capturedAt: request.capturedAt,
-            expiresAt
+            expiresAt,
+            authorizedPlazaIds: selected.map((plaza) => plaza.plazaId)
           }
         });
       } catch (error) {
@@ -133,7 +134,7 @@ export class GeoContextService {
   }
 
   private present(plaza: PlazaProjection, isMain: boolean): PlazaSummary {
-    const unreadCount = Math.max(0, plaza.latestSequence - plaza.lastReadSequence);
+    const unreadCount = plaza.unreadCount;
     return {
       plazaId: plaza.plazaId,
       conversationId: plaza.conversationId,
@@ -149,8 +150,7 @@ export class GeoContextService {
             : plaza.notificationMode === "muted"
               ? "gray"
               : "red",
-        firstUnreadSequence:
-          unreadCount === 0 ? null : plaza.lastReadSequence + 1
+        firstUnreadSequence: plaza.firstUnreadSequence
       }
     };
   }
