@@ -17,7 +17,7 @@ const snapshot: LocationSnapshot = {
 };
 
 test("encrypts a location snapshot and resolves it only for its owner", async () => {
-  const reader = new LocationContextReader(Buffer.alloc(32, 7));
+  const reader = LocationContextReader.withKeyForTesting(Buffer.alloc(32, 7));
   const token = reader.issue({ userId, snapshot });
 
   assert.match(token, /^loc1_[A-Za-z0-9_-]+$/);
@@ -43,7 +43,7 @@ test("encrypts a location snapshot and resolves it only for its owner", async ()
 });
 
 test("rejects expired and tampered location tokens", async () => {
-  const reader = new LocationContextReader(Buffer.alloc(32, 8));
+  const reader = LocationContextReader.withKeyForTesting(Buffer.alloc(32, 8));
   const token = reader.issue({ userId, snapshot });
 
   await assert.rejects(

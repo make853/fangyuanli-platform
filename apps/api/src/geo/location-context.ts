@@ -36,7 +36,13 @@ export class LocationContextError extends Error {
  */
 @Injectable()
 export class LocationContextReader {
-  constructor(private readonly injectedKey?: Buffer) {}
+  private testingKey?: Buffer;
+
+  static withKeyForTesting(key: Buffer): LocationContextReader {
+    const reader = new LocationContextReader();
+    reader.testingKey = Buffer.from(key);
+    return reader;
+  }
 
   issue(input: { userId: string; snapshot: LocationSnapshot }): string {
     this.validateSnapshot(input.snapshot);
@@ -119,9 +125,9 @@ export class LocationContextReader {
   }
 
   private key(): Buffer {
-    if (this.injectedKey) {
-      if (this.injectedKey.length !== 32) throw new Error("Location key must be 32 bytes");
-      return this.injectedKey;
+    if (this.testingKey) {
+      if (this.testingKey.length !== 32) throw new Error("Location key must be 32 bytes");
+      return this.testingKey;
     }
     const encoded = process.env.FANGYUANLI_LOCATION_CONTEXT_KEY?.trim();
     if (!encoded) {
