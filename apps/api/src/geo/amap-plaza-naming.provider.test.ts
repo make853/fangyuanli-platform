@@ -73,7 +73,7 @@ test("requests GCJ-02 reverse geocoding and returns ranked stable names", async 
   assert.equal(reverseUrl?.searchParams.get("extensions"), "all");
   assert.equal(reverseUrl?.searchParams.get("radius"), "1600");
   assert.equal(aroundUrl?.searchParams.get("radius"), "3000");
-  assert.equal(aroundUrl?.searchParams.get("sortrule"), "distance");
+  assert.equal(aroundUrl?.searchParams.get("sortrule"), "weight");
   assert.equal(aroundUrl?.searchParams.get("page_size"), "25");
   assert.equal(candidates[0]?.name, "滨江体育中心广场");
   assert.equal(

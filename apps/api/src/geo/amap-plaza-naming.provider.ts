@@ -24,8 +24,15 @@ const REGIONAL_LANDMARK_KEYWORDS = [
   "博物馆",
   "图书馆",
   "文化中心",
+  "文化馆",
   "医院",
-  "大学"
+  "大学",
+  "遗址",
+  "古迹",
+  "纪念馆",
+  "景区",
+  "社区",
+  "新村"
 ].join("|");
 
 type AmapReverseResponse = {
@@ -99,7 +106,10 @@ export class AmapPlazaNamingProvider extends PlazaNamingProvider {
     this.locationParams(url, key, point);
     url.searchParams.set("radius", "3000");
     url.searchParams.set("keywords", REGIONAL_LANDMARK_KEYWORDS);
-    url.searchParams.set("sortrule", "distance");
+    // The selector applies its own distance penalty. Weight ordering lets the
+    // bounded result page contain regionally recognizable places instead of
+    // being filled only by the nearest small POIs.
+    url.searchParams.set("sortrule", "weight");
     url.searchParams.set("page_size", "25");
     url.searchParams.set("page_num", "1");
     url.searchParams.set("show_fields", "business");

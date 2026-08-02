@@ -6,6 +6,7 @@ import type {
   PlazaProjection
 } from "./plaza-context.types.js";
 import { PlazaGridProjector } from "./plaza-grid-projector.js";
+import { assignPlazaNames } from "./plaza-name-assignment.js";
 import {
   PLAZA_NAMING_POLICY_VERSION,
   PlazaNamingProvider
@@ -60,9 +61,18 @@ export class PlazaNamingService {
     );
 
     let changed = false;
+    const assignments = assignPlazaNames(
+      lookups
+        .filter((lookup) => !lookup.failed)
+        .map((lookup) => ({
+          plazaId: lookup.plaza.plazaId,
+          candidates: lookup.candidates
+        })),
+      usedNames
+    );
     for (const lookup of lookups) {
       if (lookup.failed) continue;
-      const candidate = lookup.candidates.find((item) => !usedNames.has(item.name));
+      const candidate = assignments.get(lookup.plaza.plazaId);
       if (!candidate) {
         await this.repository.deferPlazaNaming({
           plazaId: lookup.plaza.plazaId,
@@ -75,6 +85,7 @@ export class PlazaNamingService {
         plazaId: lookup.plaza.plazaId,
         name: candidate.name,
         source: candidate.source,
+        kind: candidate.kind,
         policyVersion: PLAZA_NAMING_POLICY_VERSION
       });
       if (updated) {

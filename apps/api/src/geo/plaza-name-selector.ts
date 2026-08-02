@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type {
   PlazaNameCandidate,
+  PlazaNamingKind,
   PlazaNamingSource
 } from "./plaza-naming.provider.js";
 
@@ -9,6 +10,8 @@ export type AmapNamingPayload = {
   pois?: unknown;
   aois?: unknown;
   regionalPois?: unknown;
+  roads?: unknown;
+  roadinters?: unknown;
 };
 
 type RawCandidate = {
@@ -22,7 +25,8 @@ type RawCandidate = {
     | "regional"
     | "businessArea"
     | "neighborhood"
-    | "building";
+    | "building"
+    | "road";
 };
 
 const COMMUNITY_KEYWORDS = ["小区", "花园", "家园", "公寓", "社区", "新城"] as const;
@@ -41,7 +45,16 @@ const PUBLIC_CULTURE_KEYWORDS = [
   "音乐厅",
   "剧院",
   "公园",
-  "景区"
+  "景区",
+  "遗址",
+  "古迹",
+  "古城",
+  "古镇",
+  "故居",
+  "纪念馆",
+  "纪念地",
+  "文物",
+  "陵园"
 ] as const;
 const MAJOR_TRANSIT_KEYWORDS = [
   "火车站",
@@ -127,6 +140,7 @@ const MERCHANT_NAME_KEYWORDS = [
   "KTV"
 ] as const;
 const ROAD_SUFFIXES = ["路", "街", "大道", "巷", "胡同", "公路"] as const;
+const VILLAGE_TYPES = ["村庄级地名", "乡镇级地名", "行政地名"] as const;
 
 @Injectable()
 export class PlazaNameSelector {
@@ -135,6 +149,8 @@ export class PlazaNameSelector {
       ...this.items(payload.aois).map((item) => this.raw(item, "aoi")),
       ...this.items(payload.pois).map((item) => this.raw(item, "poi")),
       ...this.items(payload.regionalPois).map((item) => this.raw(item, "regional")),
+      ...this.items(payload.roadinters).map((item) => this.roadIntersection(item)),
+      ...this.items(payload.roads).map((item) => this.raw(item, "road")),
       ...this.addressItems(payload.addressComponent, "businessAreas").map(
         (item) => this.raw(item, "businessArea")
       ),
@@ -164,6 +180,9 @@ export class PlazaNameSelector {
     const community =
       this.includes(candidate.name, COMMUNITY_KEYWORDS) ||
       this.includes(candidate.type, COMMUNITY_TYPES);
+    const village =
+      this.includes(candidate.type, VILLAGE_TYPES) &&
+      /(?:村|庄|新村|镇)$/u.test(candidate.name);
     const citySquare = candidate.type.includes("城市广场");
     const publicCulture = this.includes(candidate.name, PUBLIC_CULTURE_KEYWORDS);
     const majorTransit =
@@ -183,48 +202,69 @@ export class PlazaNameSelector {
     const stableType = this.includes(candidate.type, STABLE_TYPES);
     let score = 0;
     let source: PlazaNamingSource = "landmark";
+    let kind: PlazaNamingKind = "area";
 
     // A residential project containing “广场” is still a community. Type semantics
     // take precedence over keyword coincidence.
-    if (community) {
-      score = 360;
+    if (village) {
+      score = 980;
       source = "community";
+      kind = "village";
+    } else if (community) {
+      score = 1050;
+      source = "community";
+      kind = "community";
     } else if (citySquare && !this.isMerchantMasqueradingAsSquare(candidate)) {
-      score = candidate.origin === "aoi" ? 1650 : 1550;
+      score = candidate.origin === "aoi" ? 1750 : 1650;
       source = "venue";
+      kind = "public_square";
     } else if (majorTransit) {
-      score = candidate.origin === "aoi" ? 1460 : 1360;
+      score = candidate.origin === "aoi" ? 1600 : 1500;
       source = "venue";
+      kind = "transit";
     } else if (publicCulture) {
-      score = candidate.origin === "aoi" ? 1420 : 1320;
+      score = candidate.origin === "aoi" ? 1580 : 1480;
       source = "venue";
+      kind = "culture_scenic";
     } else if (majorMall) {
-      score = candidate.origin === "aoi" ? 1280 : 1220;
+      score = candidate.origin === "aoi" ? 1380 : 1320;
       source = "venue";
+      kind = "commercial_landmark";
     } else if (majorHospital || university) {
       score = candidate.origin === "aoi" ? 1240 : 1160;
       source = "venue";
+      kind = "public_service";
     } else if (candidate.origin === "businessArea") {
-      score = 920;
+      score = 900;
+      kind = "area";
     } else if (candidate.origin === "aoi" && candidate.area >= 20_000) {
       score = 860;
+      kind = "area";
     } else if (stableType && candidate.origin !== "building") {
       score = 700;
+      kind = "area";
+    } else if (candidate.origin === "road") {
+      score = candidate.type === "道路交叉口" ? 680 : 560;
+      source = "road";
+      kind = "road";
     } else if (basicSchool) {
       // Schools are persistent but identify only one institution, so they are a
       // last-resort fallback below regional landmarks, business areas and AOIs.
       score = 300;
+      kind = "public_service";
     } else if (candidate.origin === "building" && stableType) {
       score = 450;
+      kind = "area";
     } else {
       return null;
     }
 
     score += Math.min(120, candidate.area / 1000);
-    score -= Math.min(3000, candidate.distance) * 0.11;
+    score -= Math.min(3000, candidate.distance) * 0.09;
     return {
       name: this.displayName(candidate.name),
       source,
+      kind,
       score
     };
   }
@@ -234,7 +274,7 @@ export class PlazaNameSelector {
     if (
       this.isSubordinate(name) ||
       this.isOrganization(name) ||
-      this.isRoadName(name) ||
+      (candidate.origin !== "road" && this.isRoadName(name)) ||
       this.includes(name, MERCHANT_NAME_KEYWORDS) ||
       this.includes(name, LOW_QUALITY_EDUCATION) ||
       this.includes(type, LOW_QUALITY_EDUCATION) ||
@@ -275,6 +315,19 @@ export class PlazaNameSelector {
       distance: this.number(item.distance),
       area: this.number(item.area),
       origin
+    };
+  }
+
+  private roadIntersection(item: Record<string, unknown>): RawCandidate | null {
+    const first = this.text(item.first_name);
+    const second = this.text(item.second_name);
+    if (!first || !second || first === second) return null;
+    return {
+      name: `${first}·${second}`,
+      type: "道路交叉口",
+      distance: this.number(item.distance),
+      area: 0,
+      origin: "road"
     };
   }
 
@@ -339,6 +392,11 @@ export class PlazaNameSelector {
         )
         .replace(/[（(](?:门诊部|住院部|门诊楼|住院楼|综合楼)[）)]$/u, "");
       if ([...parent].length >= 2) return parent;
+    }
+
+    if (this.includes(type, VILLAGE_TYPES) && name.endsWith("村") && !name.endsWith("新村")) {
+      const withoutAdministrativeSuffix = name.slice(0, -1);
+      if ([...withoutAdministrativeSuffix].length >= 2) return withoutAdministrativeSuffix;
     }
 
     return name;
