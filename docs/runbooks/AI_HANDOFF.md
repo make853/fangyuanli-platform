@@ -102,9 +102,9 @@ make853/fangyuanli-platform
 - 图片处理 Worker、头像/背景墙绑定、签名读取和旧媒体延迟清理已完成；Flutter 已通过可替换的裁剪端口接入 1:1 头像裁剪，背景墙不强制裁剪；
 - 高频用户身份资料已从完整个人资料中分层：好友申请、联系人、会话和消息返回头像与资料版本；Flutter以媒体ID缓存头像并监听 `profile.updated` 静默刷新；架构决定见 `docs/architecture/decisions/0004-versioned-user-identity-projections.md`；
 - Flutter 已建立统一的本地 SQLite 数据库边界，完整资料按当前登录账号持久化并采用本地优先、后台静默刷新；缓存版本、故障降级和后续本地消息扩展规则记录在 `docs/architecture/decisions/0005-mobile-local-first-profile-snapshots.md`；
-- 私聊消息已加入同一 SQLite 数据库的版本2迁移：按账号与会话隔离、消息ID幂等、会话序号唯一；聊天页本地优先并通过 `afterSequence` 多页增量补拉，发送成功和实时消息都会写回本地。iPhone `profile` 模式已通过彻底退出后的冷启动无闪屏和飞行模式读取本地消息验收；离线期间产生新消息后的恢复增量补拉仍待人工验收。设计边界见 `docs/architecture/decisions/0006-mobile-local-message-snapshots-and-sequence-sync.md`；
+- 私聊消息最初通过 SQLite 版本2落地，现已由版本4原位迁移为统一会话消息表：按账号与会话隔离、消息ID幂等、会话序号唯一；聊天页本地优先并通过 `afterSequence` 多页增量补拉，发送成功和实时消息都会写回本地。iPhone `profile` 模式已通过彻底退出后的冷启动无闪屏和飞行模式读取本地消息验收；离线期间产生新消息后的恢复增量补拉仍待人工验收。设计边界见 `docs/architecture/decisions/0006-mobile-local-message-snapshots-and-sequence-sync.md`；
 - 真机验收曾发现联系人列表仍依赖网络，Bb 会在冷启动先缺失再出现；数据库版本3已增加账号概览快照，好友申请、联系人、黑名单、会话列表和未读数改为本地先显示、后台静默更新，成功的备注/置顶/拉黑等本地投影立即持久化。账号隔离与冷启动自动化测试、真机彻底退出重开、飞行模式读取和恢复联网静默刷新现已全部通过。设计边界见 `docs/architecture/decisions/0007-mobile-account-overview-snapshots.md`；
-- 私聊缓存验收结论已推广为全部聊天的统一约束：广场、地点、活动、私聊和系统会话共用一套本地消息存储、序号同步、实时合并、未读与未来 outbox；各业务模块只提供位置、角色、禁言、状态和读写能力策略，不得复制缓存。当前 Flutter 的 `DirectMessage` 过渡命名须在首个真实群聊接入前无损升级，见 `docs/architecture/decisions/0008-unified-conversation-cache-and-sync-engine.md`；
+- 私聊缓存验收结论已推广为全部聊天的统一约束：广场、地点、活动、私聊和系统会话共用 `ConversationMessage`、统一 SQLite 消息表和 `ConversationSyncController`，复用序号同步、实时合并、未读与未来 outbox；各业务模块只提供位置、角色、禁言、状态和读写能力策略，不得复制缓存。旧 `DirectMessage` 数据已由数据库版本4原位迁移，见 `docs/architecture/decisions/0008-unified-conversation-cache-and-sync-engine.md`；
 - staging 媒体验收已扩展为 A/B 双账号，覆盖好友完整资料、拉黑后最小头像资料、背景墙隔离和测试状态恢复；原生裁剪手势仍需在 iPhone 模拟器或真机人工确认一次。
 
 好友关系、私聊文字消息、实时推送、断线补偿、多连接同步、个人资料和资料图片已经通过真实服务器 A/B 闭环；Flutter 已完成登录、好友申请、联系人、关系设置、私聊实时收发、资料编辑，以及头像/背景墙的可恢复上传、处理、绑定和权限读取。个人历史动态与聊天媒体仍待后续接入。HTML 原型中的其余交互大部分仍是模拟状态。

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/application/direct_chat_controller.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_repository.dart';
-import 'package:fangyuanli_mobile/src/features/conversations/data/direct_message_store.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_message_store.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_summary.dart';
-import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_message.dart';
 import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
 
 void main() {
@@ -122,8 +122,8 @@ void main() {
         senderUserId: 'user-b',
         text: '本地消息',
       );
-      final store = _MemoryDirectMessageStore(
-        DirectMessageSnapshot(messages: [cached], hasEarlier: true),
+      final store = _MemoryConversationMessageStore(
+        ConversationMessageSnapshot(messages: [cached], hasEarlier: true),
       );
       final repository = _IncrementalConversationRepository();
       final controller = DirectChatController(
@@ -140,7 +140,7 @@ void main() {
       expect(controller.state.isRefreshing, isTrue);
 
       repository.complete(
-        DirectMessagePage(
+        ConversationMessagePage(
           items: [
             _message(
               id: 'message-new',
@@ -169,13 +169,13 @@ void main() {
 }
 
 class _IncrementalConversationRepository implements ConversationRepository {
-  final _response = Completer<DirectMessagePage>();
+  final _response = Completer<ConversationMessagePage>();
   int? afterSequence;
 
-  void complete(DirectMessagePage page) => _response.complete(page);
+  void complete(ConversationMessagePage page) => _response.complete(page);
 
   @override
-  Future<DirectMessagePage> loadMessages(
+  Future<ConversationMessagePage> loadMessages(
     String conversationId, {
     int? beforeSequence,
     int? afterSequence,
@@ -190,15 +190,15 @@ class _IncrementalConversationRepository implements ConversationRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _MemoryDirectMessageStore implements DirectMessageStore {
-  _MemoryDirectMessageStore(this.snapshot);
+class _MemoryConversationMessageStore implements ConversationMessageStore {
+  _MemoryConversationMessageStore(this.snapshot);
 
-  final DirectMessageSnapshot? snapshot;
-  List<DirectMessage> lastWritten = const [];
+  final ConversationMessageSnapshot? snapshot;
+  List<ConversationMessage> lastWritten = const [];
   String? lastOwnerUserId;
 
   @override
-  Future<DirectMessageSnapshot?> readRecent({
+  Future<ConversationMessageSnapshot?> readRecent({
     required String ownerUserId,
     required String conversationId,
     int limit = 50,
@@ -208,7 +208,7 @@ class _MemoryDirectMessageStore implements DirectMessageStore {
   Future<void> write({
     required String ownerUserId,
     required String conversationId,
-    required Iterable<DirectMessage> messages,
+    required Iterable<ConversationMessage> messages,
     required bool hasEarlier,
   }) async {
     lastOwnerUserId = ownerUserId;
@@ -247,7 +247,7 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessagePage> loadMessages(
+  Future<ConversationMessagePage> loadMessages(
     String conversationId, {
     int? beforeSequence,
     int? afterSequence,
@@ -256,7 +256,7 @@ class _FakeConversationRepository implements ConversationRepository {
   }) async {
     loadMessagesCount += 1;
     if (!loaded.isCompleted) loaded.complete();
-    return DirectMessagePage(
+    return ConversationMessagePage(
       items: [
         _message(
           id: 'message-1',
@@ -277,7 +277,10 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<DirectMessage> sendText(String conversationId, String text) async {
+  Future<ConversationMessage> sendText(
+    String conversationId,
+    String text,
+  ) async {
     return _message(
       id: 'message-2',
       sequence: 2,
@@ -287,13 +290,13 @@ class _FakeConversationRepository implements ConversationRepository {
   }
 }
 
-DirectMessage _message({
+ConversationMessage _message({
   required String id,
   required int sequence,
   required String senderUserId,
   required String text,
 }) {
-  return DirectMessage(
+  return ConversationMessage(
     messageId: id,
     conversationId: 'conversation-1',
     senderUserId: senderUserId,

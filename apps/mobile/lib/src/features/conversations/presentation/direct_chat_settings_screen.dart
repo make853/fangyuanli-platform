@@ -5,7 +5,7 @@ import '../../../core/navigation/app_navigation.dart';
 import '../../friends/application/friend_relationship_coordinator.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/domain/friend_models.dart';
-import '../domain/direct_message.dart';
+import '../domain/conversation_message.dart';
 
 class DirectChatSettingsResult {
   const DirectChatSettingsResult._({
@@ -32,7 +32,7 @@ class DirectChatSettingsScreen extends ConsumerWidget {
 
   final String conversationId;
   final String title;
-  final List<DirectMessage> messages;
+  final List<ConversationMessage> messages;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -336,7 +336,7 @@ class ChatHistorySearchScreen extends StatefulWidget {
   });
 
   final String conversationTitle;
-  final List<DirectMessage> messages;
+  final List<ConversationMessage> messages;
 
   @override
   State<ChatHistorySearchScreen> createState() =>
@@ -357,7 +357,7 @@ class _ChatHistorySearchScreenState extends State<ChatHistorySearchScreen> {
     final query = _controller.text.trim().toLowerCase();
     final results = widget.messages.reversed.where((message) {
       if (query.isEmpty) return true;
-      return message.text.toLowerCase().contains(query) ||
+      return message.previewText.toLowerCase().contains(query) ||
           message.senderName.toLowerCase().contains(query) ||
           _date(message.createdAt).contains(query);
     }).toList();
@@ -413,7 +413,7 @@ class _ChatHistorySearchScreenState extends State<ChatHistorySearchScreen> {
                           ],
                         ),
                         subtitle: Text(
-                          message.text,
+                          message.previewText,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),

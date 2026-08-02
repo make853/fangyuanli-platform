@@ -1,8 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:fangyuanli_mobile/src/core/storage/app_database.dart';
-import 'package:fangyuanli_mobile/src/features/conversations/data/direct_message_store.dart';
-import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_message_store.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_message.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -42,7 +43,7 @@ void main() {
       databaseFactoryOverride: databaseFactoryFfi,
       pathLoader: () async => databasePath,
     );
-    final store = SqliteDirectMessageStore(appDatabase);
+    final store = SqliteConversationMessageStore(appDatabase);
     final message = _message(sequence: 9);
     await store.write(
       ownerUserId: 'owner-a',
@@ -71,6 +72,91 @@ void main() {
   });
 
   test(
+    'renames the v3 direct cache in place without losing messages',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'fangyuanli-message-v3-migration-',
+      );
+      final databasePath = '${directory.path}/local.db';
+      final cached = _message(sequence: 12);
+      final versionThree = await databaseFactoryFfi.openDatabase(
+        databasePath,
+        options: OpenDatabaseOptions(
+          version: 3,
+          onCreate: (database, _) async {
+            await database.execute('''
+            CREATE TABLE direct_message_threads (
+              owner_user_id TEXT NOT NULL,
+              conversation_id TEXT NOT NULL,
+              latest_sequence INTEGER NOT NULL,
+              has_earlier INTEGER NOT NULL,
+              cached_at_ms INTEGER NOT NULL,
+              PRIMARY KEY (owner_user_id, conversation_id)
+            )
+          ''');
+            await database.execute('''
+            CREATE TABLE direct_messages (
+              owner_user_id TEXT NOT NULL,
+              conversation_id TEXT NOT NULL,
+              message_id TEXT NOT NULL,
+              sequence INTEGER NOT NULL,
+              payload_json TEXT NOT NULL,
+              created_at_ms INTEGER NOT NULL,
+              PRIMARY KEY (owner_user_id, conversation_id, message_id),
+              UNIQUE (owner_user_id, conversation_id, sequence)
+            )
+          ''');
+            await database.execute('''
+            CREATE INDEX idx_direct_messages_sequence
+            ON direct_messages (owner_user_id, conversation_id, sequence DESC)
+          ''');
+            await database.insert('direct_message_threads', {
+              'owner_user_id': 'owner-a',
+              'conversation_id': 'conversation-1',
+              'latest_sequence': 12,
+              'has_earlier': 1,
+              'cached_at_ms': 1,
+            });
+            await database.insert('direct_messages', {
+              'owner_user_id': 'owner-a',
+              'conversation_id': 'conversation-1',
+              'message_id': cached.messageId,
+              'sequence': cached.sequence,
+              'payload_json': jsonEncode(cached.toJson()),
+              'created_at_ms': cached.createdAt.millisecondsSinceEpoch,
+            });
+          },
+        ),
+      );
+      await versionThree.close();
+
+      final appDatabase = AppDatabase(
+        databaseFactoryOverride: databaseFactoryFfi,
+        pathLoader: () async => databasePath,
+      );
+      final store = SqliteConversationMessageStore(appDatabase);
+      final restored = await store.readRecent(
+        ownerUserId: 'owner-a',
+        conversationId: 'conversation-1',
+      );
+      final database = await appDatabase.open();
+      final tables = await database.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      );
+      final names = tables.map((row) => row['name']);
+
+      expect(await database.getVersion(), 4);
+      expect(restored?.messages.single.text, '消息 12');
+      expect(restored?.hasEarlier, isTrue);
+      expect(names, contains('conversation_messages'));
+      expect(names, isNot(contains('direct_messages')));
+
+      await appDatabase.close();
+      await directory.delete(recursive: true);
+    },
+  );
+
+  test(
     'discards a damaged conversation cache for a clean network reload',
     () async {
       final directory = await Directory.systemTemp.createTemp(
@@ -81,7 +167,7 @@ void main() {
         databaseFactoryOverride: databaseFactoryFfi,
         pathLoader: () async => databasePath,
       );
-      final store = SqliteDirectMessageStore(appDatabase);
+      final store = SqliteConversationMessageStore(appDatabase);
       await store.write(
         ownerUserId: 'owner-a',
         conversationId: 'conversation-1',
@@ -90,7 +176,7 @@ void main() {
       );
       final database = await appDatabase.open();
       await database.update(
-        'direct_messages',
+        'conversation_messages',
         {'payload_json': '{broken'},
         where: 'owner_user_id = ? AND conversation_id = ? AND sequence = ?',
         whereArgs: ['owner-a', 'conversation-1', 2],
@@ -105,7 +191,7 @@ void main() {
       );
       expect(
         await database.query(
-          'direct_messages',
+          'conversation_messages',
           where: 'owner_user_id = ? AND conversation_id = ?',
           whereArgs: ['owner-a', 'conversation-1'],
         ),
@@ -118,8 +204,8 @@ void main() {
   );
 }
 
-DirectMessage _message({required int sequence}) {
-  return DirectMessage(
+ConversationMessage _message({required int sequence}) {
+  return ConversationMessage(
     messageId: 'message-$sequence',
     conversationId: 'conversation-1',
     sequence: sequence,
