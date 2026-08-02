@@ -18,24 +18,28 @@ enum RealtimeStatus { connecting, connected, retrying, stopped }
 class RealtimeState {
   const RealtimeState({
     this.status = RealtimeStatus.connecting,
-    this.navigationUnreadCount = 0,
+    this.navigationUnreadCounts = const {},
     this.errorMessage,
   });
 
   final RealtimeStatus status;
-  final int navigationUnreadCount;
+  final Map<String, int> navigationUnreadCounts;
   final String? errorMessage;
+
+  int get navigationUnreadCount => navigationUnreadCounts['friends'] ?? 0;
+
+  int navigationUnreadFor(String key) => navigationUnreadCounts[key] ?? 0;
 
   RealtimeState copyWith({
     RealtimeStatus? status,
-    int? navigationUnreadCount,
+    Map<String, int>? navigationUnreadCounts,
     String? errorMessage,
     bool clearError = false,
   }) {
     return RealtimeState(
       status: status ?? this.status,
-      navigationUnreadCount:
-          navigationUnreadCount ?? this.navigationUnreadCount,
+      navigationUnreadCounts:
+          navigationUnreadCounts ?? this.navigationUnreadCounts,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
@@ -253,7 +257,10 @@ class RealtimeController extends StateNotifier<RealtimeState> {
     if (event.name == 'conversation.unread.changed') {
       final count = event.payload['navigationUnreadCount'];
       if (count is int && mounted) {
-        state = state.copyWith(navigationUnreadCount: count);
+        final key = event.payload['navigationKey'] as String? ?? 'friends';
+        state = state.copyWith(
+          navigationUnreadCounts: {...state.navigationUnreadCounts, key: count},
+        );
       }
     }
     if (!_events.isClosed) _events.add(event);

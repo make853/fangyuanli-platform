@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
+import '../../auth/application/auth_controller.dart';
 import '../../conversations/domain/community_chat_models.dart';
 import '../../conversations/presentation/community_chat_screen.dart';
 import '../../nearby/presentation/nearby_ui.dart';
 import '../application/plaza_controller.dart';
+import '../application/plaza_chat_controller.dart';
 import '../data/plaza_preview_catalog.dart';
 import '../domain/plaza_models.dart';
 
@@ -28,7 +30,7 @@ class PlazaScreen extends ConsumerStatefulWidget {
 class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   _PlazaView _view = _PlazaView.chat;
   late String _selectedPlazaId;
-  final _readPlazaIds = <String>{};
+  final _previewReadPlazaIds = <String>{};
 
   @override
   void initState() {
@@ -76,6 +78,19 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
         ? _selectedPlazaId
         : plazas.first.id;
     final selected = plazas.firstWhere((plaza) => plaza.id == selectedId);
+    final conversationId = selected.conversationId;
+    final currentUserId = ref.watch(
+      authControllerProvider.select((state) => state.session?.userId),
+    );
+    final liveScope = conversationId == null
+        ? null
+        : PlazaChatScope(
+            conversationId: conversationId,
+            locationContextToken: plazaState.locationContextToken,
+          );
+    final liveState = liveScope == null
+        ? null
+        : ref.watch(plazaChatControllerProvider(liveScope));
     return Column(
       children: [
         SizedBox(
@@ -92,12 +107,19 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                     child: _PlazaSwitchCard(
                       plaza: plazas[index],
                       selected: plazas[index].id == selected.id,
-                      unreadCount: _readPlazaIds.contains(plazas[index].id)
+                      unreadCount:
+                          _previewReadPlazaIds.contains(plazas[index].id)
                           ? 0
                           : plazas[index].unreadCount,
                       onTap: () => setState(() {
                         _selectedPlazaId = plazas[index].id;
-                        _readPlazaIds.add(plazas[index].id);
+                        if (plazas[index].conversationId == null) {
+                          _previewReadPlazaIds.add(plazas[index].id);
+                        } else {
+                          ref
+                              .read(plazaControllerProvider.notifier)
+                              .markLocallyRead(plazas[index].id);
+                        }
                       }),
                     ),
                   ),
@@ -189,6 +211,14 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
             previewMessages: selected.isPrimary
                 ? widget.previewMessages
                 : const [],
+            showPreviewNotice: liveState == null,
+            liveState: liveState,
+            currentUserId: currentUserId,
+            onSend: liveScope == null
+                ? null
+                : (value) => ref
+                      .read(plazaChatControllerProvider(liveScope).notifier)
+                      .send(value),
           ),
         ),
       ],

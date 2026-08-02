@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/realtime/realtime_controller.dart';
+import '../../../core/realtime/realtime_event.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/device_location_source.dart';
 import '../data/geo_context_repository.dart';
@@ -65,8 +67,10 @@ class PlazaController extends StateNotifier<PlazaState> {
     this._repository, {
     this.snapshotStore,
     this.ownerUserId,
+    Stream<RealtimeEvent>? realtimeEvents,
     bool refreshOnInitialize = true,
   }) : super(const PlazaState()) {
+    _realtimeSubscription = realtimeEvents?.listen(_onRealtimeEvent);
     unawaited(_initialize(refreshOnInitialize: refreshOnInitialize));
   }
 
@@ -76,6 +80,7 @@ class PlazaController extends StateNotifier<PlazaState> {
   final String? ownerUserId;
   Future<void>? _activeRefresh;
   Future<void> _snapshotWrite = Future.value();
+  StreamSubscription<RealtimeEvent>? _realtimeSubscription;
 
   Future<void> _initialize({required bool refreshOnInitialize}) async {
     final cached = await _readSnapshot();
@@ -157,10 +162,56 @@ class PlazaController extends StateNotifier<PlazaState> {
         .then((_) => store.write(owner, snapshot))
         .catchError((_) {});
   }
+
+  void markLocallyRead(String plazaId) {
+    final updated = [
+      for (final plaza in state.plazas)
+        if (plaza.id == plazaId)
+          plaza.copyWithUnread(const PlazaUnreadState())
+        else
+          plaza,
+    ];
+    state = state.copyWith(plazas: updated);
+    _persistSnapshot();
+  }
+
+  void _onRealtimeEvent(RealtimeEvent event) {
+    if (event.name != 'conversation.unread.changed' ||
+        event.payload['navigationKey'] != 'plaza') {
+      return;
+    }
+    final conversationId = event.payload['conversationId'];
+    final unreadJson = event.payload['unread'];
+    if (conversationId is! String || unreadJson is! Map) return;
+    final unread = PlazaUnreadState.fromJson(
+      Map<String, dynamic>.from(unreadJson),
+    );
+    var changed = false;
+    final updated = [
+      for (final plaza in state.plazas)
+        if (plaza.conversationId == conversationId)
+          plaza.copyWithUnread(unread)
+        else
+          plaza,
+    ];
+    changed = state.plazas.any(
+      (plaza) => plaza.conversationId == conversationId,
+    );
+    if (!changed) return;
+    state = state.copyWith(plazas: updated);
+    _persistSnapshot();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_realtimeSubscription?.cancel());
+    super.dispose();
+  }
 }
 
 final plazaControllerProvider =
     StateNotifierProvider.autoDispose<PlazaController, PlazaState>((ref) {
+      final realtime = ref.watch(realtimeControllerProvider.notifier);
       return PlazaController(
         ref.watch(deviceLocationSourceProvider),
         ref.watch(geoContextRepositoryProvider),
@@ -168,5 +219,6 @@ final plazaControllerProvider =
         ownerUserId: ref.watch(
           authControllerProvider.select((state) => state.session?.userId),
         ),
+        realtimeEvents: realtime.events,
       );
     });

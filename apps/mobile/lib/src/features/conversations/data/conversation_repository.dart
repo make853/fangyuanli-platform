@@ -16,11 +16,40 @@ abstract interface class ConversationRepository {
     int? afterSequence,
     int? anchorSequence,
     int limit = 50,
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
   });
 
-  Future<ConversationMessage> sendText(String conversationId, String text);
+  Future<ConversationMessage> sendText(
+    String conversationId,
+    String text, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  });
 
-  Future<void> markRead(String conversationId, int lastReadSequence);
+  Future<void> markRead(
+    String conversationId,
+    int lastReadSequence, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  });
+}
+
+enum ConversationScene { direct, plaza, place, activity, system }
+
+class ConversationAccessContext {
+  const ConversationAccessContext.direct()
+    : scene = ConversationScene.direct,
+      locationContextToken = null;
+
+  const ConversationAccessContext.plaza({required this.locationContextToken})
+    : scene = ConversationScene.plaza;
+
+  final ConversationScene scene;
+  final String? locationContextToken;
+
+  Map<String, dynamic>? get headers {
+    final token = locationContextToken?.trim();
+    if (token == null || token.isEmpty) return null;
+    return {'x-location-context': token};
+  }
 }
 
 class HttpConversationRepository implements ConversationRepository {
@@ -58,6 +87,7 @@ class HttpConversationRepository implements ConversationRepository {
     int? afterSequence,
     int? anchorSequence,
     int limit = 50,
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
   }) async {
     final query = <String, dynamic>{'limit': limit};
     if (beforeSequence != null) query['beforeSequence'] = beforeSequence;
@@ -66,6 +96,7 @@ class HttpConversationRepository implements ConversationRepository {
     final envelope = await _client.get(
       '/conversations/$conversationId/messages',
       queryParameters: query,
+      headers: access.headers,
     );
     final data = _data(envelope);
     final rawItems = data['items'];
@@ -85,21 +116,28 @@ class HttpConversationRepository implements ConversationRepository {
   @override
   Future<ConversationMessage> sendText(
     String conversationId,
-    String text,
-  ) async {
+    String text, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  }) async {
     final envelope = await _client.post(
       '/conversations/$conversationId/messages',
       idempotent: true,
+      headers: access.headers,
       data: {'clientMessageId': _uuid.v4(), 'type': 'text', 'text': text},
     );
     return ConversationMessage.fromJson(_data(envelope));
   }
 
   @override
-  Future<void> markRead(String conversationId, int lastReadSequence) async {
+  Future<void> markRead(
+    String conversationId,
+    int lastReadSequence, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  }) async {
     await _client.put(
       '/conversations/$conversationId/read-cursor',
       idempotent: true,
+      headers: access.headers,
       data: {'lastReadSequence': lastReadSequence},
     );
   }

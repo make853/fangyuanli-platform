@@ -54,6 +54,7 @@ export class ConversationController {
     @Query("afterSequence") afterSequence?: string,
     @Query("anchorSequence") anchorSequence?: string,
     @Query("limit") limit?: string,
+    @Headers("x-location-context") locationContextToken?: string,
     @Headers("x-request-id") requestId?: string
   ): Promise<unknown> {
     return this.respond(
@@ -64,7 +65,8 @@ export class ConversationController {
           beforeSequence,
           afterSequence,
           anchorSequence,
-          limit
+          limit,
+          locationContextToken
         }),
       requestId
     );
@@ -76,6 +78,7 @@ export class ConversationController {
     @Param("conversationId") conversationId: string,
     @Body() body: Record<string, unknown>,
     @Headers("idempotency-key") idempotencyKey?: string,
+    @Headers("x-location-context") locationContextToken?: string,
     @Headers("x-request-id") requestId?: string
   ): Promise<unknown> {
     return this.respond(
@@ -84,7 +87,8 @@ export class ConversationController {
           userId,
           conversationId,
           body,
-          idempotencyKey
+          idempotencyKey,
+          locationContextToken
         }),
       requestId
     );
@@ -96,6 +100,7 @@ export class ConversationController {
     @Param("conversationId") conversationId: string,
     @Body() body: Record<string, unknown>,
     @Headers("idempotency-key") idempotencyKey?: string,
+    @Headers("x-location-context") locationContextToken?: string,
     @Headers("x-request-id") requestId?: string
   ): Promise<unknown> {
     return this.respond(
@@ -104,7 +109,8 @@ export class ConversationController {
           userId,
           conversationId,
           lastReadSequence: body.lastReadSequence,
-          idempotencyKey
+          idempotencyKey,
+          locationContextToken
         }),
       requestId
     );

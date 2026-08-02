@@ -57,6 +57,7 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     this.messageStore,
     this.ownerUserId,
     this.emptyConversationMessage = '当前会话暂不可用',
+    this.accessContext = const ConversationAccessContext.direct(),
   }) : super(const ConversationChatState()) {
     _subscription = realtimeEvents.listen(_onRealtimeEvent);
     unawaited(_initialize());
@@ -67,6 +68,7 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
   final ConversationMessageStore? messageStore;
   final String? ownerUserId;
   final String emptyConversationMessage;
+  final ConversationAccessContext accessContext;
   late final StreamSubscription<RealtimeEvent> _subscription;
   Future<void>? _activeLoad;
 
@@ -112,6 +114,7 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         _conversationId,
         afterSequence: latestSequence,
         limit: latestSequence == null ? 50 : 100,
+        access: accessContext,
       );
       var messages = latestSequence == null
           ? page.items
@@ -125,6 +128,7 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
           _conversationId,
           afterSequence: page.items.last.sequence,
           limit: 100,
+          access: accessContext,
         );
         messages = _mergeMessages(messages, page.items);
         hasEarlier = hasEarlier || page.hasEarlier;
@@ -156,7 +160,11 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     if (text.isEmpty || state.isSending) return false;
     state = state.copyWith(isSending: true, clearError: true);
     try {
-      final message = await _repository.sendText(_conversationId, text);
+      final message = await _repository.sendText(
+        _conversationId,
+        text,
+        access: accessContext,
+      );
       state = state.copyWith(
         messages: _mergeMessage(state.messages, message),
         isSending: false,
@@ -172,7 +180,11 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
 
   Future<void> _markRead(int sequence) async {
     try {
-      await _repository.markRead(_conversationId, sequence);
+      await _repository.markRead(
+        _conversationId,
+        sequence,
+        access: accessContext,
+      );
     } catch (_) {
       // Read receipts must not interrupt loading or sending messages.
     }

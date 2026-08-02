@@ -15,6 +15,7 @@ export type LocationSnapshot = Gcj02Point & {
   accuracyMeters: number;
   capturedAt: Date;
   expiresAt: Date;
+  authorizedPlazaIds?: string[];
 };
 
 export class LocationContextError extends Error {
@@ -62,7 +63,8 @@ export class LocationContextReader {
         latitude: input.snapshot.latitude,
         accuracyMeters: input.snapshot.accuracyMeters,
         capturedAt: input.snapshot.capturedAt.toISOString(),
-        expiresAt: input.snapshot.expiresAt.toISOString()
+        expiresAt: input.snapshot.expiresAt.toISOString(),
+        authorizedPlazaIds: input.snapshot.authorizedPlazaIds ?? null
       }),
       "utf8"
     );
@@ -80,7 +82,9 @@ export class LocationContextReader {
     now: Date;
   }): Promise<LocationSnapshot> {
     try {
-      if (!input.token.startsWith("loc1_") || input.token.length > 512) {
+      // Four authorized plaza UUIDs make the encrypted v1 token slightly
+      // larger than the original coordinate-only envelope.
+      if (!input.token.startsWith("loc1_") || input.token.length > 2_048) {
         throw new Error("unsupported token");
       }
       const packed = Buffer.from(input.token.slice(5), "base64url");
@@ -97,13 +101,17 @@ export class LocationContextReader {
       if (payload.version !== 1 || payload.userId !== input.userId) {
         throw new Error("token owner mismatch");
       }
+      const authorizedPlazaIds = Array.isArray(payload.authorizedPlazaIds)
+        ? payload.authorizedPlazaIds as string[]
+        : undefined;
       const snapshot: LocationSnapshot = {
         coordinateSystem: payload.coordinateSystem as "gcj02",
         longitude: payload.longitude as number,
         latitude: payload.latitude as number,
         accuracyMeters: payload.accuracyMeters as number,
         capturedAt: new Date(payload.capturedAt as string),
-        expiresAt: new Date(payload.expiresAt as string)
+        expiresAt: new Date(payload.expiresAt as string),
+        ...(authorizedPlazaIds ? { authorizedPlazaIds } : {})
       };
       this.validateSnapshot(snapshot);
       if (snapshot.expiresAt.getTime() <= input.now.getTime()) {
@@ -163,7 +171,13 @@ export class LocationContextReader {
       !Number.isFinite(snapshot.capturedAt.getTime()) ||
       !Number.isFinite(snapshot.expiresAt.getTime()) ||
       snapshot.expiresAt <= snapshot.capturedAt ||
-      snapshot.expiresAt.getTime() - snapshot.capturedAt.getTime() > 30 * 60_000
+      snapshot.expiresAt.getTime() - snapshot.capturedAt.getTime() > 30 * 60_000 ||
+      (snapshot.authorizedPlazaIds !== undefined &&
+        (snapshot.authorizedPlazaIds.length !== 4 ||
+          new Set(snapshot.authorizedPlazaIds).size !== 4 ||
+          snapshot.authorizedPlazaIds.some(
+            (plazaId) => typeof plazaId !== "string" || !plazaId.trim()
+          )))
     ) {
       throw new LocationContextError(
         "LOCATION_CONTEXT_DATA_INVALID",

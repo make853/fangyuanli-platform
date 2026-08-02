@@ -138,6 +138,25 @@ test(
           is_nullable: "YES"
         }
       ]);
+      const historyEntryColumns = await database.query<{
+        column_name: string;
+        is_nullable: "YES" | "NO";
+      }>(
+        `SELECT column_name, is_nullable
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'user_chat_history_entries'
+            AND column_name IN (
+              'user_id', 'conversation_id', 'last_entered_at', 'entry_count'
+            )
+          ORDER BY column_name`
+      );
+      assert.deepEqual(historyEntryColumns.rows, [
+        { column_name: "conversation_id", is_nullable: "NO" },
+        { column_name: "entry_count", is_nullable: "NO" },
+        { column_name: "last_entered_at", is_nullable: "NO" },
+        { column_name: "user_id", is_nullable: "NO" }
+      ]);
     } finally {
       await database.onApplicationShutdown();
     }

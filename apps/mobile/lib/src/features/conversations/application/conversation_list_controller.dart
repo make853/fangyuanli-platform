@@ -101,6 +101,8 @@ class ConversationListController extends StateNotifier<ConversationListState> {
 
   void _onRealtimeEvent(RealtimeEvent event) {
     if (event.name == 'conversation.unread.changed') {
+      final navigationKey = event.payload['navigationKey'];
+      if (navigationKey != null && navigationKey != 'friends') return;
       final count = event.payload['navigationUnreadCount'];
       if (count is int) {
         state = state.copyWith(navigationUnread: count);

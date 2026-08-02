@@ -544,6 +544,7 @@ paths:
             format: int64
             minimum: 1
         - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/LocationContext'
       responses:
         '200':
           description: 按 sequence 排序的消息
@@ -589,6 +590,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ConversationId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/LocationContext'
       requestBody:
         required: true
         content:
@@ -1572,14 +1574,14 @@ components:
       required: false
       schema:
         type: string
-        maxLength: 512
+        maxLength: 2048
     LocationContextRequired:
       name: X-Location-Context
       in: header
       required: true
       schema:
         type: string
-        maxLength: 512
+        maxLength: 2048
     Cursor:
       name: cursor
       in: query

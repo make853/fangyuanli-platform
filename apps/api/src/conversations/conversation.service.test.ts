@@ -193,6 +193,73 @@ test("does not republish an idempotent duplicate message", async () => {
   assert.equal(publishCount, 0);
 });
 
+test("forwards plaza location context and publishes plaza-scoped unread state", async () => {
+  const locationContextToken = "opaque-plaza-location-context";
+  let persistedLocationContext: string | undefined;
+  let participantLocationContext: string | undefined;
+  const unreadPayloads: Array<Record<string, unknown>> = [];
+  const repository = {
+    async sendTextMessage(input: { locationContextToken?: string }) {
+      persistedLocationContext = input.locationContextToken;
+      return { message: message("广场消息"), created: true };
+    },
+    async participantUserIds(
+      _actorUserId: string,
+      _conversationId: string,
+      token?: string
+    ) {
+      participantLocationContext = token;
+      return [userId];
+    },
+    async realtimeConversationState() {
+      return {
+        conversationId,
+        unread: {
+          count: 0,
+          appearance: "none",
+          firstUnreadSequence: null
+        },
+        navigationKey: "plaza",
+        navigationUnreadCount: 3
+      };
+    }
+  };
+  const realtime = {
+    async publish(
+      _targetUserId: string,
+      event: string,
+      payload: Record<string, unknown>
+    ) {
+      if (event === "conversation.unread.changed") unreadPayloads.push(payload);
+      return {};
+    }
+  };
+  const service = new ConversationService(repository as never, realtime as never);
+
+  await service.sendMessage({
+    userId,
+    conversationId,
+    idempotencyKey: "plaza-realtime-send",
+    locationContextToken,
+    body: { clientMessageId, type: "text", text: "广场消息" }
+  });
+
+  assert.equal(persistedLocationContext, locationContextToken);
+  assert.equal(participantLocationContext, locationContextToken);
+  assert.deepEqual(unreadPayloads, [
+    {
+      conversationId,
+      unread: {
+        count: 0,
+        appearance: "none",
+        firstUnreadSequence: null
+      },
+      navigationKey: "plaza",
+      navigationUnreadCount: 3
+    }
+  ]);
+});
+
 test("publishes the resulting unread state to all devices after mark-read", async () => {
   const events: string[] = [];
   const repository = {

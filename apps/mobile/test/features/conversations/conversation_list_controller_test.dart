@@ -256,17 +256,26 @@ class _FakeConversationRepository implements ConversationRepository {
     int? afterSequence,
     int? anchorSequence,
     int limit = 50,
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
   }) {
     throw UnimplementedError();
   }
 
   @override
-  Future<void> markRead(String conversationId, int lastReadSequence) {
+  Future<void> markRead(
+    String conversationId,
+    int lastReadSequence, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  }) {
     throw UnimplementedError();
   }
 
   @override
-  Future<ConversationMessage> sendText(String conversationId, String text) {
+  Future<ConversationMessage> sendText(
+    String conversationId,
+    String text, {
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  }) {
     throw UnimplementedError();
   }
 }

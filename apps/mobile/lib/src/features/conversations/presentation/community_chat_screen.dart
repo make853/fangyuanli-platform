@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../core/navigation/app_navigation.dart';
 import '../../nearby/presentation/nearby_ui.dart';
+import '../application/conversation_sync_controller.dart';
 import '../domain/community_chat_models.dart';
+import '../domain/conversation_message.dart';
 import 'chat_composer.dart';
 import 'chat_message_bubble.dart';
+import 'chat_time.dart';
 
 class CommunityChatScreen extends StatelessWidget {
   const CommunityChatScreen({
@@ -72,12 +75,18 @@ class CommunityChatBody extends StatefulWidget {
     required this.channel,
     this.previewMessages = const [],
     this.showPreviewNotice = true,
+    this.liveState,
+    this.currentUserId,
+    this.onSend,
     super.key,
   });
 
   final CommunityChannelDescriptor channel;
   final List<CommunityMessagePreview> previewMessages;
   final bool showPreviewNotice;
+  final ConversationChatState? liveState;
+  final String? currentUserId;
+  final Future<bool> Function(String value)? onSend;
 
   @override
   State<CommunityChatBody> createState() => _CommunityChatBodyState();
@@ -88,6 +97,18 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
   final _focusNode = FocusNode();
   final _composerController = ChatComposerController();
   bool _announcementVisible = true;
+
+  Future<void> _send() async {
+    final send = widget.onSend;
+    if (send == null) {
+      _pending('发送消息');
+      return;
+    }
+    final succeeded = await send(_textController.text);
+    if (!mounted || !succeeded) return;
+    _textController.clear();
+    _focusNode.requestFocus();
+  }
 
   @override
   void didUpdateWidget(covariant CommunityChatBody oldWidget) {
@@ -128,38 +149,17 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: () => _composerController.dismiss(_focusNode),
-            child: widget.previewMessages.isEmpty
-                ? Center(
-                    child: Text(
-                      widget.channel.emptyMessage,
-                      style: const TextStyle(color: Color(0xFF78847E)),
-                    ),
-                  )
-                : ListView(
-                    key: ValueKey('community-chat-${widget.channel.id}'),
-                    padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
-                    children: [
-                      for (final message in widget.previewMessages)
-                        ChatMessageBubble(
-                          text: message.text,
-                          deliveryState: 'sent',
-                          isMine: message.isMine,
-                          avatarInitial: _initial(message.senderName),
-                          senderLabel: message.isMine
-                              ? null
-                              : message.senderName,
-                          onAvatarTap: () => _pending('用户资料'),
-                        ),
-                    ],
-                  ),
+            child: widget.liveState == null
+                ? _previewMessages()
+                : _liveMessages(widget.liveState!),
           ),
         ),
         ChatComposer(
           controller: _composerController,
           textController: _textController,
           focusNode: _focusNode,
-          isSending: false,
-          onSend: () async => _pending('发送消息'),
+          isSending: widget.liveState?.isSending ?? false,
+          onSend: _send,
           onUnavailableAction: _pending,
         ),
       ],
@@ -169,6 +169,84 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
   String _initial(String value) {
     final normalized = value.trim();
     return normalized.isEmpty ? '友' : normalized.characters.first;
+  }
+
+  Widget _previewMessages() {
+    if (widget.previewMessages.isEmpty) {
+      return Center(
+        child: Text(
+          widget.channel.emptyMessage,
+          style: const TextStyle(color: Color(0xFF78847E)),
+        ),
+      );
+    }
+    return ListView(
+      key: ValueKey('community-chat-${widget.channel.id}'),
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
+      children: [
+        for (final message in widget.previewMessages)
+          ChatMessageBubble(
+            text: message.text,
+            deliveryState: 'sent',
+            isMine: message.isMine,
+            avatarInitial: _initial(message.senderName),
+            senderLabel: message.isMine ? null : message.senderName,
+            onAvatarTap: () => _pending('用户资料'),
+          ),
+      ],
+    );
+  }
+
+  Widget _liveMessages(ConversationChatState state) {
+    if (state.isLoading && state.messages.isEmpty) {
+      return const SizedBox.expand(
+        key: ValueKey('community-chat-stable-loading-surface'),
+      );
+    }
+    if (state.messages.isEmpty) {
+      return Center(
+        child: Text(
+          state.errorMessage ?? widget.channel.emptyMessage,
+          style: const TextStyle(color: Color(0xFF78847E)),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+    return ListView(
+      key: ValueKey('community-chat-${widget.channel.id}'),
+      reverse: true,
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
+      children: [
+        for (var index = state.messages.length - 1; index >= 0; index--)
+          _liveMessage(
+            state.messages[index],
+            previous: index == 0 ? null : state.messages[index - 1],
+          ),
+      ],
+    );
+  }
+
+  Widget _liveMessage(
+    ConversationMessage message, {
+    required ConversationMessage? previous,
+  }) {
+    final isMine = message.senderUserId == widget.currentUserId;
+    final showTime = ChatTimePresentation.shouldShowDivider(
+      message.createdAt,
+      previous?.createdAt,
+    );
+    return ChatMessageBubble(
+      text: message.previewText,
+      deliveryState: message.deliveryState,
+      isMine: isMine,
+      avatar: message.senderAvatar,
+      avatarInitial: _initial(message.senderName),
+      senderLabel: isMine ? null : message.senderName,
+      timestampLabel: showTime
+          ? ChatTimePresentation.format(message.createdAt)
+          : null,
+      onAvatarTap: () => _pending('用户资料'),
+    );
   }
 }
 

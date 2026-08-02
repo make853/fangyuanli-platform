@@ -71,6 +71,7 @@ export class ConversationService {
     conversationId?: unknown;
     body: Record<string, unknown>;
     idempotencyKey?: string;
+    locationContextToken?: string;
   }): Promise<MessageView> {
     const conversationId = this.uuid(
       input.conversationId,
@@ -110,11 +111,23 @@ export class ConversationService {
       clientMessageId,
       text: input.body.text.trim(),
       replyToMessageId,
+      locationContextToken:
+        input.locationContextToken ??
+        (typeof input.body.locationContextToken === "string"
+          ? input.body.locationContextToken
+          : undefined),
       now: new Date()
     });
     const message = await this.hydrateMessage(persisted.message);
     if (persisted.created) {
-      await this.publishMessageCreated(input.userId, message);
+      await this.publishMessageCreated(
+        input.userId,
+        message,
+        input.locationContextToken ??
+          (typeof input.body.locationContextToken === "string"
+            ? input.body.locationContextToken
+            : undefined)
+      );
     }
     return message;
   }
@@ -126,6 +139,7 @@ export class ConversationService {
     afterSequence?: string;
     anchorSequence?: string;
     limit?: string;
+    locationContextToken?: string;
   }): Promise<unknown> {
     const selectors = [
       input.beforeSequence,
@@ -148,7 +162,8 @@ export class ConversationService {
       beforeSequence: this.optionalSequence(input.beforeSequence, 1),
       afterSequence: this.optionalSequence(input.afterSequence, 0),
       anchorSequence: this.optionalSequence(input.anchorSequence, 1),
-      limit: this.limit(input.limit, 50, 100)
+      limit: this.limit(input.limit, 50, 100),
+      locationContextToken: input.locationContextToken
     });
     return {
       ...page,
@@ -217,6 +232,7 @@ export class ConversationService {
     conversationId?: unknown;
     lastReadSequence?: unknown;
     idempotencyKey?: string;
+    locationContextToken?: string;
   }): Promise<unknown> {
     this.idempotencyKey(input.idempotencyKey);
     if (
@@ -237,6 +253,7 @@ export class ConversationService {
         "CONVERSATION_ID_INVALID"
       ),
       lastReadSequence: input.lastReadSequence,
+      locationContextToken: input.locationContextToken,
       now: new Date()
     });
     await this.publishUnreadChanged(input.userId, result.conversationId);
@@ -245,13 +262,15 @@ export class ConversationService {
 
   private async publishMessageCreated(
     actorUserId: string,
-    message: MessageView
+    message: MessageView,
+    locationContextToken?: string
   ): Promise<void> {
     if (!this.realtime) return;
     try {
       const userIds = await this.repository.participantUserIds(
         actorUserId,
-        message.conversationId
+        message.conversationId,
+        locationContextToken
       );
       await Promise.all(
         userIds.flatMap((userId) => [
@@ -281,7 +300,7 @@ export class ConversationService {
       await this.realtime.publish(userId, "conversation.unread.changed", {
         conversationId,
         unread: state.unread,
-        navigationKey: "friends",
+        navigationKey: state.navigationKey,
         navigationUnreadCount: state.navigationUnreadCount
       });
     } catch (error) {

@@ -35,13 +35,14 @@ class AuthenticatedApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, dynamic>? headers,
     String? expectedUserId,
   }) {
     return _request(
       (options) => _dio.get<Map<String, dynamic>>(
         path,
         queryParameters: queryParameters,
-        options: options,
+        options: _withHeaders(options, headers),
       ),
       expectedUserId: expectedUserId,
     );
@@ -52,6 +53,7 @@ class AuthenticatedApiClient {
     Object? data,
     bool idempotent = false,
     String? idempotencyKey,
+    Map<String, dynamic>? headers,
     String? expectedUserId,
   }) {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
@@ -62,7 +64,10 @@ class AuthenticatedApiClient {
       (options) => _dio.post<Map<String, dynamic>>(
         path,
         data: data,
-        options: _withIdempotency(options, resolvedIdempotencyKey),
+        options: _withHeaders(
+          _withIdempotency(options, resolvedIdempotencyKey),
+          headers,
+        ),
       ),
       expectedUserId: expectedUserId,
     );
@@ -73,6 +78,7 @@ class AuthenticatedApiClient {
     Object? data,
     bool idempotent = false,
     String? idempotencyKey,
+    Map<String, dynamic>? headers,
     String? expectedUserId,
   }) {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
@@ -83,7 +89,10 @@ class AuthenticatedApiClient {
       (options) => _dio.patch<Map<String, dynamic>>(
         path,
         data: data,
-        options: _withIdempotency(options, resolvedIdempotencyKey),
+        options: _withHeaders(
+          _withIdempotency(options, resolvedIdempotencyKey),
+          headers,
+        ),
       ),
       expectedUserId: expectedUserId,
     );
@@ -94,6 +103,7 @@ class AuthenticatedApiClient {
     Object? data,
     bool idempotent = false,
     String? idempotencyKey,
+    Map<String, dynamic>? headers,
     String? expectedUserId,
   }) {
     final resolvedIdempotencyKey = _resolveIdempotencyKey(
@@ -104,7 +114,10 @@ class AuthenticatedApiClient {
       (options) => _dio.put<Map<String, dynamic>>(
         path,
         data: data,
-        options: _withIdempotency(options, resolvedIdempotencyKey),
+        options: _withHeaders(
+          _withIdempotency(options, resolvedIdempotencyKey),
+          headers,
+        ),
       ),
       expectedUserId: expectedUserId,
     );
@@ -220,6 +233,11 @@ class AuthenticatedApiClient {
     return options.copyWith(
       headers: {...?options.headers, 'idempotency-key': idempotencyKey},
     );
+  }
+
+  Options _withHeaders(Options options, Map<String, dynamic>? headers) {
+    if (headers == null || headers.isEmpty) return options;
+    return options.copyWith(headers: {...?options.headers, ...headers});
   }
 
   String? _resolveIdempotencyKey({

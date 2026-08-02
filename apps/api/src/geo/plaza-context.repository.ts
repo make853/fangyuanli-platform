@@ -31,6 +31,8 @@ type PlazaRow = {
   grid_y: string;
   latest_sequence: string;
   last_read_sequence: string;
+  unread_count: string;
+  first_unread_sequence: string | null;
   notification_mode: "normal" | "muted";
 };
 
@@ -381,6 +383,8 @@ export class PlazaContextRepository {
                    grid.grid_y,
                    conversation.latest_sequence,
                    COALESCE(cursor.last_read_sequence, 0) AS last_read_sequence,
+                   COALESCE(unread.unread_count, 0) AS unread_count,
+                   unread.first_unread_sequence,
                    CASE
                      WHEN setting.notification_override = 'normal' THEN 'normal'
                      WHEN setting.notification_override = 'muted' THEN 'muted'
@@ -395,7 +399,17 @@ export class PlazaContextRepository {
                AND cursor.user_id = $1
          LEFT JOIN conversation_notification_settings setting
                 ON setting.conversation_id = grid.conversation_id
-               AND setting.user_id = $1`;
+               AND setting.user_id = $1
+         LEFT JOIN LATERAL (
+                   SELECT count(*) AS unread_count,
+                          min(message.sequence) AS first_unread_sequence
+                     FROM messages message
+                    WHERE message.conversation_id = grid.conversation_id
+                      AND message.sender_user_id IS DISTINCT FROM $1
+                      AND message.deleted_at IS NULL
+                      AND (message.expires_at IS NULL OR message.expires_at > now())
+                      AND message.sequence > COALESCE(cursor.last_read_sequence, 0)
+                ) unread ON true`;
   }
 
   private projection(row: PlazaRow): PlazaProjection {
@@ -407,6 +421,11 @@ export class PlazaContextRepository {
       gridY: Number(row.grid_y),
       latestSequence: Number(row.latest_sequence),
       lastReadSequence: Number(row.last_read_sequence),
+      unreadCount: Number(row.unread_count),
+      firstUnreadSequence:
+        row.first_unread_sequence === null
+          ? null
+          : Number(row.first_unread_sequence),
       notificationMode: row.notification_mode
     };
   }
