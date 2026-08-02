@@ -8,6 +8,7 @@ import {
 import { PlazaAnchorPolicy } from "./plaza-anchor-policy.js";
 import { PlazaContextRepository } from "./plaza-context.repository.js";
 import { PlazaGridProjector } from "./plaza-grid-projector.js";
+import { PlazaNamingService } from "./plaza-naming.service.js";
 import {
   GeoDomainError,
   type GeoContextResult,
@@ -24,7 +25,8 @@ export class GeoContextService {
     private readonly projector: PlazaGridProjector,
     private readonly anchorPolicy: PlazaAnchorPolicy,
     private readonly policyProvider: PlazaPolicy,
-    private readonly locationContexts: LocationContextReader
+    private readonly locationContexts: LocationContextReader,
+    private readonly naming: PlazaNamingService
   ) {}
 
   async create(input: {
@@ -43,22 +45,26 @@ export class GeoContextService {
       );
     }
 
+    const version = await this.repository.activeGridVersion();
+    const point: Gcj02Point = {
+      coordinateSystem: "gcj02",
+      longitude: request.longitude,
+      latitude: request.latitude
+    };
+    const cells = this.projector.cellsFor(point, version);
+    const candidates = await this.repository.ensurePlazas({
+      userId: input.userId,
+      version,
+      cells
+    });
+    if (candidates.length !== 4) {
+      throw new Error("Failed to resolve exactly four plaza grids");
+    }
+    void this.naming
+      .enrich({ version, cells, plazas: candidates })
+      .catch(() => undefined);
+
     return this.repository.serializeForUser(input.userId, async () => {
-      const version = await this.repository.activeGridVersion();
-      const point: Gcj02Point = {
-        coordinateSystem: "gcj02",
-        longitude: request.longitude,
-        latitude: request.latitude
-      };
-      const cells = this.projector.cellsFor(point, version);
-      const candidates = await this.repository.ensurePlazas({
-        userId: input.userId,
-        version,
-        cells
-      });
-      if (candidates.length !== 4) {
-        throw new Error("Failed to resolve exactly four plaza grids");
-      }
       const existing = await this.repository.findAnchor(input.userId);
       let decision = this.anchorPolicy.decide({
         userId: input.userId,
