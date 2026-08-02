@@ -1,7 +1,13 @@
+import 'dart:async';
+
+import 'package:fangyuanli_mobile/src/features/conversations/application/conversation_sync_controller.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/domain/community_chat_models.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_message.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_composer.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_message_bubble.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_message_timeline.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_time.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/presentation/community_chat_screen.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/direct_chat_settings_screen.dart';
 import 'package:fangyuanli_mobile/src/features/friends/application/friends_controller.dart';
 import 'package:fangyuanli_mobile/src/features/friends/data/relationship_repository.dart';
@@ -131,6 +137,119 @@ void main() {
     composerController.dispose();
     textController.dispose();
     focusNode.dispose();
+  });
+
+  testWidgets('原生键盘发送保持焦点且发送中不会重复提交', (tester) async {
+    final composerController = ChatComposerController();
+    final textController = TextEditingController();
+    final focusNode = FocusNode();
+    final sendCompleter = Completer<void>();
+    var sendCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: ChatComposer(
+              controller: composerController,
+              textController: textController,
+              focusNode: focusNode,
+              isSending: false,
+              onSend: () {
+                sendCount += 1;
+                return sendCompleter.future;
+              },
+              onUnavailableAction: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), '测试发送');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+
+    expect(sendCount, 1);
+    expect(focusNode.hasFocus, isTrue);
+
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+    expect(sendCount, 1);
+
+    sendCompleter.complete();
+    await tester.pump();
+    expect(focusNode.hasFocus, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    composerController.dispose();
+    textController.dispose();
+    focusNode.dispose();
+  });
+
+  testWidgets('短聊天从顶部开始并保持时间顺序', (tester) async {
+    final scrollController = ScrollController();
+    final messages = [
+      _message(sequence: 1, text: '第一条'),
+      _message(sequence: 2, text: '第二条'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatMessageTimeline(
+            messages: messages,
+            controller: scrollController,
+            itemBuilder: (context, message, previous) => ChatMessageBubble(
+              text: message.previewText,
+              deliveryState: message.deliveryState,
+              isMine: true,
+              avatarInitial: '我',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final firstTop = tester.getTopLeft(find.text('第一条')).dy;
+    final secondTop = tester.getTopLeft(find.text('第二条')).dy;
+    expect(firstTop, lessThan(100));
+    expect(secondTop, greaterThan(firstTop));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    scrollController.dispose();
+  });
+
+  testWidgets('已有长聊天首次打开时定位到最新消息', (tester) async {
+    final messages = [
+      for (var index = 1; index <= 30; index += 1)
+        _message(sequence: index, text: '消息 $index'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CommunityChatBody(
+            channel: const CommunityChannelDescriptor(
+              id: 'plaza-1',
+              kind: CommunityChannelKind.plaza,
+              title: '测试广场',
+              subtitle: '主广场',
+              emptyMessage: '暂无消息',
+            ),
+            showPreviewNotice: false,
+            liveState: ConversationChatState(messages: messages),
+            currentUserId: 'user-a',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('消息 30'), findsOneWidget);
+    expect(find.text('消息 1'), findsNothing);
   });
 
   testWidgets('查找聊天记录后返回选中的消息序号', (tester) async {

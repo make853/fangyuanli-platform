@@ -70,6 +70,7 @@ class ChatComposer extends StatefulWidget {
 
 class _ChatComposerState extends State<ChatComposer> {
   static const _emojis = ['😊', '😂', '👍', '❤️', '🎉', '☕️', '🏸', '👀'];
+  bool _submissionInFlight = false;
 
   @override
   void initState() {
@@ -93,6 +94,22 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   void _onTextChanged() => setState(() {});
+
+  Future<void> _submit() async {
+    if (_submissionInFlight ||
+        widget.isSending ||
+        widget.textController.text.trim().isEmpty) {
+      return;
+    }
+    setState(() => _submissionInFlight = true);
+    try {
+      await widget.onSend();
+    } finally {
+      if (mounted) {
+        setState(() => _submissionInFlight = false);
+      }
+    }
+  }
 
   void _insertEmoji(String emoji) {
     final value = widget.textController.value;
@@ -142,6 +159,7 @@ class _ChatComposerState extends State<ChatComposer> {
   @override
   Widget build(BuildContext context) {
     final hasText = widget.textController.text.trim().isNotEmpty;
+    final isSending = widget.isSending || _submissionInFlight;
     return SafeArea(
       top: false,
       child: Material(
@@ -178,9 +196,11 @@ class _ChatComposerState extends State<ChatComposer> {
                               maxLines: 4,
                               textInputAction: TextInputAction.send,
                               onTap: widget.controller.showKeyboard,
-                              onSubmitted: widget.isSending || !hasText
-                                  ? null
-                                  : (_) => widget.onSend(),
+                              // Keep iOS' native keyboard visible after the
+                              // send action. Both send entry points share the
+                              // same guarded submission path below.
+                              onEditingComplete: () {},
+                              onSubmitted: (_) => _submit(),
                               decoration: const InputDecoration(
                                 hintText: '输入消息',
                                 filled: true,
@@ -208,8 +228,8 @@ class _ChatComposerState extends State<ChatComposer> {
                       _ComposerIconButton(
                         tooltip: '发送',
                         icon: Icons.send_rounded,
-                        onPressed: widget.isSending ? null : widget.onSend,
-                        loading: widget.isSending,
+                        onPressed: isSending ? null : _submit,
+                        loading: isSending,
                       )
                     else
                       _ComposerIconButton(
