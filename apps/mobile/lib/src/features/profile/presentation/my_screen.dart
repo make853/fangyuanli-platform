@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
 import '../../../core/presentation/feature_entry.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../friends/application/friends_controller.dart';
@@ -73,10 +74,14 @@ class MyScreen extends ConsumerWidget {
               : (profile.signature.isEmpty ? '还没有填写个人签名' : profile.signature),
           initial: profile?.initial,
           onOpenProfile: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const MyProfileDetailScreen(),
+            AppNavigation.push<void>(
+              context,
+              destination: AppRouteId.myProfile,
+              source: const AppNavigationSource(
+                section: AppSection.profile,
+                entryPoint: AppEntryPoint.tab,
               ),
+              builder: (_) => const MyProfileDetailScreen(),
             );
           },
           onOpenQrCode: () => showFeatureComingSoon(context, '我的二维码'),
@@ -117,10 +122,14 @@ class MyScreen extends ConsumerWidget {
               return;
             }
             if (entry.id == 'account_security') {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const AccountSecurityScreen(),
+              AppNavigation.push<void>(
+                context,
+                destination: AppRouteId.accountSecurity,
+                source: const AppNavigationSource(
+                  section: AppSection.profile,
+                  entryPoint: AppEntryPoint.tab,
                 ),
+                builder: (_) => const AccountSecurityScreen(),
               );
               return;
             }
@@ -364,10 +373,15 @@ class AccountSecurityScreen extends ConsumerWidget {
                   title: const Text('隐私'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const PrivacyScreen(),
+                    AppNavigation.push<void>(
+                      context,
+                      destination: AppRouteId.privacy,
+                      source: const AppNavigationSource(
+                        section: AppSection.profile,
+                        entryPoint: AppEntryPoint.settings,
+                        routeId: AppRouteId.accountSecurity,
                       ),
+                      builder: (_) => const PrivacyScreen(),
                     );
                   },
                 ),
@@ -387,10 +401,15 @@ class AccountSecurityScreen extends ConsumerWidget {
                     ],
                   ),
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const BlockListScreen(),
+                    AppNavigation.push<void>(
+                      context,
+                      destination: AppRouteId.blockList,
+                      source: const AppNavigationSource(
+                        section: AppSection.profile,
+                        entryPoint: AppEntryPoint.settings,
+                        routeId: AppRouteId.accountSecurity,
                       ),
+                      builder: (_) => const BlockListScreen(),
                     );
                   },
                 ),

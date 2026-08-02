@@ -4,6 +4,7 @@ import { ConversationModule } from "./conversations/conversation.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { HealthController } from "./health.controller.js";
 import { MediaModule } from "./media/media.module.js";
+import { PlaceModule } from "./places/place.module.js";
 import { ProfileModule } from "./profiles/profile.module.js";
 import { RelationshipModule } from "./relationships/relationship.module.js";
 
@@ -14,7 +15,8 @@ import { RelationshipModule } from "./relationships/relationship.module.js";
     RelationshipModule,
     ConversationModule,
     ProfileModule,
-    MediaModule
+    MediaModule,
+    PlaceModule
   ],
   controllers: [HealthController]
 })

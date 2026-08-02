@@ -2690,6 +2690,10 @@ components:
       properties:
         key:
           type: string
+          enum:
+            [food_retail, community, sports_fitness, culture_entertainment,
+             nightlife, parks_scenic, education_public, shopping_district,
+             transport_other]
         name:
           type: string
 
@@ -2747,6 +2751,10 @@ components:
               type: array
               items:
                 type: string
+                enum:
+                  [food_retail, community, sports_fitness, culture_entertainment,
+                   nightlife, parks_scenic, education_public, shopping_district,
+                   transport_other]
             distanceMeters:
               type: integer
               minimum: 100

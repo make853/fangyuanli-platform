@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
 import '../../../core/presentation/feature_entry.dart';
 import '../application/profile_controller.dart';
+import '../data/profile_repository.dart';
 import '../domain/profile_models.dart';
 import 'profile_edit_screen.dart';
 import 'profile_media_widgets.dart';
@@ -21,10 +23,18 @@ class MyProfileDetailScreen extends ConsumerWidget {
           TextButton(
             onPressed: profile == null
                 ? null
-                : () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => ProfileEditScreen(profile: profile),
+                : () => AppNavigation.push<void>(
+                    context,
+                    destination: AppRouteId.profileEdit,
+                    source: AppNavigationSource(
+                      section:
+                          AppNavigation.metadataOf(context)?.source.section ??
+                          AppSection.profile,
+                      entryPoint: AppEntryPoint.profile,
+                      routeId: AppRouteId.myProfile,
+                      entityId: profile.userId,
                     ),
+                    builder: (_) => ProfileEditScreen(profile: profile),
                   ),
             child: const Text('编辑'),
           ),
@@ -83,6 +93,128 @@ class MyProfileDetailScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class UserProfileDetailScreen extends ConsumerWidget {
+  const UserProfileDetailScreen({required this.userId, super.key});
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final provider = userProfileProvider(userId);
+    final state = ref.watch(provider);
+    return Scaffold(
+      appBar: AppBar(title: const Text('个人资料')),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(provider);
+          await ref.read(provider.future);
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 28),
+          children: [
+            switch (state) {
+              AsyncData(:final value) => _PublicProfileContent(profile: value),
+              AsyncError(:final error) => _LoadFailure(
+                message: '个人资料加载失败：$error',
+                onRetry: () async {
+                  ref.invalidate(provider);
+                  await ref.read(provider.future);
+                },
+              ),
+              _ => const Padding(
+                padding: EdgeInsets.only(top: 120),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            },
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PublicProfileContent extends StatelessWidget {
+  const _PublicProfileContent({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _ProfileCover(
+          profile: profile,
+          onAvatarTap: () => _showMediaPreview(
+            context,
+            profile.avatar?.url ?? profile.avatar?.thumbnailUrl,
+          ),
+          onCoverTap: () => _showMediaPreview(
+            context,
+            profile.background?.url ?? profile.background?.thumbnailUrl,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _ProfileSummary(profile: profile),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: _RelationshipSummary(profile: profile),
+        ),
+        if (profile.visibility == ProfileVisibility.full) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 22, 20, 9),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '动态',
+                style: TextStyle(
+                  color: Color(0xFF66736D),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _PostsPlaceholder(
+              onTap: () => showFeatureComingSoon(context, '用户动态'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _RelationshipSummary extends StatelessWidget {
+  const _RelationshipSummary({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (profile.relationship.state) {
+      ProfileRelationshipState.self => '这是你的资料',
+      ProfileRelationshipState.friend => '你们已经是好友',
+      ProfileRelationshipState.requestPending => '好友申请处理中',
+      ProfileRelationshipState.blocked => '当前存在黑名单关系',
+      ProfileRelationshipState.stranger => '你们还不是好友',
+    };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(label, style: const TextStyle(color: Color(0xFF66736D))),
     );
   }
 }

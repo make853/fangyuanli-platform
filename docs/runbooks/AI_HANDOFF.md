@@ -41,12 +41,12 @@ make853/fangyuanli-platform
 8. 工程协作约束：`AGENTS.md`
 9. 部署说明：`docs/runbooks/DEPLOYMENT.md`
 
-视觉与文档基线：
+视觉与交互基线：
 
 - `docs/baselines/方圆里-iPhone原型-v0.73.html`
 - `docs/baselines/方圆里-MVP-v1.0-产品规格书.docx`
 
-当原型、旧聊天总结和正式规格冲突时，以 `PRODUCT_SPEC.md` 和用户最新明确决定为准。原型 v0.73 主要作为视觉与交互习惯参考，不代表真实后端已经实现。
+当原型、旧聊天总结和正式规格冲突时，以 `PRODUCT_SPEC.md` 和用户最新明确决定为准。当前 Flutter App 是视觉基线；原型 v0.73 主要作为交互习惯、页面路径和状态反馈参考，不代表真实后端已经实现，也不得直接复制其 HTML/CSS/JavaScript 实现。
 
 ## 3. 当前工程状态
 

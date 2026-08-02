@@ -86,3 +86,17 @@ pnpm --filter @fangyuanli/api check:cos
 预签名 PUT、HEAD 和 DELETE，并在结束时清理。未配置媒体凭证时，健康检查
 仍可运行，但申请媒体上传会返回存储暂不可用，不会退化为公开桶或把文件
 写进数据库。
+
+## 位置上下文密钥
+
+地点、广场、活动和附近动态不会在每个业务请求里重复携带明文经纬度，
+而是使用绑定账号的短期加密位置令牌。每个环境必须单独生成32字节随机密钥，
+只写入受控环境文件：
+
+```bash
+openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'
+```
+
+将结果保存为 `FANGYUANLI_LOCATION_CONTEXT_KEY`，不得提交到Git，也不得在
+staging和production之间共用。轮换密钥会使现有短期位置令牌立即失效，因此
+应在低峰期轮换，并允许客户端自动刷新 `/geo/context`。

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/presentation/direct_chat_screen.dart';
 import '../../profile/data/profile_repository.dart';
@@ -113,13 +114,19 @@ class FriendProfileScreen extends ConsumerWidget {
   void _openChat(BuildContext context, WidgetRef ref, FriendContact contact) {
     final userId = ref.read(authControllerProvider).session?.userId;
     if (userId == null) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => DirectChatScreen(
-          conversationId: contact.directConversationId,
-          title: contact.visibleName,
-          currentUserId: userId,
-        ),
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.directChat,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.profile,
+        routeId: AppRouteId.friendProfile,
+        entityId: contact.userId,
+      ),
+      builder: (_) => DirectChatScreen(
+        conversationId: contact.directConversationId,
+        title: contact.visibleName,
+        currentUserId: userId,
       ),
     );
   }

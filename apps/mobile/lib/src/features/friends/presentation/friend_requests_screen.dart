@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
+import '../../profile/presentation/profile_detail_screen.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 
@@ -40,6 +42,7 @@ class FriendRequestsScreen extends ConsumerWidget {
                   isProcessing: state.processingRequestIds.contains(
                     request.requestId,
                   ),
+                  onOpenProfile: () => _openProfile(context, request),
                   onDecision: (accept) =>
                       _decide(context, ref, request.requestId, accept),
                 ),
@@ -48,6 +51,20 @@ class FriendRequestsScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _openProfile(BuildContext context, FriendRequest request) {
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.userProfile,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.systemNotification,
+        routeId: AppRouteId.friendRequests,
+        entityId: request.requestId,
+      ),
+      builder: (_) => UserProfileDetailScreen(userId: request.sender.userId),
     );
   }
 
@@ -78,11 +95,13 @@ class _RequestCard extends StatelessWidget {
   const _RequestCard({
     required this.request,
     required this.isProcessing,
+    required this.onOpenProfile,
     required this.onDecision,
   });
 
   final FriendRequest request;
   final bool isProcessing;
+  final VoidCallback onOpenProfile;
   final ValueChanged<bool> onDecision;
 
   @override
@@ -96,16 +115,24 @@ class _RequestCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: const Color(0xFFDDEEE7),
-            child: Text(
-              request.sender.displayName.trim().isEmpty
-                  ? '友'
-                  : request.sender.displayName.trim().characters.first,
-              style: const TextStyle(
-                color: Color(0xFF167A5B),
-                fontWeight: FontWeight.w700,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: ValueKey('friend-request-profile-${request.requestId}'),
+              customBorder: const CircleBorder(),
+              onTap: onOpenProfile,
+              child: CircleAvatar(
+                radius: 22,
+                backgroundColor: const Color(0xFFDDEEE7),
+                child: Text(
+                  request.sender.displayName.trim().isEmpty
+                      ? '友'
+                      : request.sender.displayName.trim().characters.first,
+                  style: const TextStyle(
+                    color: Color(0xFF167A5B),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
           ),

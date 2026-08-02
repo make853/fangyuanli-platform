@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/application/conversation_list_controller.dart';
 import '../../conversations/domain/conversation_summary.dart';
@@ -9,6 +10,7 @@ import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 import 'friend_profile_screen.dart';
 import 'friend_requests_screen.dart';
+import 'system_inbox_screen.dart';
 
 class FriendsScreen extends ConsumerStatefulWidget {
   const FriendsScreen({super.key});
@@ -120,10 +122,14 @@ class _MessagesTab extends ConsumerWidget {
             iconColor: const Color(0xFF2F7D68),
             unreadCount: state.pendingRequestCount,
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const FriendRequestsScreen(),
+              AppNavigation.push<void>(
+                context,
+                destination: AppRouteId.friendRequests,
+                source: const AppNavigationSource(
+                  section: AppSection.friends,
+                  entryPoint: AppEntryPoint.messageList,
                 ),
+                builder: (_) => const FriendRequestsScreen(),
               );
             },
           ),
@@ -157,10 +163,15 @@ class _MessagesTab extends ConsumerWidget {
   }
 
   void _openEmptyInbox(BuildContext context, String title, String message) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _EmptyInboxScreen(title: title, message: message),
+    AppNavigation.push<void>(
+      context,
+      destination: AppRouteId.systemInbox,
+      source: AppNavigationSource(
+        section: AppSection.friends,
+        entryPoint: AppEntryPoint.messageList,
+        entityId: title,
       ),
+      builder: (_) => SystemInboxScreen(title: title, emptyMessage: message),
     );
   }
 }
@@ -186,13 +197,18 @@ class _ConversationTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => DirectChatScreen(
-                conversationId: conversation.conversationId,
-                title: conversation.title,
-                currentUserId: currentUserId,
-              ),
+          AppNavigation.push<void>(
+            context,
+            destination: AppRouteId.directChat,
+            source: AppNavigationSource(
+              section: AppSection.friends,
+              entryPoint: AppEntryPoint.messageList,
+              entityId: conversation.conversationId,
+            ),
+            builder: (_) => DirectChatScreen(
+              conversationId: conversation.conversationId,
+              title: conversation.title,
+              currentUserId: currentUserId,
             ),
           );
         },
@@ -429,10 +445,15 @@ class _ContactTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => FriendProfileScreen(initialContact: contact),
+          AppNavigation.push<void>(
+            context,
+            destination: AppRouteId.friendProfile,
+            source: AppNavigationSource(
+              section: AppSection.friends,
+              entryPoint: AppEntryPoint.contactList,
+              entityId: contact.userId,
             ),
+            builder: (_) => FriendProfileScreen(initialContact: contact),
           );
         },
         child: Padding(
@@ -569,34 +590,6 @@ class _InlineError extends StatelessWidget {
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),
         ],
-      ),
-    );
-  }
-}
-
-class _EmptyInboxScreen extends StatelessWidget {
-  const _EmptyInboxScreen({required this.title, required this.message});
-
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.notifications_none_rounded,
-              size: 44,
-              color: Color(0xFFA1AAA5),
-            ),
-            const SizedBox(height: 12),
-            Text(message, style: const TextStyle(color: Color(0xFF78847E))),
-          ],
-        ),
       ),
     );
   }
