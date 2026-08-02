@@ -48,7 +48,7 @@ test(
 );
 
 test(
-  "migrations activate the one-kilometre plaza grid without rewriting version one",
+  "migrations activate the two-kilometre plaza grid without rewriting older versions",
   { skip: process.env.RUN_DATABASE_INTEGRATION_TESTS !== "true" },
   async () => {
     const pool = new Pool({
@@ -71,7 +71,8 @@ test(
 
       assert.deepEqual(result.rows, [
         { version: 1, side_length_meters: 500, status: "retired" },
-        { version: 2, side_length_meters: 1000, status: "active" }
+        { version: 2, side_length_meters: 1000, status: "retired" },
+        { version: 3, side_length_meters: 2000, status: "active" }
       ]);
     } finally {
       await database.onApplicationShutdown();
