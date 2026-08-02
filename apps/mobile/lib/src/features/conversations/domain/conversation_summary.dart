@@ -78,6 +78,17 @@ class ConversationSummary {
   final String notificationMode;
   final bool pinned;
   final ConversationPreview? lastMessage;
+
+  ConversationSummary copyWith({String? title, bool? pinned}) {
+    return ConversationSummary(
+      conversationId: conversationId,
+      title: title ?? this.title,
+      unread: unread,
+      notificationMode: notificationMode,
+      pinned: pinned ?? this.pinned,
+      lastMessage: lastMessage,
+    );
+  }
 }
 
 class ConversationListPage {

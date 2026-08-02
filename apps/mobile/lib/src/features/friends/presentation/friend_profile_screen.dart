@@ -6,6 +6,7 @@ import '../../auth/application/auth_controller.dart';
 import '../../conversations/presentation/direct_chat_screen.dart';
 import '../../profile/data/profile_repository.dart';
 import '../../profile/domain/profile_models.dart';
+import '../application/friend_relationship_coordinator.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 
@@ -142,7 +143,7 @@ class FriendProfileScreen extends ConsumerWidget {
     );
     if (value == null || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .updateRemark(contact.userId, value);
     if (!context.mounted) return;
     _showResult(context, ref, succeeded, '备注已更新');
@@ -193,7 +194,7 @@ class FriendProfileScreen extends ConsumerWidget {
     );
     if (value == null || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .updatePostPermission(contact.userId, value);
     if (!context.mounted) return;
     _showResult(context, ref, succeeded, '权限已更新');
@@ -206,7 +207,7 @@ class FriendProfileScreen extends ConsumerWidget {
     bool pinned,
   ) async {
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .updatePinned(userId, pinned);
     if (!context.mounted) return;
     _showResult(context, ref, succeeded, pinned ? '已置顶聊天' : '已取消置顶');
@@ -225,8 +226,8 @@ class FriendProfileScreen extends ConsumerWidget {
     );
     if (!confirmed || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
-        .deleteFriend(contact.userId);
+        .read(friendRelationshipCoordinatorProvider)
+        .deleteFriend(contact);
     if (!context.mounted) return;
     if (succeeded) {
       Navigator.pop(context);
@@ -251,8 +252,8 @@ class FriendProfileScreen extends ConsumerWidget {
     );
     if (!confirmed || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
-        .blockUser(contact.userId);
+        .read(friendRelationshipCoordinatorProvider)
+        .blockUser(contact);
     if (!context.mounted) return;
     if (succeeded) {
       Navigator.pop(context);

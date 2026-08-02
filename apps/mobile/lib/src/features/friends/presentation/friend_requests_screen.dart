@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
 import '../../profile/presentation/profile_detail_screen.dart';
+import '../application/friend_relationship_coordinator.dart';
 import '../application/friends_controller.dart';
 import '../domain/friend_models.dart';
 
@@ -75,7 +76,7 @@ class FriendRequestsScreen extends ConsumerWidget {
     bool accept,
   ) async {
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .decide(requestId: requestId, accept: accept);
     if (!context.mounted) return;
     final state = ref.read(friendsControllerProvider);

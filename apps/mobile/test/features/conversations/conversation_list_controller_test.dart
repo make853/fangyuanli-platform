@@ -75,6 +75,65 @@ void main() {
     controller.dispose();
     await realtime.close();
   });
+
+  test(
+    'relationship projection updates title, pin order and removal locally',
+    () async {
+      final realtime = StreamController<RealtimeEvent>.broadcast(sync: true);
+      final repository = _FakeConversationRepository([
+        ConversationListPage(
+          navigationUnread: 0,
+          hasMore: false,
+          items: [
+            _summary('conversation-1', '阿禾', minute: 1),
+            _summary('conversation-2', '小桃子', minute: 2),
+          ],
+        ),
+      ]);
+      final controller = ConversationListController(
+        repository,
+        realtime.stream,
+      );
+      await _waitFor(() => controller.state.items.length == 2);
+
+      controller.applyFriendProjection(
+        conversationId: 'conversation-1',
+        title: '备注后的阿禾',
+        pinned: true,
+      );
+
+      expect(controller.state.items.first.conversationId, 'conversation-1');
+      expect(controller.state.items.first.title, '备注后的阿禾');
+      expect(controller.state.items.first.pinned, isTrue);
+
+      controller.removeConversation('conversation-1');
+      expect(controller.state.items, hasLength(1));
+      expect(controller.state.items.single.conversationId, 'conversation-2');
+
+      controller.dispose();
+      await realtime.close();
+    },
+  );
+}
+
+ConversationSummary _summary(
+  String conversationId,
+  String title, {
+  required int minute,
+}) {
+  return ConversationSummary(
+    conversationId: conversationId,
+    title: title,
+    unread: const ConversationUnread(count: 0, appearance: 'none'),
+    notificationMode: 'normal',
+    pinned: false,
+    lastMessage: ConversationPreview(
+      messageId: 'message-$conversationId',
+      sequence: minute,
+      preview: '消息',
+      createdAt: DateTime.utc(2026, 8, 2, 10, minute),
+    ),
+  );
 }
 
 ConversationListPage _page({required int unread, required String preview}) {

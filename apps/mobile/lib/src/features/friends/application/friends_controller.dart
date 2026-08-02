@@ -57,6 +57,13 @@ class FriendsController extends StateNotifier<FriendsState> {
 
   final RelationshipRepository _repository;
 
+  FriendContact? contactForUser(String userId) {
+    for (final contact in state.contacts) {
+      if (contact.userId == userId) return contact;
+    }
+    return null;
+  }
+
   Future<void> load({bool silent = false}) async {
     if (!silent) {
       state = state.copyWith(isLoading: true, clearError: true);

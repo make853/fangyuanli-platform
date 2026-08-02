@@ -89,6 +89,43 @@ class ConversationListController extends StateNotifier<ConversationListState> {
     );
   }
 
+  void applyFriendProjection({
+    required String conversationId,
+    required String title,
+    required bool pinned,
+  }) {
+    final items = [
+      for (final item in state.items)
+        if (item.conversationId == conversationId)
+          item.copyWith(title: title, pinned: pinned)
+        else
+          item,
+    ];
+    _sortConversations(items);
+    state = state.copyWith(items: items);
+  }
+
+  void removeConversation(String conversationId) {
+    state = state.copyWith(
+      items: [
+        for (final item in state.items)
+          if (item.conversationId != conversationId) item,
+      ],
+    );
+  }
+
+  static void _sortConversations(List<ConversationSummary> items) {
+    items.sort((left, right) {
+      if (left.pinned != right.pinned) return left.pinned ? -1 : 1;
+      final leftTime = left.lastMessage?.createdAt;
+      final rightTime = right.lastMessage?.createdAt;
+      if (leftTime == null && rightTime == null) return 0;
+      if (leftTime == null) return 1;
+      if (rightTime == null) return -1;
+      return rightTime.compareTo(leftTime);
+    });
+  }
+
   @override
   void dispose() {
     _reloadTimer?.cancel();

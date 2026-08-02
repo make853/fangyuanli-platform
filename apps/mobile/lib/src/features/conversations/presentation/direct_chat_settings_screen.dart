@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
+import '../../friends/application/friend_relationship_coordinator.dart';
 import '../../friends/application/friends_controller.dart';
 import '../../friends/domain/friend_models.dart';
 import '../domain/direct_message.dart';
@@ -163,7 +164,7 @@ class DirectChatSettingsScreen extends ConsumerWidget {
     bool value,
   ) async {
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .updatePinned(contact.userId, value);
     if (!context.mounted) return;
     _showResult(context, ref, succeeded, value ? '已置顶聊天' : '已取消置顶');
@@ -180,7 +181,7 @@ class DirectChatSettingsScreen extends ConsumerWidget {
     );
     if (value == null || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .updateRemark(contact.userId, value);
     if (!context.mounted) return;
     _showResult(context, ref, succeeded, '备注已更新');
@@ -231,7 +232,7 @@ class DirectChatSettingsScreen extends ConsumerWidget {
     );
     if (value == null || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
+        .read(friendRelationshipCoordinatorProvider)
         .updatePostPermission(contact.userId, value);
     if (!context.mounted) return;
     _showResult(context, ref, succeeded, '权限已更新');
@@ -250,8 +251,8 @@ class DirectChatSettingsScreen extends ConsumerWidget {
     );
     if (!confirmed || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
-        .deleteFriend(contact.userId);
+        .read(friendRelationshipCoordinatorProvider)
+        .deleteFriend(contact);
     if (!context.mounted) return;
     if (!succeeded) {
       _showResult(context, ref, false, '');
@@ -273,8 +274,8 @@ class DirectChatSettingsScreen extends ConsumerWidget {
     );
     if (!confirmed || !context.mounted) return;
     final succeeded = await ref
-        .read(friendsControllerProvider.notifier)
-        .blockUser(contact.userId);
+        .read(friendRelationshipCoordinatorProvider)
+        .blockUser(contact);
     if (!context.mounted) return;
     if (!succeeded) {
       _showResult(context, ref, false, '');

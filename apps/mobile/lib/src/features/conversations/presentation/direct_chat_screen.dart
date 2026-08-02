@@ -13,6 +13,7 @@ import '../application/direct_chat_controller.dart';
 import '../domain/direct_message.dart';
 import 'chat_composer.dart';
 import 'chat_message_bubble.dart';
+import 'chat_time.dart';
 import 'direct_chat_settings_screen.dart';
 
 class DirectChatScreen extends ConsumerStatefulWidget {
@@ -269,13 +270,21 @@ class _MessageList extends StatelessWidget {
       reverse: true,
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
       children: [
-        for (final message in state.messages.reversed) _message(message),
+        for (var index = state.messages.length - 1; index >= 0; index--)
+          _message(
+            state.messages[index],
+            previous: index == 0 ? null : state.messages[index - 1],
+          ),
       ],
     );
   }
 
-  Widget _message(DirectMessage message) {
+  Widget _message(DirectMessage message, {required DirectMessage? previous}) {
     final isMine = message.senderUserId == userId;
+    final showTime = ChatTimePresentation.shouldShowDivider(
+      message.createdAt,
+      previous?.createdAt,
+    );
     return KeyedSubtree(
       key: keyForSequence(message.sequence),
       child: ChatMessageBubble(
@@ -285,6 +294,9 @@ class _MessageList extends StatelessWidget {
         avatar: isMine ? ownAvatar : peerAvatar,
         avatarInitial: isMine ? ownInitial : _initial(message.senderName),
         onAvatarTap: () => onAvatarTap(message.senderUserId),
+        timestampLabel: showTime
+            ? ChatTimePresentation.format(message.createdAt)
+            : null,
       ),
     );
   }

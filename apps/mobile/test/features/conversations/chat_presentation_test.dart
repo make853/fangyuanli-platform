@@ -1,6 +1,7 @@
 import 'package:fangyuanli_mobile/src/features/conversations/domain/direct_message.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_composer.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_message_bubble.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/presentation/chat_time.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/presentation/direct_chat_settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +31,50 @@ void main() {
     expect(avatar.dx, greaterThan(bubble.dx));
     expect(find.text('收到'), findsOneWidget);
     expect(find.text('我'), findsNothing);
+  });
+
+  testWidgets('聊天气泡按需显示居中的时间分隔', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ChatMessageBubble(
+            text: '五分钟后再发一条',
+            deliveryState: 'sent',
+            isMine: false,
+            avatarInitial: '桃',
+            timestampLabel: '10:35',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('message-time-divider')), findsOneWidget);
+    expect(find.text('10:35'), findsOneWidget);
+  });
+
+  test('聊天时间五分钟分段，并按日期显示', () {
+    final previous = DateTime(2026, 8, 2, 10, 0);
+    expect(
+      ChatTimePresentation.shouldShowDivider(
+        DateTime(2026, 8, 2, 10, 4),
+        previous,
+      ),
+      isFalse,
+    );
+    expect(
+      ChatTimePresentation.shouldShowDivider(
+        DateTime(2026, 8, 2, 10, 5),
+        previous,
+      ),
+      isTrue,
+    );
+    expect(
+      ChatTimePresentation.format(
+        DateTime(2026, 8, 1, 9, 8),
+        now: DateTime(2026, 8, 2, 12),
+      ),
+      '昨天 09:08',
+    );
   });
 
   testWidgets('输入栏可切换语音、连续选择表情并打开更多面板', (tester) async {
