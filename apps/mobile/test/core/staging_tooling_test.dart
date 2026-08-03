@@ -4,6 +4,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  final macOsOnly = Platform.isMacOS
+      ? false
+      : 'requires macOS zsh and iOS device tooling';
   late Directory temporaryDirectory;
   late File fakeFlutter;
   late File capturedArguments;
@@ -44,7 +47,7 @@ print -r -- "\$@" > '${capturedArguments.path}'
     expect(arguments, contains('-d physical-a'));
     expect(arguments, contains('--dart-define=BUILD_IDENTITY=source-1234'));
     expect(arguments, contains('--dart-define=TEST_CLIENT_ROLE=A'));
-  });
+  }, skip: macOsOnly);
 
   test('staging launcher refuses to use the physical device as B', () async {
     final result = await _runLauncher(
@@ -56,7 +59,7 @@ print -r -- "\$@" > '${capturedArguments.path}'
     expect(result.exitCode, isNot(0));
     expect(result.stderr, contains('测试端 B 必须是模拟器'));
     expect(await capturedArguments.exists(), isFalse);
-  });
+  }, skip: macOsOnly);
 }
 
 Future<ProcessResult> _runLauncher({
