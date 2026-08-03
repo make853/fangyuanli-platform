@@ -29,6 +29,8 @@ class PlazaOverviewSnapshot {
 }
 
 abstract interface class PlazaSnapshotStore {
+  PlazaOverviewSnapshot? peek(String ownerUserId);
+
   Future<PlazaOverviewSnapshot?> read(String ownerUserId);
 
   Future<void> write(String ownerUserId, PlazaOverviewSnapshot snapshot);
@@ -43,28 +45,38 @@ class PersistentPlazaSnapshotStore implements PlazaSnapshotStore {
   final AccountSnapshotStore _records;
 
   @override
+  PlazaOverviewSnapshot? peek(String ownerUserId) {
+    final record = _records.peek(
+      ownerUserId: ownerUserId,
+      snapshotKey: _snapshotKey,
+    );
+    return _decodeRecord(record);
+  }
+
+  @override
   Future<PlazaOverviewSnapshot?> read(String ownerUserId) async {
     final record = await _records.read(
       ownerUserId: ownerUserId,
       snapshotKey: _snapshotKey,
     );
-    if (record == null) return null;
-    if (record.payloadVersion != _payloadVersion) {
+    final snapshot = _decodeRecord(record);
+    if (snapshot != null) return snapshot;
+    if (record != null) {
       await _records.delete(
         ownerUserId: ownerUserId,
         snapshotKey: _snapshotKey,
       );
-      return null;
     }
+    return null;
+  }
+
+  PlazaOverviewSnapshot? _decodeRecord(AccountSnapshotRecord? record) {
+    if (record == null || record.payloadVersion != _payloadVersion) return null;
     try {
       final snapshot = PlazaOverviewSnapshot.fromJson(record.payload);
       if (snapshot.plazas.length != 4) throw const FormatException();
       return snapshot;
     } on Object {
-      await _records.delete(
-        ownerUserId: ownerUserId,
-        snapshotKey: _snapshotKey,
-      );
       return null;
     }
   }

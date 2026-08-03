@@ -1,9 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../core/network/api_failure.dart';
 import '../../../core/realtime/realtime_event.dart';
+import '../../media/domain/media_upload_models.dart';
 import '../data/conversation_message_store.dart';
+import '../data/conversation_outbox_store.dart';
 import '../data/conversation_repository.dart';
 import '../domain/conversation_message.dart';
 
@@ -12,7 +16,6 @@ class ConversationChatState {
     this.messages = const [],
     this.isLoading = false,
     this.isRefreshing = false,
-    this.isSending = false,
     this.hasEarlier = false,
     this.errorMessage,
   });
@@ -20,7 +23,6 @@ class ConversationChatState {
   final List<ConversationMessage> messages;
   final bool isLoading;
   final bool isRefreshing;
-  final bool isSending;
   final bool hasEarlier;
   final String? errorMessage;
 
@@ -28,7 +30,6 @@ class ConversationChatState {
     List<ConversationMessage>? messages,
     bool? isLoading,
     bool? isRefreshing,
-    bool? isSending,
     bool? hasEarlier,
     String? errorMessage,
     bool clearError = false,
@@ -37,12 +38,14 @@ class ConversationChatState {
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       isRefreshing: isRefreshing ?? this.isRefreshing,
-      isSending: isSending ?? this.isSending,
       hasEarlier: hasEarlier ?? this.hasEarlier,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
 }
+
+typedef ConversationSendAccessResolver =
+    Future<ConversationAccessContext> Function({required bool forceRefresh});
 
 /// Shared local-first sync engine for every conversation scene.
 ///
@@ -55,10 +58,21 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     this._conversationId,
     Stream<RealtimeEvent> realtimeEvents, {
     this.messageStore,
+    this.outboxStore,
     this.ownerUserId,
     this.emptyConversationMessage = '当前会话暂不可用',
     this.accessContext = const ConversationAccessContext.direct(),
-  }) : super(const ConversationChatState()) {
+    this.sendAccessResolver,
+    Uuid? uuid,
+  }) : _uuid = uuid ?? const Uuid(),
+       super(
+         _initialState(
+           messageStore: messageStore,
+           outboxStore: outboxStore,
+           ownerUserId: ownerUserId,
+           conversationId: _conversationId,
+         ),
+       ) {
     _subscription = realtimeEvents.listen(_onRealtimeEvent);
     unawaited(_initialize());
   }
@@ -66,24 +80,32 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
   final ConversationRepository _repository;
   final String _conversationId;
   final ConversationMessageStore? messageStore;
+  final ConversationOutboxStore? outboxStore;
   final String? ownerUserId;
   final String emptyConversationMessage;
   final ConversationAccessContext accessContext;
+  final ConversationSendAccessResolver? sendAccessResolver;
   late final StreamSubscription<RealtimeEvent> _subscription;
   Future<void>? _activeLoad;
+  final Uuid _uuid;
 
   bool get hasCachedMessages => state.messages.isNotEmpty;
 
   Future<void> _initialize() async {
-    final cached = await _readCachedMessages();
+    final cachedResults = await Future.wait<Object?>([
+      _readCachedMessages(),
+      _readOutboxMessages(),
+    ]);
+    final cached = cachedResults[0] as ConversationMessageSnapshot?;
+    final outbox = cachedResults[1] as List<ConversationMessage>;
     if (!mounted) return;
-    if (cached != null) {
+    if (cached != null || outbox.isNotEmpty) {
       state = state.copyWith(
-        messages: cached.messages,
-        hasEarlier: cached.hasEarlier,
+        messages: _mergeMessages(cached?.messages ?? const [], outbox),
+        hasEarlier: cached?.hasEarlier ?? state.hasEarlier,
       );
     }
-    await load(silent: cached != null);
+    await load(silent: state.messages.isNotEmpty);
   }
 
   Future<void> load({bool silent = false}) {
@@ -109,7 +131,7 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     );
     try {
       final existing = state.messages;
-      final latestSequence = existing.isEmpty ? null : existing.last.sequence;
+      final latestSequence = _latestConfirmedSequence(existing);
       var page = await _repository.loadMessages(
         _conversationId,
         afterSequence: latestSequence,
@@ -117,7 +139,10 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         access: accessContext,
       );
       var messages = latestSequence == null
-          ? page.items
+          ? _mergeMessages(
+              page.items,
+              existing.where((message) => message.isPending),
+            )
           : _mergeMessages(existing, page.items);
       var hasEarlier = latestSequence == null
           ? page.hasEarlier
@@ -142,8 +167,9 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         isRefreshing: false,
       );
       await _writeCachedMessages(messages, hasEarlier: hasEarlier);
-      if (messages.isNotEmpty) {
-        unawaited(_markRead(messages.last.sequence));
+      final confirmedSequence = _latestConfirmedSequence(messages);
+      if (confirmedSequence != null) {
+        unawaited(_markRead(confirmedSequence));
       }
     } catch (error) {
       if (!mounted) return;
@@ -155,28 +181,112 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     }
   }
 
-  Future<bool> send(String value) async {
+  Future<bool> send(
+    String value, {
+    String senderName = '我',
+    int senderProfileVersion = 1,
+    MediaAsset? senderAvatar,
+  }) async {
     final text = value.trim();
-    if (text.isEmpty || state.isSending) return false;
-    state = state.copyWith(isSending: true, clearError: true);
+    if (text.isEmpty || _conversationId.isEmpty) return false;
+    final clientMessageId = _uuid.v4();
+    final localMessage = ConversationMessage(
+      messageId: 'local:$clientMessageId',
+      clientMessageId: clientMessageId,
+      conversationId: _conversationId,
+      sequence: 0,
+      senderUserId: ownerUserId,
+      senderName: senderName,
+      senderProfileVersion: senderProfileVersion,
+      senderAvatar: senderAvatar,
+      text: text,
+      createdAt: DateTime.now(),
+      deliveryState: 'sending',
+    );
+    state = state.copyWith(
+      messages: _mergeMessage(state.messages, localMessage),
+      clearError: true,
+    );
+    unawaited(_writeOutboxMessage(localMessage));
+    unawaited(_deliver(localMessage));
+    return true;
+  }
+
+  bool retry(String clientMessageId) {
+    ConversationMessage? failed;
+    for (final message in state.messages) {
+      if (message.clientMessageId == clientMessageId &&
+          message.deliveryState == 'failed') {
+        failed = message;
+        break;
+      }
+    }
+    if (failed == null) return false;
+    final retrying = failed.copyWith(deliveryState: 'sending');
+    state = state.copyWith(
+      messages: _mergeMessage(state.messages, retrying),
+      clearError: true,
+    );
+    unawaited(_writeOutboxMessage(retrying));
+    unawaited(_deliver(retrying));
+    return true;
+  }
+
+  Future<void> _deliver(ConversationMessage localMessage) async {
+    final clientMessageId = localMessage.clientMessageId!;
     try {
-      final message = await _repository.sendText(
-        _conversationId,
-        text,
-        access: accessContext,
-      );
-      state = state.copyWith(
-        messages: _mergeMessage(state.messages, message),
-        isSending: false,
-      );
+      var deliveryAccess = await _resolveSendAccess(forceRefresh: false);
+      ConversationMessage message;
+      try {
+        message = await _sendLocalMessage(localMessage, deliveryAccess);
+      } on ApiFailure catch (error) {
+        if (sendAccessResolver == null || !_canRefreshSendAccess(error.code)) {
+          rethrow;
+        }
+        deliveryAccess = await _resolveSendAccess(forceRefresh: true);
+        message = await _sendLocalMessage(localMessage, deliveryAccess);
+      }
+      if (!mounted) return;
+      state = state.copyWith(messages: _mergeMessage(state.messages, message));
       unawaited(_writeCachedMessages([message], hasEarlier: state.hasEarlier));
+      unawaited(_deleteOutboxMessage(clientMessageId));
       unawaited(_markRead(message.sequence));
-      return true;
-    } catch (error) {
-      state = state.copyWith(isSending: false, errorMessage: error.toString());
-      return false;
+    } catch (_) {
+      if (!mounted) return;
+      final failed = localMessage.copyWith(deliveryState: 'failed');
+      state = state.copyWith(messages: _mergeMessage(state.messages, failed));
+      unawaited(_writeOutboxMessage(failed));
     }
   }
+
+  Future<ConversationAccessContext> _resolveSendAccess({
+    required bool forceRefresh,
+  }) async {
+    final resolver = sendAccessResolver;
+    if (resolver == null) return accessContext;
+    return resolver(forceRefresh: forceRefresh);
+  }
+
+  Future<ConversationMessage> _sendLocalMessage(
+    ConversationMessage localMessage,
+    ConversationAccessContext deliveryAccess,
+  ) {
+    return _repository.sendText(
+      _conversationId,
+      localMessage.text ?? '',
+      clientMessageId: localMessage.clientMessageId!,
+      access: deliveryAccess,
+    );
+  }
+
+  bool _canRefreshSendAccess(String? code) => switch (code) {
+    'PLAZA_LOCATION_CONTEXT_REQUIRED' ||
+    'PLAZA_LOCATION_NOT_AUTHORIZED' ||
+    'LOCATION_CONTEXT_EXPIRED' ||
+    'LOCATION_CONTEXT_INVALID' ||
+    'LOCATION_CONTEXT_USER_INVALID' => true,
+    _ => false,
+  };
 
   Future<void> _markRead(int sequence) async {
     try {
@@ -200,6 +310,10 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         clearError: true,
       );
       unawaited(_writeCachedMessages([message], hasEarlier: state.hasEarlier));
+      final clientMessageId = message.clientMessageId;
+      if (clientMessageId != null) {
+        unawaited(_deleteOutboxMessage(clientMessageId));
+      }
       unawaited(_markRead(message.sequence));
     } catch (_) {
       unawaited(load(silent: state.messages.isNotEmpty));
@@ -220,6 +334,32 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     }
   }
 
+  Future<List<ConversationMessage>> _readOutboxMessages() async {
+    final store = outboxStore;
+    final owner = ownerUserId;
+    if (store == null || owner == null || owner.isEmpty) return const [];
+    try {
+      final messages = await store.read(
+        ownerUserId: owner,
+        conversationId: _conversationId,
+      );
+      final restored = [
+        for (final message in messages)
+          message.deliveryState == 'sending'
+              ? message.copyWith(deliveryState: 'failed')
+              : message,
+      ];
+      for (final message in restored) {
+        if (message.deliveryState != 'sending') {
+          unawaited(_writeOutboxMessage(message));
+        }
+      }
+      return restored;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> _writeCachedMessages(
     Iterable<ConversationMessage> messages, {
     required bool hasEarlier,
@@ -228,14 +368,42 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     final owner = ownerUserId;
     if (store == null || owner == null || owner.isEmpty) return;
     try {
+      final confirmed = messages.where((message) => !message.isPending);
+      if (confirmed.isEmpty) return;
       await store.write(
         ownerUserId: owner,
         conversationId: _conversationId,
-        messages: messages,
+        messages: confirmed,
         hasEarlier: hasEarlier,
       );
     } catch (_) {
       // Server messages stay usable when the local cache is unavailable.
+    }
+  }
+
+  Future<void> _writeOutboxMessage(ConversationMessage message) async {
+    final store = outboxStore;
+    final owner = ownerUserId;
+    if (store == null || owner == null || owner.isEmpty) return;
+    try {
+      await store.upsert(ownerUserId: owner, message: message);
+    } catch (_) {
+      // Optimistic UI stays usable if durable local storage is unavailable.
+    }
+  }
+
+  Future<void> _deleteOutboxMessage(String clientMessageId) async {
+    final store = outboxStore;
+    final owner = ownerUserId;
+    if (store == null || owner == null || owner.isEmpty) return;
+    try {
+      await store.delete(
+        ownerUserId: owner,
+        conversationId: _conversationId,
+        clientMessageId: clientMessageId,
+      );
+    } catch (_) {
+      // A stale acknowledged row is deduplicated by clientMessageId next load.
     }
   }
 
@@ -246,11 +414,69 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     final merged = [
       for (final item in messages)
         if (item.messageId != message.messageId &&
-            item.sequence != message.sequence)
+            (message.clientMessageId == null ||
+                item.clientMessageId != message.clientMessageId) &&
+            (message.isPending ||
+                item.isPending ||
+                item.sequence != message.sequence))
           item,
       message,
-    ]..sort((left, right) => left.sequence.compareTo(right.sequence));
+    ]..sort(_compareMessages);
     return merged;
+  }
+
+  int _compareMessages(ConversationMessage left, ConversationMessage right) {
+    if (left.isPending != right.isPending) return left.isPending ? 1 : -1;
+    if (left.isPending) return left.createdAt.compareTo(right.createdAt);
+    return left.sequence.compareTo(right.sequence);
+  }
+
+  int? _latestConfirmedSequence(List<ConversationMessage> messages) {
+    int? latest;
+    for (final message in messages) {
+      if (message.isPending) continue;
+      if (latest == null || message.sequence > latest) {
+        latest = message.sequence;
+      }
+    }
+    return latest;
+  }
+
+  static ConversationChatState _initialState({
+    required ConversationMessageStore? messageStore,
+    required ConversationOutboxStore? outboxStore,
+    required String? ownerUserId,
+    required String conversationId,
+  }) {
+    if (ownerUserId == null || ownerUserId.isEmpty) {
+      return const ConversationChatState();
+    }
+    final cached = messageStore?.peekRecent(
+      ownerUserId: ownerUserId,
+      conversationId: conversationId,
+    );
+    final outbox =
+        outboxStore?.peek(
+          ownerUserId: ownerUserId,
+          conversationId: conversationId,
+        ) ??
+        const <ConversationMessage>[];
+    final combined =
+        [
+          ...?cached?.messages,
+          for (final message in outbox)
+            message.deliveryState == 'sending'
+                ? message.copyWith(deliveryState: 'failed')
+                : message,
+        ]..sort((left, right) {
+          if (left.isPending != right.isPending) return left.isPending ? 1 : -1;
+          if (left.isPending) return left.createdAt.compareTo(right.createdAt);
+          return left.sequence.compareTo(right.sequence);
+        });
+    return ConversationChatState(
+      messages: List.unmodifiable(combined),
+      hasEarlier: cached?.hasEarlier ?? false,
+    );
   }
 
   List<ConversationMessage> _mergeMessages(

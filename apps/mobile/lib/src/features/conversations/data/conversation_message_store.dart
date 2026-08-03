@@ -17,6 +17,11 @@ class ConversationMessageSnapshot {
 }
 
 abstract interface class ConversationMessageStore {
+  ConversationMessageSnapshot? peekRecent({
+    required String ownerUserId,
+    required String conversationId,
+  });
+
   Future<ConversationMessageSnapshot?> readRecent({
     required String ownerUserId,
     required String conversationId,
@@ -34,9 +39,19 @@ abstract interface class ConversationMessageStore {
 }
 
 class SqliteConversationMessageStore implements ConversationMessageStore {
-  const SqliteConversationMessageStore(this._appDatabase);
+  SqliteConversationMessageStore(this._appDatabase);
 
   final AppDatabase _appDatabase;
+  final Map<String, ConversationMessageSnapshot> _memory = {};
+
+  String _key(String ownerUserId, String conversationId) =>
+      '$ownerUserId\u0000$conversationId';
+
+  @override
+  ConversationMessageSnapshot? peekRecent({
+    required String ownerUserId,
+    required String conversationId,
+  }) => _memory[_key(ownerUserId, conversationId)];
 
   @override
   Future<ConversationMessageSnapshot?> readRecent({
@@ -44,6 +59,11 @@ class SqliteConversationMessageStore implements ConversationMessageStore {
     required String conversationId,
     int limit = 50,
   }) async {
+    final memory = peekRecent(
+      ownerUserId: ownerUserId,
+      conversationId: conversationId,
+    );
+    if (memory != null) return memory;
     final database = await _appDatabase.open();
     final threadRows = await database.query(
       'conversation_threads',
@@ -81,10 +101,12 @@ class SqliteConversationMessageStore implements ConversationMessageStore {
       return null;
     }
     if (messages.isEmpty) return null;
-    return ConversationMessageSnapshot(
+    final snapshot = ConversationMessageSnapshot(
       messages: messages,
       hasEarlier: (threadRows.single['has_earlier'] as int) != 0,
     );
+    _memory[_key(ownerUserId, conversationId)] = snapshot;
+    return snapshot;
   }
 
   @override
@@ -141,10 +163,25 @@ class SqliteConversationMessageStore implements ConversationMessageStore {
         'cached_at_ms': DateTime.now().toUtc().millisecondsSinceEpoch,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
+    final key = _key(ownerUserId, conversationId);
+    final previous = _memory[key];
+    final merged = <ConversationMessage>[...?previous?.messages, ...items];
+    final byId = <String, ConversationMessage>{
+      for (final message in merged) message.messageId: message,
+    };
+    final normalized = byId.values.toList()
+      ..sort((left, right) => left.sequence.compareTo(right.sequence));
+    _memory[key] = ConversationMessageSnapshot(
+      messages: normalized.length <= 50
+          ? List.unmodifiable(normalized)
+          : List.unmodifiable(normalized.sublist(normalized.length - 50)),
+      hasEarlier: (previous?.hasEarlier ?? false) || hasEarlier,
+    );
   }
 
   @override
   Future<void> clearOwner(String ownerUserId) async {
+    _memory.removeWhere((key, _) => key.startsWith('$ownerUserId\u0000'));
     final database = await _appDatabase.open();
     await database.transaction((transaction) async {
       await transaction.delete(
@@ -165,6 +202,7 @@ class SqliteConversationMessageStore implements ConversationMessageStore {
     String ownerUserId,
     String conversationId,
   ) {
+    _memory.remove(_key(ownerUserId, conversationId));
     return database.transaction((transaction) async {
       await transaction.delete(
         'conversation_messages',

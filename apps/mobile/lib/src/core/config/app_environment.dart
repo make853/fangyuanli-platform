@@ -8,6 +8,8 @@ class AppEnvironment {
     this.stagingTestPhoneA = '',
     this.stagingTestPhoneB = '',
     this.stagingTestCode = '',
+    this.buildIdentity = 'local-dev',
+    this.testClientRole = '',
   });
 
   factory AppEnvironment.fromDefines() {
@@ -26,6 +28,11 @@ class AppEnvironment {
     const stagingTestPhoneA = String.fromEnvironment('STAGING_TEST_PHONE_A');
     const stagingTestPhoneB = String.fromEnvironment('STAGING_TEST_PHONE_B');
     const stagingTestCode = String.fromEnvironment('STAGING_TEST_CODE');
+    const buildIdentity = String.fromEnvironment(
+      'BUILD_IDENTITY',
+      defaultValue: 'local-dev',
+    );
+    const testClientRole = String.fromEnvironment('TEST_CLIENT_ROLE');
 
     return AppEnvironment(
       flavor: AppFlavor.values.firstWhere(
@@ -37,6 +44,8 @@ class AppEnvironment {
       stagingTestPhoneA: stagingTestPhoneA,
       stagingTestPhoneB: stagingTestPhoneB,
       stagingTestCode: stagingTestCode,
+      buildIdentity: buildIdentity,
+      testClientRole: testClientRole,
     );
   }
 
@@ -46,6 +55,14 @@ class AppEnvironment {
   final String stagingTestPhoneA;
   final String stagingTestPhoneB;
   final String stagingTestCode;
+  final String buildIdentity;
+  final String testClientRole;
+
+  String get visibleBuildLabel => [
+    flavor.name,
+    if (testClientRole.isNotEmpty) testClientRole,
+    buildIdentity,
+  ].join(' · ');
 
   bool get hasStagingTestAccounts =>
       flavor == AppFlavor.staging &&

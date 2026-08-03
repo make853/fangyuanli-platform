@@ -16,7 +16,7 @@ class AppDatabase {
     Future<String> Function()? pathLoader,
   }) : _pathLoader = pathLoader ?? _defaultPath;
 
-  static const schemaVersion = 4;
+  static const schemaVersion = 5;
 
   final DatabaseFactory? databaseFactoryOverride;
   final Future<String> Function() _pathLoader;
@@ -125,6 +125,24 @@ class AppDatabase {
     ''');
   }
 
+  static Future<void> _createVersionFive(Database database) async {
+    await database.execute('''
+      CREATE TABLE conversation_outbox (
+        owner_user_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        client_message_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (owner_user_id, conversation_id, client_message_id)
+      )
+    ''');
+    await database.execute('''
+      CREATE INDEX idx_conversation_outbox_created_at
+      ON conversation_outbox (owner_user_id, conversation_id, created_at_ms ASC)
+    ''');
+  }
+
   static Future<void> _upgrade(
     Database database,
     int oldVersion,
@@ -148,6 +166,10 @@ class AppDatabase {
     if (migratedVersion < 4) {
       await _createVersionFour(database);
       migratedVersion = 4;
+    }
+    if (migratedVersion < 5) {
+      await _createVersionFive(database);
+      migratedVersion = 5;
     }
     if (migratedVersion != newVersion) {
       throw StateError(

@@ -16,6 +16,11 @@ class AccountSnapshotRecord {
 }
 
 abstract interface class AccountSnapshotStore {
+  AccountSnapshotRecord? peek({
+    required String ownerUserId,
+    required String snapshotKey,
+  });
+
   Future<AccountSnapshotRecord?> read({
     required String ownerUserId,
     required String snapshotKey,
@@ -37,15 +42,27 @@ abstract interface class AccountSnapshotStore {
 }
 
 class SqliteAccountSnapshotStore implements AccountSnapshotStore {
-  const SqliteAccountSnapshotStore(this._appDatabase);
+  SqliteAccountSnapshotStore(this._appDatabase);
 
   final AppDatabase _appDatabase;
+  final Map<String, AccountSnapshotRecord> _memory = {};
+
+  String _key(String ownerUserId, String snapshotKey) =>
+      '$ownerUserId\u0000$snapshotKey';
+
+  @override
+  AccountSnapshotRecord? peek({
+    required String ownerUserId,
+    required String snapshotKey,
+  }) => _memory[_key(ownerUserId, snapshotKey)];
 
   @override
   Future<AccountSnapshotRecord?> read({
     required String ownerUserId,
     required String snapshotKey,
   }) async {
+    final memory = peek(ownerUserId: ownerUserId, snapshotKey: snapshotKey);
+    if (memory != null) return memory;
     final database = await _appDatabase.open();
     final rows = await database.query(
       'account_snapshots',
@@ -57,10 +74,12 @@ class SqliteAccountSnapshotStore implements AccountSnapshotStore {
     if (rows.isEmpty) return null;
     try {
       final decoded = jsonDecode(rows.single['payload_json']! as String);
-      return AccountSnapshotRecord(
+      final record = AccountSnapshotRecord(
         payloadVersion: rows.single['payload_version']! as int,
         payload: Map<String, dynamic>.from(decoded as Map),
       );
+      _memory[_key(ownerUserId, snapshotKey)] = record;
+      return record;
     } on Object {
       await delete(ownerUserId: ownerUserId, snapshotKey: snapshotKey);
       return null;
@@ -74,6 +93,10 @@ class SqliteAccountSnapshotStore implements AccountSnapshotStore {
     required int payloadVersion,
     required Map<String, dynamic> payload,
   }) async {
+    _memory[_key(ownerUserId, snapshotKey)] = AccountSnapshotRecord(
+      payloadVersion: payloadVersion,
+      payload: Map.unmodifiable(Map<String, dynamic>.from(payload)),
+    );
     final database = await _appDatabase.open();
     await database.insert('account_snapshots', {
       'owner_user_id': ownerUserId,
@@ -89,6 +112,7 @@ class SqliteAccountSnapshotStore implements AccountSnapshotStore {
     required String ownerUserId,
     required String snapshotKey,
   }) async {
+    _memory.remove(_key(ownerUserId, snapshotKey));
     final database = await _appDatabase.open();
     await database.delete(
       'account_snapshots',
@@ -99,6 +123,7 @@ class SqliteAccountSnapshotStore implements AccountSnapshotStore {
 
   @override
   Future<void> clearOwner(String ownerUserId) async {
+    _memory.removeWhere((key, _) => key.startsWith('$ownerUserId\u0000'));
     final database = await _appDatabase.open();
     await database.delete(
       'account_snapshots',

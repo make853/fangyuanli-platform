@@ -47,7 +47,6 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
   void initState() {
     super.initState();
     _timelineController = ChatTimelineViewportController();
-    _timelineController.scrollToLatest(jump: true);
   }
 
   @override
@@ -61,14 +60,19 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
 
   Future<void> _send() async {
     final value = _textController.text;
+    final ownProfile = ref.read(profileControllerProvider).profile;
     final succeeded = await ref
         .read(directChatControllerProvider(widget.conversationId).notifier)
-        .send(value);
+        .send(
+          value,
+          senderName: ownProfile?.displayName ?? '我',
+          senderProfileVersion: ownProfile?.profileVersion ?? 1,
+          senderAvatar: ownProfile?.avatar,
+        );
     if (!mounted) return;
     if (succeeded) {
       _textController.clear();
-      _focusNode.requestFocus();
-      _timelineController.scrollToLatest();
+      _timelineController.scrollToLatest(jump: true);
     }
   }
 
@@ -181,18 +185,19 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
       final newMessages = next.messages;
       final oldLatest = oldMessages.isEmpty ? null : oldMessages.last;
       final newLatest = newMessages.isEmpty ? null : newMessages.last;
-      if (newLatest?.sequence != oldLatest?.sequence) {
+      if (_logicalMessageId(newLatest) != _logicalMessageId(oldLatest)) {
         final followsLatest =
             oldMessages.isEmpty ||
             _timelineController.isNearLatest ||
             newLatest?.senderUserId == widget.currentUserId;
         if (followsLatest) {
-          _timelineController.scrollToLatest(jump: oldMessages.isEmpty);
+          _timelineController.scrollToLatest(jump: true);
         }
       }
     });
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(currentTitle),
         actions: [
@@ -217,6 +222,8 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
                 ownInitial: ownProfile?.initial ?? '我',
                 peerAvatar: currentContact?.avatar ?? widget.peerAvatar,
                 onAvatarTap: _openProfile,
+                onRetry: (clientMessageId) =>
+                    ref.read(provider.notifier).retry(clientMessageId),
                 keyForSequence: (sequence) =>
                     _messageKeys.putIfAbsent(sequence, GlobalKey.new),
               ),
@@ -226,7 +233,6 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
             controller: _composerController,
             textController: _textController,
             focusNode: _focusNode,
-            isSending: state.isSending,
             onSend: _send,
             onUnavailableAction: _showUnavailableAction,
           ),
@@ -234,6 +240,9 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
       ),
     );
   }
+
+  String? _logicalMessageId(ConversationMessage? message) =>
+      message?.clientMessageId ?? message?.messageId;
 }
 
 class _MessageList extends StatelessWidget {
@@ -244,6 +253,7 @@ class _MessageList extends StatelessWidget {
     required this.ownInitial,
     required this.onAvatarTap,
     required this.keyForSequence,
+    required this.onRetry,
     this.ownAvatar,
     this.peerAvatar,
   });
@@ -256,6 +266,7 @@ class _MessageList extends StatelessWidget {
   final MediaAsset? peerAvatar;
   final ValueChanged<String?> onAvatarTap;
   final Key Function(int sequence) keyForSequence;
+  final ValueChanged<String> onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +299,9 @@ class _MessageList extends StatelessWidget {
       previous?.createdAt,
     );
     return KeyedSubtree(
-      key: keyForSequence(message.sequence),
+      key: message.isPending
+          ? ValueKey(message.messageId)
+          : keyForSequence(message.sequence),
       child: ChatMessageBubble(
         text: message.previewText,
         deliveryState: message.deliveryState,
@@ -299,6 +312,9 @@ class _MessageList extends StatelessWidget {
         timestampLabel: showTime
             ? ChatTimePresentation.format(message.createdAt)
             : null,
+        onRetry: message.clientMessageId == null
+            ? null
+            : () => onRetry(message.clientMessageId!),
       ),
     );
   }
