@@ -69,7 +69,7 @@ class PlazaController extends StateNotifier<PlazaState> {
     this.ownerUserId,
     Stream<RealtimeEvent>? realtimeEvents,
     bool refreshOnInitialize = true,
-  }) : super(const PlazaState()) {
+  }) : super(_initialState(snapshotStore, ownerUserId)) {
     _realtimeSubscription = realtimeEvents?.listen(_onRealtimeEvent);
     unawaited(_initialize(refreshOnInitialize: refreshOnInitialize));
   }
@@ -83,7 +83,7 @@ class PlazaController extends StateNotifier<PlazaState> {
   StreamSubscription<RealtimeEvent>? _realtimeSubscription;
 
   Future<void> _initialize({required bool refreshOnInitialize}) async {
-    final cached = await _readSnapshot();
+    final cached = state.plazas.isNotEmpty ? null : await _readSnapshot();
     if (!mounted) return;
     if (cached != null) {
       state = state.copyWith(
@@ -93,8 +93,24 @@ class PlazaController extends StateNotifier<PlazaState> {
       );
     }
     if (refreshOnInitialize) {
-      await refresh(silent: cached != null);
+      await refresh(silent: state.plazas.isNotEmpty);
     }
+  }
+
+  static PlazaState _initialState(
+    PlazaSnapshotStore? store,
+    String? ownerUserId,
+  ) {
+    if (store == null || ownerUserId == null || ownerUserId.isEmpty) {
+      return const PlazaState();
+    }
+    final snapshot = store.peek(ownerUserId);
+    if (snapshot == null) return const PlazaState();
+    return PlazaState(
+      plazas: List.unmodifiable(snapshot.plazas),
+      anchorRadiusMeters: snapshot.anchorRadiusMeters,
+      isUsingCachedOverview: true,
+    );
   }
 
   Future<void> refresh({bool silent = false}) {

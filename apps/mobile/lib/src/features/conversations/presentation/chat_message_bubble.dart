@@ -13,6 +13,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.onAvatarTap,
     this.senderLabel,
     this.timestampLabel,
+    this.onRetry,
     super.key,
   });
 
@@ -24,6 +25,7 @@ class ChatMessageBubble extends StatelessWidget {
   final VoidCallback? onAvatarTap;
   final String? senderLabel;
   final String? timestampLabel;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -59,13 +61,6 @@ class ChatMessageBubble extends StatelessWidget {
               child: Text(text),
             ),
           ),
-          if (deliveryState == 'failed') ...[
-            const SizedBox(height: 4),
-            const Text(
-              '发送失败',
-              style: TextStyle(color: Color(0xFFB54842), fontSize: 11),
-            ),
-          ],
         ],
       ),
     );
@@ -90,7 +85,30 @@ class ChatMessageBubble extends StatelessWidget {
                 : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: isMine
-                ? [bubble, const SizedBox(width: 8), avatarWidget]
+                ? [
+                    if (deliveryState == 'failed') ...[
+                      IconButton(
+                        key: const ValueKey('message-retry-button'),
+                        tooltip: '发送失败，点击重试',
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.only(top: 7),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        onPressed: onRetry,
+                        icon: const Icon(
+                          Icons.error_rounded,
+                          color: Color(0xFFD84840),
+                          size: 21,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                    ],
+                    bubble,
+                    const SizedBox(width: 8),
+                    avatarWidget,
+                  ]
                 : [avatarWidget, const SizedBox(width: 8), bubble],
           ),
         ),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fangyuanli_mobile/src/core/config/app_environment.dart';
 import 'package:fangyuanli_mobile/src/core/network/authenticated_api_client.dart';
 import 'package:fangyuanli_mobile/src/core/realtime/realtime_event.dart';
+import 'package:fangyuanli_mobile/src/features/plaza/application/plaza_chat_controller.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/application/plaza_controller.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/device_location_source.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/geo_context_repository.dart';
@@ -40,6 +41,9 @@ class _MemoryPlazaSnapshotStore implements PlazaSnapshotStore {
   _MemoryPlazaSnapshotStore(this.snapshot);
 
   PlazaOverviewSnapshot? snapshot;
+
+  @override
+  PlazaOverviewSnapshot? peek(String ownerUserId) => snapshot;
   String? readOwner;
   String? writeOwner;
 
@@ -57,6 +61,16 @@ class _MemoryPlazaSnapshotStore implements PlazaSnapshotStore {
 }
 
 void main() {
+  test('广场聊天作用域只由稳定会话标识决定', () {
+    const first = PlazaChatScope(conversationId: 'conversation-main');
+    const rebuilt = PlazaChatScope(conversationId: 'conversation-main');
+    const neighbor = PlazaChatScope(conversationId: 'conversation-neighbor');
+
+    expect(first, rebuilt);
+    expect(first.hashCode, rebuilt.hashCode);
+    expect(first, isNot(neighbor));
+  });
+
   test('先显示账户缓存，再静默刷新真实四广场及短期资格', () async {
     const cachedPlazas = [
       PlazaSummary(id: 'cached-main', name: '缓存主广场', isPrimary: true),
@@ -103,6 +117,7 @@ void main() {
       ownerUserId: 'user-a',
     );
 
+    expect(controller.state.plazas.first.name, '缓存主广场');
     await _waitFor(() => controller.state.plazas.isNotEmpty);
     expect(controller.state.plazas.first.name, '缓存主广场');
     expect(controller.state.isUsingCachedOverview, isTrue);

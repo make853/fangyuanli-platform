@@ -31,6 +31,14 @@ abstract final class AppTheme {
         ),
         bodyLarge: TextStyle(color: ink, fontSize: 16, height: 1.45),
       ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: canvas,
+        foregroundColor: ink,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,

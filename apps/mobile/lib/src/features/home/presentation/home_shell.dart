@@ -130,7 +130,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
     final friendsUnread =
         conversationState.navigationUnread + friendsState.pendingRequestCount;
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        notificationPredicate: (_) => false,
         title: Text(_destinations[_index].label),
         actions: [
           IconButton(
@@ -156,6 +158,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
         ],
       ),
       bottomNavigationBar: NavigationBar(
+        maintainBottomViewPadding: true,
         selectedIndex: _index,
         onDestinationSelected: (index) => setState(() => _index = index),
         destinations: [

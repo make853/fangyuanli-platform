@@ -6,6 +6,7 @@ import '../../auth/application/auth_controller.dart';
 import '../../conversations/domain/community_chat_models.dart';
 import '../../conversations/presentation/community_chat_screen.dart';
 import '../../nearby/presentation/nearby_ui.dart';
+import '../../profile/application/profile_controller.dart';
 import '../application/plaza_controller.dart';
 import '../application/plaza_chat_controller.dart';
 import '../data/plaza_preview_catalog.dart';
@@ -119,12 +120,10 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
     final currentUserId = ref.watch(
       authControllerProvider.select((state) => state.session?.userId),
     );
+    final ownProfile = ref.watch(profileControllerProvider).profile;
     final liveScope = conversationId == null
         ? null
-        : PlazaChatScope(
-            conversationId: conversationId,
-            locationContextToken: plazaState.locationContextToken,
-          );
+        : PlazaChatScope(conversationId: conversationId);
     final liveState = liveScope == null
         ? null
         : ref.watch(plazaChatControllerProvider(liveScope));
@@ -187,7 +186,20 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                 ? null
                 : (value) => ref
                       .read(plazaChatControllerProvider(liveScope).notifier)
-                      .send(value),
+                      .send(
+                        value,
+                        senderName: ownProfile?.displayName ?? '我',
+                        senderProfileVersion: ownProfile?.profileVersion ?? 1,
+                        senderAvatar: ownProfile?.avatar,
+                      ),
+            onRetry: liveScope == null
+                ? null
+                : (clientMessageId) => ref
+                      .read(plazaChatControllerProvider(liveScope).notifier)
+                      .retry(clientMessageId),
+            bottomChromeHeight:
+                (NavigationBarTheme.of(context).height ?? 80) +
+                MediaQuery.viewPaddingOf(context).bottom,
           ),
         ),
       ],

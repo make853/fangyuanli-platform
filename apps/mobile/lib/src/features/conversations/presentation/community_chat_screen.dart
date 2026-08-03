@@ -29,6 +29,7 @@ class CommunityChatScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Column(
           children: [
@@ -79,6 +80,8 @@ class CommunityChatBody extends StatefulWidget {
     this.liveState,
     this.currentUserId,
     this.onSend,
+    this.onRetry,
+    this.bottomChromeHeight = 0,
     super.key,
   });
 
@@ -88,6 +91,8 @@ class CommunityChatBody extends StatefulWidget {
   final ConversationChatState? liveState;
   final String? currentUserId;
   final Future<bool> Function(String value)? onSend;
+  final ValueChanged<String>? onRetry;
+  final double bottomChromeHeight;
 
   @override
   State<CommunityChatBody> createState() => _CommunityChatBodyState();
@@ -104,10 +109,6 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
   void initState() {
     super.initState();
     _timelineController = ChatTimelineViewportController();
-    // A kept-alive conversation can already contain cached messages on the
-    // first frame. Short timelines remain at offset zero; long ones open at
-    // their latest message.
-    _timelineController.scrollToLatest(jump: true);
   }
 
   Future<void> _send() async {
@@ -119,8 +120,7 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
     final succeeded = await send(_textController.text);
     if (!mounted || !succeeded) return;
     _textController.clear();
-    _focusNode.requestFocus();
-    _timelineController.scrollToLatest();
+    _timelineController.scrollToLatest(jump: true);
   }
 
   @override
@@ -130,7 +130,6 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
       _textController.clear();
       _composerController.dismiss(_focusNode);
       _announcementVisible = true;
-      _timelineController.scrollToLatest(jump: true);
       return;
     }
 
@@ -138,16 +137,19 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
     final newMessages = widget.liveState?.messages ?? const [];
     final oldLatest = oldMessages.isEmpty ? null : oldMessages.last;
     final newLatest = newMessages.isEmpty ? null : newMessages.last;
-    if (newLatest?.sequence != oldLatest?.sequence) {
+    if (_logicalMessageId(newLatest) != _logicalMessageId(oldLatest)) {
       final followsLatest =
           oldMessages.isEmpty ||
           _timelineController.isNearLatest ||
           newLatest?.senderUserId == widget.currentUserId;
       if (followsLatest) {
-        _timelineController.scrollToLatest(jump: oldMessages.isEmpty);
+        _timelineController.scrollToLatest(jump: true);
       }
     }
   }
+
+  String? _logicalMessageId(ConversationMessage? message) =>
+      message?.clientMessageId ?? message?.messageId;
 
   @override
   void dispose() {
@@ -188,9 +190,9 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
           controller: _composerController,
           textController: _textController,
           focusNode: _focusNode,
-          isSending: widget.liveState?.isSending ?? false,
           onSend: _send,
           onUnavailableAction: _pending,
+          bottomChromeHeight: widget.bottomChromeHeight,
         ),
       ],
     );
@@ -271,6 +273,9 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
           ? ChatTimePresentation.format(message.createdAt)
           : null,
       onAvatarTap: () => _pending('用户资料'),
+      onRetry: message.clientMessageId == null
+          ? null
+          : () => widget.onRetry?.call(message.clientMessageId!),
     );
   }
 }

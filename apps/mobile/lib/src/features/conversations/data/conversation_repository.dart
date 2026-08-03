@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../core/network/api_failure.dart';
 import '../../../core/network/authenticated_api_client.dart';
@@ -22,6 +21,7 @@ abstract interface class ConversationRepository {
   Future<ConversationMessage> sendText(
     String conversationId,
     String text, {
+    required String clientMessageId,
     ConversationAccessContext access = const ConversationAccessContext.direct(),
   });
 
@@ -53,11 +53,9 @@ class ConversationAccessContext {
 }
 
 class HttpConversationRepository implements ConversationRepository {
-  HttpConversationRepository(this._client, {Uuid? uuid})
-    : _uuid = uuid ?? const Uuid();
+  HttpConversationRepository(this._client);
 
   final AuthenticatedApiClient _client;
-  final Uuid _uuid;
 
   @override
   Future<ConversationListPage> loadConversations() async {
@@ -117,13 +115,14 @@ class HttpConversationRepository implements ConversationRepository {
   Future<ConversationMessage> sendText(
     String conversationId,
     String text, {
+    required String clientMessageId,
     ConversationAccessContext access = const ConversationAccessContext.direct(),
   }) async {
     final envelope = await _client.post(
       '/conversations/$conversationId/messages',
       idempotent: true,
       headers: access.headers,
-      data: {'clientMessageId': _uuid.v4(), 'type': 'text', 'text': text},
+      data: {'clientMessageId': clientMessageId, 'type': 'text', 'text': text},
     );
     return ConversationMessage.fromJson(_data(envelope));
   }

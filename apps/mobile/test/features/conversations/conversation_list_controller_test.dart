@@ -274,6 +274,7 @@ class _FakeConversationRepository implements ConversationRepository {
   Future<ConversationMessage> sendText(
     String conversationId,
     String text, {
+    required String clientMessageId,
     ConversationAccessContext access = const ConversationAccessContext.direct(),
   }) {
     throw UnimplementedError();

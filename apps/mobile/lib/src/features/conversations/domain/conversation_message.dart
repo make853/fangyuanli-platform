@@ -141,6 +141,35 @@ class ConversationMessage {
   final DateTime createdAt;
   final DateTime? expiresAt;
 
+  bool get isPending => deliveryState == 'sending' || deliveryState == 'failed';
+
+  ConversationMessage copyWith({
+    String? messageId,
+    String? clientMessageId,
+    int? sequence,
+    String? deliveryState,
+  }) {
+    return ConversationMessage(
+      messageId: messageId ?? this.messageId,
+      clientMessageId: clientMessageId ?? this.clientMessageId,
+      conversationId: conversationId,
+      sequence: sequence ?? this.sequence,
+      senderUserId: senderUserId,
+      senderName: senderName,
+      senderProfileVersion: senderProfileVersion,
+      senderAvatar: senderAvatar,
+      type: type,
+      text: text,
+      payload: payload,
+      media: media,
+      replyToMessageId: replyToMessageId,
+      mentions: mentions,
+      deliveryState: deliveryState ?? this.deliveryState,
+      createdAt: createdAt,
+      expiresAt: expiresAt,
+    );
+  }
+
   String get previewText => switch (type) {
     ConversationMessageType.text => text ?? '',
     ConversationMessageType.image => '[图片]',

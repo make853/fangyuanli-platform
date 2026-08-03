@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/realtime/realtime_controller.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/conversation_message_store.dart';
+import '../data/conversation_outbox_store.dart';
 import '../data/conversation_repository.dart';
 import 'conversation_sync_controller.dart';
 
@@ -39,6 +40,7 @@ final directChatControllerProvider = StateNotifierProvider.autoDispose
         conversationId,
         realtime.events,
         messageStore: ref.watch(conversationMessageStoreProvider),
+        outboxStore: ref.watch(conversationOutboxStoreProvider),
         ownerUserId: ref.watch(
           authControllerProvider.select((state) => state.session?.userId),
         ),

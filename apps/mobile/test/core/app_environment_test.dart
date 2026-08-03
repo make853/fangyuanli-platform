@@ -8,6 +8,7 @@ void main() {
     expect(environment.flavor, AppFlavor.local);
     expect(environment.apiBaseUrl, 'http://127.0.0.1:3000');
     expect(environment.realtimeUrl, 'ws://127.0.0.1:3000/ws/v1');
+    expect(environment.visibleBuildLabel, 'local · local-dev');
   });
 
   test('staging quick login requires a complete isolated test account set', () {
@@ -18,6 +19,8 @@ void main() {
       stagingTestPhoneA: '13800000001',
       stagingTestPhoneB: '13800000002',
       stagingTestCode: '123456',
+      buildIdentity: '79e67be-dirty.abc12345',
+      testClientRole: 'A',
     );
     const production = AppEnvironment(
       flavor: AppFlavor.production,
@@ -29,6 +32,7 @@ void main() {
     );
 
     expect(complete.hasStagingTestAccounts, isTrue);
+    expect(complete.visibleBuildLabel, 'staging · A · 79e67be-dirty.abc12345');
     expect(production.hasStagingTestAccounts, isFalse);
   });
 }

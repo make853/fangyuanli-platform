@@ -39,17 +39,20 @@ flutter build web
 
 运行 iPhone 模拟器或真机前，Mac 必须安装完整 Xcode，并完成 iOS 开发环境配置。
 
-真机日常开发默认使用 `debug`，支持热重载，但它需要 Flutter/Xcode 调试通道；彻底退出后直接从 iPhone 桌面重开可能立即结束。验证独立冷启动、本地缓存和弱网展示时使用可独立启动的 `profile` 模式：
+真机日常开发默认使用 `debug`，支持热重载，但它需要 Flutter/Xcode 调试通道；彻底退出后直接从 iPhone 桌面重开可能立即结束。验证独立冷启动、本地缓存和弱网展示时使用可独立启动的 `profile` 模式。测试端必须使用 `flutter devices` 显示的精确设备 ID，并明确标记 A/B 角色：
 
 ```bash
-IOS_STAGING_DEVICE=<iPhone device id> \
+IOS_STAGING_DEVICE_ID=<iPhone device id> \
+TEST_CLIENT_ROLE=A \
 IOS_STAGING_MODE=profile \
 zsh build/run-ios-staging-app.sh
 ```
 
-`profile` 用于接近正式包的体验验收，`debug` 用于边改边看。不要把 debug 版无法脱离调试器重开误判为业务崩溃。
+`profile` 用于接近正式包的体验验收，`debug` 用于边改边看。A 固定为真机，B 固定为模拟器；脚本会在安装前检查设备类型，防止两个测试端误装到同一设备。不要把 debug 版无法脱离调试器重开误判为业务崩溃。
 
-真机 staging 的 API 地址通过 Mac 的 SSH 隧道访问。冷启动与飞行模式下，本地登录、资料、好友、会话和已缓存消息不依赖隧道；恢复网络后若要继续同步服务器数据，运行脚本的终端和隧道仍需保持可用。正式发布包会直接连接部署域名，不依赖开发者电脑。
+真机 staging 的 API 地址暂时通过 Mac 的 SSH 隧道访问。`scripts/ensure-staging-tunnel.sh` 会幂等检查并把隧道作为独立后台进程启动，关闭 Flutter/Xcode 终端不会再连带关闭隧道；端口被异常进程占用时会停止并明确报错，不会误杀其他进程。冷启动与飞行模式下，本地登录、资料、好友、会话和已缓存消息不依赖隧道。正式发布包会直接连接部署域名，不依赖开发者电脑。
+
+每次测试构建都会生成由 Git 提交与当前工作区指纹组成的构建身份，并注入测试端角色。打开“我的 → 关于方圆里”应分别看到类似 `staging · A · 79e67be4-dirty.12345678` 和 `staging · B · 79e67be4-dirty.12345678`；A/B 两端身份不一致时禁止继续做联调结论。
 
 ### staging 媒体上传验收
 

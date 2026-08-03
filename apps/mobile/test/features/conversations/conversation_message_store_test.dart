@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:fangyuanli_mobile/src/core/storage/app_database.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_message_store.dart';
+import 'package:fangyuanli_mobile/src/features/conversations/data/conversation_outbox_store.dart';
 import 'package:fangyuanli_mobile/src/features/conversations/domain/conversation_message.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -145,7 +146,7 @@ void main() {
       );
       final names = tables.map((row) => row['name']);
 
-      expect(await database.getVersion(), 4);
+      expect(await database.getVersion(), AppDatabase.schemaVersion);
       expect(restored?.messages.single.text, '消息 12');
       expect(restored?.hasEarlier, isTrue);
       expect(names, contains('conversation_messages'));
@@ -182,8 +183,10 @@ void main() {
         whereArgs: ['owner-a', 'conversation-1', 2],
       );
 
+      final reopenedStore = SqliteConversationMessageStore(appDatabase);
+
       expect(
-        await store.readRecent(
+        await reopenedStore.readRecent(
           ownerUserId: 'owner-a',
           conversationId: 'conversation-1',
         ),
@@ -194,6 +197,64 @@ void main() {
           'conversation_messages',
           where: 'owner_user_id = ? AND conversation_id = ?',
           whereArgs: ['owner-a', 'conversation-1'],
+        ),
+        isEmpty,
+      );
+
+      await appDatabase.close();
+      await directory.delete(recursive: true);
+    },
+  );
+
+  test(
+    'persists failed optimistic messages separately from server history',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'fangyuanli-outbox-store-',
+      );
+      final databasePath = '${directory.path}/local.db';
+      final appDatabase = AppDatabase(
+        databaseFactoryOverride: databaseFactoryFfi,
+        pathLoader: () async => databasePath,
+      );
+      final store = SqliteConversationOutboxStore(appDatabase);
+      final pending = ConversationMessage(
+        messageId: 'local:client-1',
+        clientMessageId: 'client-1',
+        conversationId: 'conversation-1',
+        sequence: 0,
+        senderUserId: 'owner-a',
+        senderName: 'A',
+        text: '网络断开也要保留',
+        createdAt: DateTime.utc(2026, 8, 3, 8),
+        deliveryState: 'failed',
+      );
+
+      await store.upsert(ownerUserId: 'owner-a', message: pending);
+      expect(
+        store
+            .peek(ownerUserId: 'owner-a', conversationId: 'conversation-1')
+            .single
+            .deliveryState,
+        'failed',
+      );
+      final reopened = SqliteConversationOutboxStore(appDatabase);
+      final restored = await reopened.read(
+        ownerUserId: 'owner-a',
+        conversationId: 'conversation-1',
+      );
+      expect(restored.single.clientMessageId, 'client-1');
+      expect(restored.single.text, '网络断开也要保留');
+
+      await reopened.delete(
+        ownerUserId: 'owner-a',
+        conversationId: 'conversation-1',
+        clientMessageId: 'client-1',
+      );
+      expect(
+        await reopened.read(
+          ownerUserId: 'owner-a',
+          conversationId: 'conversation-1',
         ),
         isEmpty,
       );

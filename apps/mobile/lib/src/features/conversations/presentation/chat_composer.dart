@@ -2,47 +2,55 @@ import 'package:flutter/material.dart';
 
 enum ChatComposerPanel { none, emoji, more }
 
+enum ChatComposerSurface { closed, keyboard, emoji, more, voice }
+
 enum ChatAttachmentAction { photo, camera, location, liveLocation }
 
 class ChatComposerController extends ChangeNotifier {
-  bool _voiceMode = false;
-  ChatComposerPanel _panel = ChatComposerPanel.none;
+  ChatComposerSurface _surface = ChatComposerSurface.closed;
 
-  bool get voiceMode => _voiceMode;
-  ChatComposerPanel get panel => _panel;
+  ChatComposerSurface get surface => _surface;
+  bool get voiceMode => _surface == ChatComposerSurface.voice;
+  ChatComposerPanel get panel => switch (_surface) {
+    ChatComposerSurface.emoji => ChatComposerPanel.emoji,
+    ChatComposerSurface.more => ChatComposerPanel.more,
+    _ => ChatComposerPanel.none,
+  };
 
   void toggleVoice(FocusNode focusNode) {
-    _voiceMode = !_voiceMode;
-    _panel = ChatComposerPanel.none;
-    if (_voiceMode) {
-      focusNode.unfocus();
-    } else {
+    if (_surface == ChatComposerSurface.voice) {
+      _setSurface(ChatComposerSurface.keyboard);
       focusNode.requestFocus();
+    } else {
+      _setSurface(ChatComposerSurface.voice);
+      focusNode.unfocus();
     }
-    notifyListeners();
   }
 
-  void togglePanel(ChatComposerPanel panel, FocusNode focusNode) {
-    _voiceMode = false;
-    _panel = _panel == panel ? ChatComposerPanel.none : panel;
+  void showPanel(ChatComposerPanel panel, FocusNode focusNode) {
+    final surface = switch (panel) {
+      ChatComposerPanel.emoji => ChatComposerSurface.emoji,
+      ChatComposerPanel.more => ChatComposerSurface.more,
+      ChatComposerPanel.none => ChatComposerSurface.closed,
+    };
+    _setSurface(surface);
     focusNode.unfocus();
-    notifyListeners();
   }
 
-  void showKeyboard() {
-    if (_voiceMode || _panel != ChatComposerPanel.none) {
-      _voiceMode = false;
-      _panel = ChatComposerPanel.none;
-      notifyListeners();
-    }
+  void showKeyboard(FocusNode focusNode) {
+    _setSurface(ChatComposerSurface.keyboard);
+    focusNode.requestFocus();
   }
 
   void dismiss(FocusNode focusNode) {
     focusNode.unfocus();
-    if (_panel != ChatComposerPanel.none) {
-      _panel = ChatComposerPanel.none;
-      notifyListeners();
-    }
+    _setSurface(ChatComposerSurface.closed);
+  }
+
+  void _setSurface(ChatComposerSurface next) {
+    if (_surface == next) return;
+    _surface = next;
+    notifyListeners();
   }
 }
 
@@ -51,36 +59,81 @@ class ChatComposer extends StatefulWidget {
     required this.controller,
     required this.textController,
     required this.focusNode,
-    required this.isSending,
     required this.onSend,
     required this.onUnavailableAction,
+    this.bottomChromeHeight = 0,
     super.key,
   });
 
   final ChatComposerController controller;
   final TextEditingController textController;
   final FocusNode focusNode;
-  final bool isSending;
   final Future<void> Function() onSend;
   final ValueChanged<String> onUnavailableAction;
+
+  /// Space already occupied below this chat body, such as HomeShell's bottom
+  /// navigation bar. The platform keyboard covers that chrome, while a custom
+  /// panel is laid out above it, so both surfaces must subtract the same value
+  /// to keep the composer at one visual position.
+  final double bottomChromeHeight;
 
   @override
   State<ChatComposer> createState() => _ChatComposerState();
 }
 
-class _ChatComposerState extends State<ChatComposer> {
+class _ChatComposerState extends State<ChatComposer>
+    with SingleTickerProviderStateMixin {
   static const _emojis = ['😊', '😂', '👍', '❤️', '🎉', '☕️', '🏸', '👀'];
+  static const _fallbackInputSurfaceHeight = 300.0;
+  static const _keyboardSettledTolerance = 0.5;
+  static const _panelOpenDuration = Duration(milliseconds: 250);
+  static const _panelCloseDuration = Duration(milliseconds: 220);
   bool _submissionInFlight = false;
+  ChatComposerSurface _previousSurface = ChatComposerSurface.closed;
+  ChatComposerPanel _renderedPanel = ChatComposerPanel.none;
+  double _reservedInputSurfaceHeight = _fallbackInputSurfaceHeight;
+  double _keyboardInset = 0;
+  double _lastKeyboardHeight = 0;
+  bool _transitioningToKeyboard = false;
+  bool _panelAnimationOwnsExtent = false;
+  late final AnimationController _panelAnimationController;
+  late final Animation<double> _panelAnimation;
 
   @override
   void initState() {
     super.initState();
+    _panelAnimationController = AnimationController(
+      vsync: this,
+      duration: _panelOpenDuration,
+      reverseDuration: _panelCloseDuration,
+    );
+    _panelAnimation = CurvedAnimation(
+      parent: _panelAnimationController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    _panelAnimationController.addStatusListener(_onPanelAnimationStatusChanged);
+    _previousSurface = widget.controller.surface;
+    widget.controller.addListener(_onSurfaceChanged);
     widget.textController.addListener(_onTextChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applyKeyboardInset(
+      _effectiveKeyboardInset(MediaQuery.viewInsetsOf(context).bottom),
+    );
   }
 
   @override
   void didUpdateWidget(covariant ChatComposer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onSurfaceChanged);
+      _previousSurface = widget.controller.surface;
+      widget.controller.addListener(_onSurfaceChanged);
+    }
     if (oldWidget.textController != widget.textController) {
       oldWidget.textController.removeListener(_onTextChanged);
       widget.textController.addListener(_onTextChanged);
@@ -89,16 +142,165 @@ class _ChatComposerState extends State<ChatComposer> {
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onSurfaceChanged);
     widget.textController.removeListener(_onTextChanged);
+    _panelAnimationController.removeStatusListener(
+      _onPanelAnimationStatusChanged,
+    );
+    _panelAnimationController.dispose();
     super.dispose();
+  }
+
+  double _readKeyboardInset() {
+    if (!mounted) return 0;
+    return _effectiveKeyboardInset(MediaQuery.viewInsetsOf(context).bottom);
+  }
+
+  double _effectiveKeyboardInset(double rawInset) =>
+      (rawInset - widget.bottomChromeHeight).clamp(0, double.infinity);
+
+  void _applyKeyboardInset(double nextInset) {
+    if ((nextInset - _keyboardInset).abs() < 0.5) return;
+    _keyboardInset = nextInset;
+    if (nextInset > 0 &&
+        widget.controller.surface == ChatComposerSurface.keyboard) {
+      _lastKeyboardHeight = nextInset;
+    }
+    if (_transitioningToKeyboard &&
+        nextInset >= _reservedInputSurfaceHeight - _keyboardSettledTolerance) {
+      _renderedPanel = ChatComposerPanel.none;
+      _transitioningToKeyboard = false;
+    }
+  }
+
+  void _onSurfaceChanged() {
+    if (!mounted) return;
+    final nextSurface = widget.controller.surface;
+    final previous = _previousSurface;
+    _previousSurface = nextSurface;
+    final nextPanel = _panelForSurface(nextSurface);
+    final previousPanel = _panelForSurface(previous);
+    final currentInset = _readKeyboardInset();
+    var expandPanelImmediately = false;
+    var animatePanelOpen = false;
+    var animatePanelClosed = false;
+
+    setState(() {
+      _keyboardInset = currentInset;
+      if (currentInset > 0) {
+        _lastKeyboardHeight = currentInset;
+      }
+
+      if (nextPanel != ChatComposerPanel.none) {
+        _reservedInputSurfaceHeight = currentInset > 0
+            ? currentInset
+            : (_lastKeyboardHeight > 0
+                  ? _lastKeyboardHeight
+                  : _fallbackInputSurfaceHeight);
+        _renderedPanel = nextPanel;
+        _transitioningToKeyboard = false;
+        if (currentInset > 0) {
+          _panelAnimationOwnsExtent = false;
+          expandPanelImmediately = true;
+        } else if (previousPanel == ChatComposerPanel.none) {
+          _panelAnimationOwnsExtent = true;
+          animatePanelOpen = true;
+        }
+        return;
+      }
+
+      if (nextSurface == ChatComposerSurface.keyboard &&
+          previousPanel != ChatComposerPanel.none) {
+        if (_panelAnimationOwnsExtent) {
+          _reservedInputSurfaceHeight =
+              _reservedInputSurfaceHeight * _panelAnimation.value;
+        }
+        _renderedPanel = previousPanel;
+        _transitioningToKeyboard = true;
+        _panelAnimationOwnsExtent = false;
+        expandPanelImmediately = true;
+        return;
+      }
+
+      if (previousPanel != ChatComposerPanel.none && currentInset <= 0.5) {
+        _transitioningToKeyboard = false;
+        _panelAnimationOwnsExtent = true;
+        animatePanelClosed = true;
+        return;
+      }
+
+      _renderedPanel = ChatComposerPanel.none;
+      _transitioningToKeyboard = false;
+      _panelAnimationOwnsExtent = false;
+    });
+
+    if (expandPanelImmediately) {
+      _panelAnimationController.value = 1;
+    } else if (animatePanelOpen) {
+      _panelAnimationController.forward();
+    } else if (animatePanelClosed) {
+      _panelAnimationController.reverse();
+    }
+  }
+
+  void _onPanelAnimationStatusChanged(AnimationStatus status) {
+    if (!mounted ||
+        status != AnimationStatus.dismissed ||
+        widget.controller.panel != ChatComposerPanel.none ||
+        _transitioningToKeyboard ||
+        _renderedPanel == ChatComposerPanel.none) {
+      return;
+    }
+    setState(() {
+      _renderedPanel = ChatComposerPanel.none;
+      _panelAnimationOwnsExtent = false;
+    });
+  }
+
+  ChatComposerPanel _panelForSurface(ChatComposerSurface surface) =>
+      switch (surface) {
+        ChatComposerSurface.emoji => ChatComposerPanel.emoji,
+        ChatComposerSurface.more => ChatComposerPanel.more,
+        _ => ChatComposerPanel.none,
+      };
+
+  double _visiblePanelHeight(double currentKeyboardInset) {
+    if (_renderedPanel == ChatComposerPanel.none) return 0;
+    final complement = (_reservedInputSurfaceHeight - currentKeyboardInset)
+        .clamp(0, _reservedInputSurfaceHeight)
+        .toDouble();
+    return _panelAnimationOwnsExtent
+        ? complement * _panelAnimation.value
+        : complement;
+  }
+
+  double _occupiedSurfaceHeight({
+    required double currentKeyboardInset,
+    required double restingBottomInset,
+  }) {
+    if (_renderedPanel != ChatComposerPanel.none) {
+      if (_panelAnimationOwnsExtent) {
+        final collapsedExtent = currentKeyboardInset > restingBottomInset
+            ? currentKeyboardInset
+            : restingBottomInset;
+        final expandedExtent = _reservedInputSurfaceHeight > collapsedExtent
+            ? _reservedInputSurfaceHeight
+            : collapsedExtent;
+        return collapsedExtent +
+            (expandedExtent - collapsedExtent) * _panelAnimation.value;
+      }
+      return _reservedInputSurfaceHeight > currentKeyboardInset
+          ? _reservedInputSurfaceHeight
+          : currentKeyboardInset;
+    }
+    if (currentKeyboardInset > 0) return currentKeyboardInset;
+    return restingBottomInset;
   }
 
   void _onTextChanged() => setState(() {});
 
   Future<void> _submit() async {
-    if (_submissionInFlight ||
-        widget.isSending ||
-        widget.textController.text.trim().isEmpty) {
+    if (_submissionInFlight || widget.textController.text.trim().isEmpty) {
       return;
     }
     setState(() => _submissionInFlight = true);
@@ -111,15 +313,74 @@ class _ChatComposerState extends State<ChatComposer> {
     }
   }
 
-  void _insertEmoji(String emoji) {
+  void _insertText(String insertion) {
     final value = widget.textController.value;
     final selection = value.selection;
     final start = selection.isValid ? selection.start : value.text.length;
     final end = selection.isValid ? selection.end : value.text.length;
-    final text = value.text.replaceRange(start, end, emoji);
+    final text = value.text.replaceRange(start, end, insertion);
     widget.textController.value = TextEditingValue(
       text: text,
-      selection: TextSelection.collapsed(offset: start + emoji.length),
+      selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
+  }
+
+  void _insertEmoji(String emoji) => _insertText(emoji);
+
+  Widget _buildTextContextMenu(
+    BuildContext context,
+    EditableTextState editableTextState,
+  ) {
+    void insertNewline() {
+      editableTextState.hideToolbar();
+      _insertText('\n');
+      widget.focusNode.requestFocus();
+    }
+
+    if (SystemContextMenu.isSupportedByField(editableTextState)) {
+      final items = SystemContextMenu.getDefaultItems(editableTextState)
+          .where(
+            (item) =>
+                item is IOSSystemContextMenuItemCut ||
+                item is IOSSystemContextMenuItemCopy ||
+                item is IOSSystemContextMenuItemPaste ||
+                item is IOSSystemContextMenuItemSelectAll,
+          )
+          .toList();
+      if (!items.any((item) => item is IOSSystemContextMenuItemPaste)) {
+        items.add(const IOSSystemContextMenuItemPaste());
+      }
+      items.add(
+        IOSSystemContextMenuItemCustom(title: '换行', onPressed: insertNewline),
+      );
+      return SystemContextMenu.editableText(
+        editableTextState: editableTextState,
+        items: items,
+      );
+    }
+
+    const editingTypes = {
+      ContextMenuButtonType.cut,
+      ContextMenuButtonType.copy,
+      ContextMenuButtonType.paste,
+      ContextMenuButtonType.selectAll,
+    };
+    final nativeItems = editableTextState.contextMenuButtonItems
+        .where((item) => editingTypes.contains(item.type))
+        .toList();
+    final buttonItems = <ContextMenuButtonItem>[
+      ...nativeItems,
+      if (!nativeItems.any((item) => item.type == ContextMenuButtonType.paste))
+        ContextMenuButtonItem(
+          type: ContextMenuButtonType.paste,
+          onPressed: () =>
+              editableTextState.pasteText(SelectionChangedCause.toolbar),
+        ),
+      ContextMenuButtonItem(label: '换行', onPressed: insertNewline),
+    ];
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: editableTextState.contextMenuAnchors,
+      buttonItems: buttonItems,
     );
   }
 
@@ -158,18 +419,32 @@ class _ChatComposerState extends State<ChatComposer> {
 
   @override
   Widget build(BuildContext context) {
+    final currentKeyboardInset = _effectiveKeyboardInset(
+      MediaQuery.viewInsetsOf(context).bottom,
+    );
+    final restingBottomInset = widget.bottomChromeHeight > 0
+        ? 0.0
+        : MediaQuery.viewPaddingOf(context).bottom;
     final hasText = widget.textController.text.trim().isNotEmpty;
-    final isSending = widget.isSending || _submissionInFlight;
-    return SafeArea(
-      top: false,
-      child: Material(
-        color: const Color(0xFFF5F7F6),
-        child: AnimatedBuilder(
-          animation: widget.controller,
-          builder: (context, _) => Column(
+    final isSending = _submissionInFlight;
+    final emojiSelected =
+        widget.controller.surface == ChatComposerSurface.emoji;
+    final moreSelected = widget.controller.surface == ChatComposerSurface.more;
+    return Material(
+      color: const Color(0xFFF5F7F6),
+      child: AnimatedBuilder(
+        animation: _panelAnimation,
+        builder: (context, _) {
+          final visiblePanelHeight = _visiblePanelHeight(currentKeyboardInset);
+          final occupiedSurfaceHeight = _occupiedSurfaceHeight(
+            currentKeyboardInset: currentKeyboardInset,
+            restingBottomInset: restingBottomInset,
+          );
+          return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
+                key: const ValueKey('chat-composer-toolbar'),
                 padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -195,7 +470,10 @@ class _ChatComposerState extends State<ChatComposer> {
                               minLines: 1,
                               maxLines: 4,
                               textInputAction: TextInputAction.send,
-                              onTap: widget.controller.showKeyboard,
+                              contextMenuBuilder: _buildTextContextMenu,
+                              onTap: () => widget.controller.showKeyboard(
+                                widget.focusNode,
+                              ),
                               // Keep iOS' native keyboard visible after the
                               // send action. Both send entry points share the
                               // same guarded submission path below.
@@ -214,14 +492,17 @@ class _ChatComposerState extends State<ChatComposer> {
                     ),
                     const SizedBox(width: 4),
                     _ComposerIconButton(
-                      tooltip: '表情',
-                      icon: Icons.sentiment_satisfied_alt_rounded,
-                      selected:
-                          widget.controller.panel == ChatComposerPanel.emoji,
-                      onPressed: () => widget.controller.togglePanel(
-                        ChatComposerPanel.emoji,
-                        widget.focusNode,
-                      ),
+                      tooltip: emojiSelected ? '切换键盘' : '表情',
+                      icon: emojiSelected
+                          ? Icons.keyboard_alt_outlined
+                          : Icons.sentiment_satisfied_alt_rounded,
+                      selected: emojiSelected,
+                      onPressed: () => emojiSelected
+                          ? widget.controller.showKeyboard(widget.focusNode)
+                          : widget.controller.showPanel(
+                              ChatComposerPanel.emoji,
+                              widget.focusNode,
+                            ),
                     ),
                     const SizedBox(width: 2),
                     if (hasText && !widget.controller.voiceMode)
@@ -229,33 +510,76 @@ class _ChatComposerState extends State<ChatComposer> {
                         tooltip: '发送',
                         icon: Icons.send_rounded,
                         onPressed: isSending ? null : _submit,
-                        loading: isSending,
                       )
                     else
                       _ComposerIconButton(
                         tooltip: '更多',
                         icon: Icons.add_circle_outline_rounded,
-                        selected:
-                            widget.controller.panel == ChatComposerPanel.more,
-                        onPressed: () => widget.controller.togglePanel(
-                          ChatComposerPanel.more,
-                          widget.focusNode,
-                        ),
+                        selected: moreSelected,
+                        onPressed: () => moreSelected
+                            ? widget.controller.showKeyboard(widget.focusNode)
+                            : widget.controller.showPanel(
+                                ChatComposerPanel.more,
+                                widget.focusNode,
+                              ),
                       ),
                   ],
                 ),
               ),
-              if (widget.controller.panel == ChatComposerPanel.emoji)
-                _EmojiPanel(emojis: _emojis, onSelected: _insertEmoji),
-              if (widget.controller.panel == ChatComposerPanel.more)
-                _MorePanel(
-                  onPhoto: () => widget.onUnavailableAction('发送照片'),
-                  onCamera: () => widget.onUnavailableAction('拍摄'),
-                  onLocation: _showLocationChoices,
-                ),
+              _InputPanelViewport(
+                height: occupiedSurfaceHeight,
+                panelHeight: visiblePanelHeight,
+                child: switch (_renderedPanel) {
+                  ChatComposerPanel.emoji => _EmojiPanel(
+                    emojis: _emojis,
+                    onSelected: _insertEmoji,
+                  ),
+                  ChatComposerPanel.more => _MorePanel(
+                    onPhoto: () => widget.onUnavailableAction('发送照片'),
+                    onCamera: () => widget.onUnavailableAction('拍摄'),
+                    onLocation: _showLocationChoices,
+                  ),
+                  ChatComposerPanel.none => const SizedBox.shrink(),
+                },
+              ),
             ],
-          ),
-        ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _InputPanelViewport extends StatelessWidget {
+  const _InputPanelViewport({
+    required this.height,
+    required this.panelHeight,
+    required this.child,
+  });
+
+  final double height;
+  final double panelHeight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (height <= 0) return const SizedBox.shrink();
+    return SizedBox(
+      key: const ValueKey('chat-input-reserved-surface'),
+      width: double.infinity,
+      height: height,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: panelHeight <= 0
+            ? const SizedBox.shrink()
+            : ClipRect(
+                child: SizedBox(
+                  key: const ValueKey('chat-input-surface'),
+                  width: double.infinity,
+                  height: panelHeight,
+                  child: child,
+                ),
+              ),
       ),
     );
   }
@@ -267,14 +591,12 @@ class _ComposerIconButton extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     this.selected = false,
-    this.loading = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
   final bool selected;
-  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -284,12 +606,7 @@ class _ComposerIconButton extends StatelessWidget {
       style: IconButton.styleFrom(
         backgroundColor: selected ? const Color(0xFFDDEEE7) : null,
       ),
-      icon: loading
-          ? const SizedBox.square(
-              dimension: 19,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(icon, color: const Color(0xFF35433D)),
+      icon: Icon(icon, color: const Color(0xFF35433D)),
     );
   }
 }
@@ -332,26 +649,29 @@ class _EmojiPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey('chat-emoji-panel'),
-      height: 176,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF0F3F1),
-        border: Border(top: BorderSide(color: Color(0xFFE1E7E3))),
-      ),
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 8,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (_) => true,
+      child: Container(
+        key: const ValueKey('chat-emoji-panel'),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF0F3F1),
+          border: Border(top: BorderSide(color: Color(0xFFE1E7E3))),
         ),
-        itemCount: emojis.length,
-        itemBuilder: (context, index) => InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => onSelected(emojis[index]),
-          child: Center(
-            child: Text(emojis[index], style: const TextStyle(fontSize: 25)),
+        child: GridView.builder(
+          primary: false,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 8,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+          ),
+          itemCount: emojis.length,
+          itemBuilder: (context, index) => InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => onSelected(emojis[index]),
+            child: Center(
+              child: Text(emojis[index], style: const TextStyle(fontSize: 25)),
+            ),
           ),
         ),
       ),

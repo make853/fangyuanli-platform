@@ -1,3 +1,5 @@
+import 'package:fangyuanli_mobile/src/core/config/app_environment.dart';
+import 'package:fangyuanli_mobile/src/core/config/app_environment_provider.dart';
 import 'package:fangyuanli_mobile/src/features/profile/data/profile_repository.dart';
 import 'package:fangyuanli_mobile/src/features/profile/domain/profile_models.dart';
 import 'package:fangyuanli_mobile/src/features/profile/presentation/my_screen.dart';
@@ -90,6 +92,34 @@ class _ProfileRepository implements ProfileRepository {
 }
 
 void main() {
+  testWidgets('我的页面显示当前测试构建身份', (tester) async {
+    final repository = _ProfileRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          profileRepositoryProvider.overrideWithValue(repository),
+          appEnvironmentProvider.overrideWithValue(
+            const AppEnvironment(
+              flavor: AppFlavor.staging,
+              apiBaseUrl: 'https://staging.example.com',
+              realtimeUrl: 'wss://staging.example.com/ws/v1',
+              buildIdentity: '79e67be-dirty.abc12345',
+              testClientRole: 'B',
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: MyScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('feature-entry-about')),
+      250,
+    );
+    expect(find.text('staging · B · 79e67be-dirty.abc12345'), findsOneWidget);
+  });
+
   testWidgets('从我的进入资料、编辑保存并按原路径返回', (tester) async {
     final repository = _ProfileRepository();
     repository.profile = UserProfile(

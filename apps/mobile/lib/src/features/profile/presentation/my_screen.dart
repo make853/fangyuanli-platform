@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/app_environment_provider.dart';
 import '../../../core/navigation/app_navigation.dart';
 import '../../../core/presentation/feature_entry.dart';
 import '../../auth/application/auth_controller.dart';
@@ -54,17 +55,12 @@ class MyScreen extends ConsumerWidget {
 
   static const _settingEntries = [
     FeatureEntry(id: 'help', title: '帮助与反馈', icon: Icons.help_outline_rounded),
-    FeatureEntry(
-      id: 'about',
-      title: '关于方圆里',
-      subtitle: 'staging · UI 基线 v0.73',
-      icon: Icons.info_outline_rounded,
-    ),
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authControllerProvider).session;
+    final environment = ref.watch(appEnvironmentProvider);
     final profileState = ref.watch(profileControllerProvider);
     final profile = profileState.profile;
     return ListView(
@@ -119,6 +115,12 @@ class MyScreen extends ConsumerWidget {
               availability: FeatureAvailability.available,
             ),
             ..._settingEntries,
+            FeatureEntry(
+              id: 'about',
+              title: '关于方圆里',
+              subtitle: environment.visibleBuildLabel,
+              icon: Icons.info_outline_rounded,
+            ),
           ],
           onTap: (entry) {
             if (entry.id == 'notifications') {
