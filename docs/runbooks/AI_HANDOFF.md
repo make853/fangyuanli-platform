@@ -32,14 +32,16 @@ make853/fangyuanli-platform
 资料优先级：
 
 1. 产品行为：`docs/product/PRODUCT_SPEC.md`
-2. 当前工程状态：`docs/runbooks/PROJECT_STATUS.md`
-3. 技术方案：`docs/architecture/TECHNICAL_PLAN.md`
-4. 数据与系统架构：`docs/architecture/DATA_AND_SYSTEM_ARCHITECTURE.md`
-5. HTTP API：`packages/contracts/openapi-v1.yaml`
-6. 实时事件：`packages/contracts/asyncapi-v1.yaml`
-7. 数据模型：`database/model.dbml`
-8. 工程协作约束：`AGENTS.md`
-9. 部署说明：`docs/runbooks/DEPLOYMENT.md`
+2. 决策入口：`docs/product/DECISION_REGISTER.md`
+3. 当前工程状态：`docs/runbooks/PROJECT_STATUS.md`
+4. 平台公共能力与所有权：`docs/architecture/PLATFORM_CAPABILITY_MAP.md`
+5. 技术方案：`docs/architecture/TECHNICAL_PLAN.md`
+6. 数据与系统架构：`docs/architecture/DATA_AND_SYSTEM_ARCHITECTURE.md`
+7. HTTP API：`packages/contracts/openapi-v1.yaml`
+8. 实时事件：`packages/contracts/asyncapi-v1.yaml`
+9. 数据模型：`database/model.dbml`
+10. 工程协作约束：`AGENTS.md`
+11. 部署说明：`docs/runbooks/DEPLOYMENT.md`
 
 视觉与交互基线：
 
