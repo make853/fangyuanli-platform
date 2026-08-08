@@ -212,6 +212,9 @@ class _ConversationTile extends StatelessWidget {
               currentUserId: currentUserId,
               peerUserId: conversation.peerUserId,
               peerAvatar: conversation.avatar,
+              initialUnreadCount: conversation.unread.count,
+              initialFirstUnreadSequence:
+                  conversation.unread.firstUnreadSequence,
             ),
           );
         },

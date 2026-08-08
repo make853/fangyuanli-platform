@@ -9,6 +9,7 @@ import 'chat_composer.dart';
 import 'chat_message_bubble.dart';
 import 'chat_message_timeline.dart';
 import 'chat_time.dart';
+import 'chat_unread_jump.dart';
 
 class CommunityChatScreen extends StatelessWidget {
   const CommunityChatScreen({
@@ -81,6 +82,11 @@ class CommunityChatBody extends StatefulWidget {
     this.currentUserId,
     this.onSend,
     this.onRetry,
+    this.onLoadEarlier,
+    this.onLoadLater,
+    this.initialUnreadCount = 0,
+    this.initialFirstUnreadSequence,
+    this.onLocateSequence,
     this.readOnlyMessage,
     this.bottomChromeHeight = 0,
     super.key,
@@ -93,6 +99,11 @@ class CommunityChatBody extends StatefulWidget {
   final String? currentUserId;
   final Future<bool> Function(String value)? onSend;
   final ValueChanged<String>? onRetry;
+  final Future<bool> Function()? onLoadEarlier;
+  final Future<bool> Function()? onLoadLater;
+  final int initialUnreadCount;
+  final int? initialFirstUnreadSequence;
+  final Future<bool> Function(int sequence)? onLocateSequence;
   final String? readOnlyMessage;
   final double bottomChromeHeight;
 
@@ -106,11 +117,16 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
   final _composerController = ChatComposerController();
   late final ChatTimelineViewportController _timelineController;
   bool _announcementVisible = true;
+  final _messageKeys = <int, GlobalKey>{};
+  late int _unreadJumpCount;
+  late int? _unreadJumpSequence;
 
   @override
   void initState() {
     super.initState();
     _timelineController = ChatTimelineViewportController();
+    _unreadJumpCount = widget.initialUnreadCount;
+    _unreadJumpSequence = widget.initialFirstUnreadSequence;
   }
 
   Future<void> _send() async {
@@ -132,6 +148,9 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
       _textController.clear();
       _composerController.dismiss(_focusNode);
       _announcementVisible = true;
+      _messageKeys.clear();
+      _unreadJumpCount = widget.initialUnreadCount;
+      _unreadJumpSequence = widget.initialFirstUnreadSequence;
       return;
     }
 
@@ -152,6 +171,37 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
 
   String? _logicalMessageId(ConversationMessage? message) =>
       message?.clientMessageId ?? message?.messageId;
+
+  Future<void> _openUnreadJump() async {
+    final sequence = _unreadJumpSequence;
+    final locate = widget.onLocateSequence;
+    if (sequence == null || locate == null) return;
+    if (!await locate(sequence) || !mounted) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    var target = _messageKeys[sequence]?.currentContext;
+    if (target == null && _timelineController.scrollController.hasClients) {
+      final messages = widget.liveState?.messages ?? const [];
+      target = await _timelineController.revealSequence(
+        messages: messages,
+        sequence: sequence,
+        keys: _messageKeys,
+      );
+      if (!mounted) return;
+    }
+    if (target == null || !target.mounted) return;
+    await Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+      alignment: 0.25,
+    );
+    if (!mounted) return;
+    setState(() {
+      _unreadJumpCount = 0;
+      _unreadJumpSequence = null;
+    });
+  }
 
   @override
   void dispose() {
@@ -180,12 +230,29 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
             onClose: () => setState(() => _announcementVisible = false),
           ),
         Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => _composerController.dismiss(_focusNode),
-            child: widget.liveState == null
-                ? _previewMessages()
-                : _liveMessages(widget.liveState!),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => _composerController.dismiss(_focusNode),
+                  child: widget.liveState == null
+                      ? _previewMessages()
+                      : _liveMessages(widget.liveState!),
+                ),
+              ),
+              if (_unreadJumpCount > 0 &&
+                  _unreadJumpSequence != null &&
+                  widget.onLocateSequence != null)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: ChatUnreadJump(
+                    count: _unreadJumpCount,
+                    onTap: _openUnreadJump,
+                  ),
+                ),
+            ],
           ),
         ),
         if (widget.readOnlyMessage case final message?)
@@ -253,6 +320,10 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
       timelineKey: ValueKey('community-chat-${widget.channel.id}'),
       controller: _timelineController.scrollController,
       messages: state.messages,
+      hasEarlier: state.hasEarlier,
+      hasLater: state.hasLater,
+      onLoadEarlier: widget.onLoadEarlier,
+      onLoadLater: widget.onLoadLater,
       itemBuilder: (_, message, previous) =>
           _liveMessage(message, previous: previous),
     );
@@ -267,20 +338,25 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
       message.createdAt,
       previous?.createdAt,
     );
-    return ChatMessageBubble(
-      text: message.previewText,
-      deliveryState: message.deliveryState,
-      isMine: isMine,
-      avatar: message.senderAvatar,
-      avatarInitial: _initial(message.senderName),
-      senderLabel: isMine ? null : message.senderName,
-      timestampLabel: showTime
-          ? ChatTimePresentation.format(message.createdAt)
-          : null,
-      onAvatarTap: () => _pending('用户资料'),
-      onRetry: message.clientMessageId == null || widget.onRetry == null
-          ? null
-          : () => widget.onRetry?.call(message.clientMessageId!),
+    return KeyedSubtree(
+      key: message.isPending
+          ? ValueKey(message.messageId)
+          : _messageKeys.putIfAbsent(message.sequence, GlobalKey.new),
+      child: ChatMessageBubble(
+        text: message.previewText,
+        deliveryState: message.deliveryState,
+        isMine: isMine,
+        avatar: message.senderAvatar,
+        avatarInitial: _initial(message.senderName),
+        senderLabel: isMine ? null : message.senderName,
+        timestampLabel: showTime
+            ? ChatTimePresentation.format(message.createdAt)
+            : null,
+        onAvatarTap: () => _pending('用户资料'),
+        onRetry: message.clientMessageId == null || widget.onRetry == null
+            ? null
+            : () => widget.onRetry?.call(message.clientMessageId!),
+      ),
     );
   }
 }

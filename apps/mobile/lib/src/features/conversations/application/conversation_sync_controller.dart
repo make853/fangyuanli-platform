@@ -16,21 +16,33 @@ class ConversationChatState {
     this.messages = const [],
     this.isLoading = false,
     this.isRefreshing = false,
+    this.isLoadingEarlier = false,
+    this.isLoadingLater = false,
     this.hasEarlier = false,
+    this.hasLater = false,
+    this.isAnchored = false,
     this.errorMessage,
   });
 
   final List<ConversationMessage> messages;
   final bool isLoading;
   final bool isRefreshing;
+  final bool isLoadingEarlier;
+  final bool isLoadingLater;
   final bool hasEarlier;
+  final bool hasLater;
+  final bool isAnchored;
   final String? errorMessage;
 
   ConversationChatState copyWith({
     List<ConversationMessage>? messages,
     bool? isLoading,
     bool? isRefreshing,
+    bool? isLoadingEarlier,
+    bool? isLoadingLater,
     bool? hasEarlier,
+    bool? hasLater,
+    bool? isAnchored,
     String? errorMessage,
     bool clearError = false,
   }) {
@@ -38,7 +50,11 @@ class ConversationChatState {
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       isRefreshing: isRefreshing ?? this.isRefreshing,
+      isLoadingEarlier: isLoadingEarlier ?? this.isLoadingEarlier,
+      isLoadingLater: isLoadingLater ?? this.isLoadingLater,
       hasEarlier: hasEarlier ?? this.hasEarlier,
+      hasLater: hasLater ?? this.hasLater,
+      isAnchored: isAnchored ?? this.isAnchored,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
@@ -74,6 +90,7 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
          ),
        ) {
     _subscription = realtimeEvents.listen(_onRealtimeEvent);
+    _latestMessages = state.messages;
     unawaited(_initialize());
   }
 
@@ -87,9 +104,13 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
   final ConversationSendAccessResolver? sendAccessResolver;
   late final StreamSubscription<RealtimeEvent> _subscription;
   Future<void>? _activeLoad;
+  Future<bool>? _activeEarlierLoad;
+  Future<bool>? _activeLaterLoad;
+  Future<bool>? _activeAnchorLoad;
   final Uuid _uuid;
   bool _isReadVisible = false;
   int? _lastReadSequenceRequested;
+  List<ConversationMessage> _latestMessages = const [];
 
   bool get hasCachedMessages => state.messages.isNotEmpty;
 
@@ -118,8 +139,10 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     final outbox = cachedResults[1] as List<ConversationMessage>;
     if (!mounted) return;
     if (cached != null || outbox.isNotEmpty) {
+      final messages = _mergeMessages(cached?.messages ?? const [], outbox);
+      _latestMessages = messages;
       state = state.copyWith(
-        messages: _mergeMessages(cached?.messages ?? const [], outbox),
+        messages: messages,
         hasEarlier: cached?.hasEarlier ?? state.hasEarlier,
       );
     }
@@ -148,7 +171,8 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
       clearError: true,
     );
     try {
-      final existing = state.messages;
+      final anchored = state.isAnchored;
+      final existing = anchored ? _latestMessages : state.messages;
       final latestSequence = _latestConfirmedSequence(existing);
       var page = await _repository.loadMessages(
         _conversationId,
@@ -178,12 +202,16 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         pageCount += 1;
       }
       if (!mounted) return;
-      state = state.copyWith(
-        messages: messages,
-        hasEarlier: hasEarlier,
-        isLoading: false,
-        isRefreshing: false,
-      );
+      _latestMessages = messages;
+      state = anchored
+          ? state.copyWith(isLoading: false, isRefreshing: false)
+          : state.copyWith(
+              messages: messages,
+              hasEarlier: hasEarlier,
+              hasLater: page.hasLater,
+              isLoading: false,
+              isRefreshing: false,
+            );
       await _writeCachedMessages(messages, hasEarlier: hasEarlier);
       final confirmedSequence = _latestConfirmedSequence(messages);
       if (confirmedSequence != null) {
@@ -196,6 +224,163 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         isRefreshing: false,
         errorMessage: error.toString(),
       );
+    }
+  }
+
+  /// Prepends the next contiguous page without replacing the visible window.
+  ///
+  /// The presentation layer preserves the current visual offset while this
+  /// method only owns sequence paging, merging and persistence.
+  Future<bool> loadEarlier() {
+    final active = _activeEarlierLoad;
+    if (active != null) return active;
+    if (!state.hasEarlier || state.isLoadingEarlier) {
+      return Future.value(false);
+    }
+    final request = _loadEarlier();
+    _activeEarlierLoad = request;
+    return request.whenComplete(() {
+      if (identical(_activeEarlierLoad, request)) _activeEarlierLoad = null;
+    });
+  }
+
+  Future<bool> _loadEarlier() async {
+    final earliestSequence = _earliestConfirmedSequence(state.messages);
+    if (earliestSequence == null) return false;
+    state = state.copyWith(isLoadingEarlier: true, clearError: true);
+    try {
+      final page = await _repository.loadMessages(
+        _conversationId,
+        beforeSequence: earliestSequence,
+        limit: 50,
+        access: accessContext,
+      );
+      if (!mounted) return false;
+      final messages = _mergeMessages(state.messages, page.items);
+      final changed = messages.length != state.messages.length;
+      state = state.copyWith(
+        messages: messages,
+        hasEarlier: page.hasEarlier,
+        isLoadingEarlier: false,
+      );
+      if (!state.isAnchored) _latestMessages = messages;
+      await _writeCachedMessages(page.items, hasEarlier: page.hasEarlier);
+      return changed;
+    } catch (error) {
+      if (!mounted) return false;
+      state = state.copyWith(
+        isLoadingEarlier: false,
+        errorMessage: error.toString(),
+      );
+      return false;
+    }
+  }
+
+  /// Appends the next contiguous page after an anchor/search window.
+  Future<bool> loadLater() {
+    final active = _activeLaterLoad;
+    if (active != null) return active;
+    if (!state.hasLater || state.isLoadingLater) return Future.value(false);
+    final request = _loadLater();
+    _activeLaterLoad = request;
+    return request.whenComplete(() {
+      if (identical(_activeLaterLoad, request)) _activeLaterLoad = null;
+    });
+  }
+
+  Future<bool> _loadLater() async {
+    final latestSequence = _latestConfirmedSequence(state.messages);
+    if (latestSequence == null) return false;
+    state = state.copyWith(isLoadingLater: true, clearError: true);
+    try {
+      final page = await _repository.loadMessages(
+        _conversationId,
+        afterSequence: latestSequence,
+        limit: 50,
+        access: accessContext,
+      );
+      if (!mounted) return false;
+      var messages = _mergeMessages(state.messages, page.items);
+      if (!page.hasLater) {
+        messages = _mergeMessages(messages, _latestMessages);
+      }
+      final changed = messages.length != state.messages.length;
+      state = state.copyWith(
+        messages: messages,
+        hasLater: page.hasLater,
+        isAnchored: page.hasLater,
+        isLoadingLater: false,
+      );
+      if (!page.hasLater) _latestMessages = messages;
+      await _writeCachedMessages(page.items, hasEarlier: state.hasEarlier);
+      return changed;
+    } catch (error) {
+      if (!mounted) return false;
+      state = state.copyWith(
+        isLoadingLater: false,
+        errorMessage: error.toString(),
+      );
+      return false;
+    }
+  }
+
+  /// Loads a contiguous context window around a search or unread sequence.
+  /// Existing pending messages stay durable in the outbox, while confirmed
+  /// messages are replaced by the anchored window to avoid silently rendering
+  /// a non-contiguous timeline as if no messages were missing.
+  Future<bool> loadAround(int sequence) {
+    if (sequence <= 0) return Future.value(false);
+    if (state.messages.any(
+      (message) => !message.isPending && message.sequence == sequence,
+    )) {
+      return Future.value(true);
+    }
+    final active = _activeAnchorLoad;
+    if (active != null) return active;
+    final request = _loadAround(sequence);
+    _activeAnchorLoad = request;
+    return request.whenComplete(() {
+      if (identical(_activeAnchorLoad, request)) _activeAnchorLoad = null;
+    });
+  }
+
+  Future<bool> _loadAround(int sequence) async {
+    state = state.copyWith(
+      isLoadingEarlier: true,
+      isLoadingLater: true,
+      clearError: true,
+    );
+    try {
+      final page = await _repository.loadMessages(
+        _conversationId,
+        anchorSequence: sequence,
+        limit: 50,
+        access: accessContext,
+      );
+      if (!mounted) return false;
+      if (!state.isAnchored) _latestMessages = state.messages;
+      final messages = _mergeMessages(const [], page.items);
+      final found = messages.any(
+        (message) => !message.isPending && message.sequence == sequence,
+      );
+      state = state.copyWith(
+        messages: messages,
+        hasEarlier: page.hasEarlier,
+        hasLater: page.hasLater,
+        isAnchored: page.hasEarlier || page.hasLater,
+        isLoadingEarlier: false,
+        isLoadingLater: false,
+      );
+      await _writeCachedMessages(page.items, hasEarlier: page.hasEarlier);
+      return found;
+    } catch (error) {
+      if (!mounted) return false;
+      state = state.copyWith(
+        isLoadingEarlier: false,
+        isLoadingLater: false,
+        errorMessage: error.toString(),
+      );
+      return false;
     }
   }
 
@@ -221,8 +406,13 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
       createdAt: DateTime.now(),
       deliveryState: 'sending',
     );
+    final base = state.isAnchored ? _latestMessages : state.messages;
+    final messages = _mergeMessage(base, localMessage);
+    _latestMessages = messages;
     state = state.copyWith(
-      messages: _mergeMessage(state.messages, localMessage),
+      messages: messages,
+      hasLater: false,
+      isAnchored: false,
       clearError: true,
     );
     unawaited(_writeOutboxMessage(localMessage));
@@ -241,10 +431,9 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     }
     if (failed == null) return false;
     final retrying = failed.copyWith(deliveryState: 'sending');
-    state = state.copyWith(
-      messages: _mergeMessage(state.messages, retrying),
-      clearError: true,
-    );
+    final messages = _mergeMessage(_latestMessages, retrying);
+    _latestMessages = messages;
+    state = state.copyWith(messages: messages, clearError: true);
     unawaited(_writeOutboxMessage(retrying));
     unawaited(_deliver(retrying));
     return true;
@@ -265,14 +454,18 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         message = await _sendLocalMessage(localMessage, deliveryAccess);
       }
       if (!mounted) return;
-      state = state.copyWith(messages: _mergeMessage(state.messages, message));
+      final messages = _mergeMessage(_latestMessages, message);
+      _latestMessages = messages;
+      state = state.copyWith(messages: messages);
       unawaited(_writeCachedMessages([message], hasEarlier: state.hasEarlier));
       unawaited(_deleteOutboxMessage(clientMessageId));
       unawaited(_markRead(message.sequence));
     } catch (_) {
       if (!mounted) return;
       final failed = localMessage.copyWith(deliveryState: 'failed');
-      state = state.copyWith(messages: _mergeMessage(state.messages, failed));
+      final messages = _mergeMessage(_latestMessages, failed);
+      _latestMessages = messages;
+      state = state.copyWith(messages: messages);
       unawaited(_writeOutboxMessage(failed));
     }
   }
@@ -332,10 +525,10 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
     if (event.payload['conversationId'] != _conversationId) return;
     try {
       final message = ConversationMessage.fromJson(event.payload);
-      state = state.copyWith(
-        messages: _mergeMessage(state.messages, message),
-        clearError: true,
-      );
+      _latestMessages = _mergeMessage(_latestMessages, message);
+      if (!state.isAnchored) {
+        state = state.copyWith(messages: _latestMessages, clearError: true);
+      }
       unawaited(_writeCachedMessages([message], hasEarlier: state.hasEarlier));
       final clientMessageId = message.clientMessageId;
       if (clientMessageId != null) {
@@ -467,6 +660,17 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
       }
     }
     return latest;
+  }
+
+  int? _earliestConfirmedSequence(List<ConversationMessage> messages) {
+    int? earliest;
+    for (final message in messages) {
+      if (message.isPending) continue;
+      if (earliest == null || message.sequence < earliest) {
+        earliest = message.sequence;
+      }
+    }
+    return earliest;
   }
 
   static ConversationChatState _initialState({

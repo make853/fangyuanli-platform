@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../domain/conversation_message.dart';
 
@@ -32,6 +33,52 @@ class ChatTimelineViewportController {
         );
       }
     });
+  }
+
+  /// Reveals a variable-height message without requiring every timeline item
+  /// to stay mounted. The first estimate uses sequence order, then visible
+  /// keyed children refine the direction until the target is built.
+  Future<BuildContext?> revealSequence({
+    required List<ConversationMessage> messages,
+    required int sequence,
+    required Map<int, GlobalKey> keys,
+  }) async {
+    var target = keys[sequence]?.currentContext;
+    if (target != null) return target;
+    if (!scrollController.hasClients || messages.length <= 1) return null;
+    final index = messages.indexWhere(
+      (message) => !message.isPending && message.sequence == sequence,
+    );
+    if (index < 0) return null;
+
+    var position = scrollController.position;
+    var offset = position.maxScrollExtent * index / (messages.length - 1);
+    for (var attempt = 0; attempt < 8; attempt += 1) {
+      if (_disposed || !scrollController.hasClients) return null;
+      position = scrollController.position;
+      position.jumpTo(
+        offset.clamp(position.minScrollExtent, position.maxScrollExtent),
+      );
+      await WidgetsBinding.instance.endOfFrame;
+      target = keys[sequence]?.currentContext;
+      if (target != null) return target;
+
+      final visible = <int>[];
+      for (final entry in keys.entries) {
+        if (entry.value.currentContext != null) visible.add(entry.key);
+      }
+      if (visible.isEmpty) continue;
+      visible.sort();
+      final step = position.viewportDimension * 0.8;
+      if (sequence < visible.first) {
+        offset = position.pixels - step;
+      } else if (sequence > visible.last) {
+        offset = position.pixels + step;
+      } else {
+        break;
+      }
+    }
+    return keys[sequence]?.currentContext;
   }
 
   void dispose() {
@@ -107,6 +154,10 @@ class ChatMessageTimeline extends StatefulWidget {
     required this.controller,
     required this.itemBuilder,
     this.timelineKey,
+    this.hasEarlier = false,
+    this.hasLater = false,
+    this.onLoadEarlier,
+    this.onLoadLater,
     super.key,
   });
 
@@ -114,6 +165,10 @@ class ChatMessageTimeline extends StatefulWidget {
   final ScrollController controller;
   final ChatTimelineItemBuilder itemBuilder;
   final Key? timelineKey;
+  final bool hasEarlier;
+  final bool hasLater;
+  final Future<bool> Function()? onLoadEarlier;
+  final Future<bool> Function()? onLoadLater;
 
   @override
   State<ChatMessageTimeline> createState() => _ChatMessageTimelineState();
@@ -125,20 +180,74 @@ class _ChatMessageTimelineState extends State<ChatMessageTimeline> {
 
   bool _initialPositionReady = false;
   int _positionRequest = 0;
+  bool _requestingEarlier = false;
+  bool _requestingLater = false;
 
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_handleScroll);
     _positionBeforeReveal();
   }
 
   @override
   void didUpdateWidget(covariant ChatMessageTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleScroll);
+      widget.controller.addListener(_handleScroll);
+    }
     if (oldWidget.controller != widget.controller ||
         oldWidget.timelineKey != widget.timelineKey ||
         (oldWidget.messages.isEmpty && widget.messages.isNotEmpty)) {
       _positionBeforeReveal();
+    }
+  }
+
+  void _handleScroll() {
+    if (!widget.controller.hasClients || !_initialPositionReady) return;
+    final position = widget.controller.position;
+    if (position.userScrollDirection == ScrollDirection.idle) return;
+    if (widget.hasEarlier && position.pixels <= 120) {
+      _requestEarlier();
+    }
+    if (widget.hasLater && position.maxScrollExtent - position.pixels <= 120) {
+      _requestLater();
+    }
+  }
+
+  Future<void> _requestEarlier() async {
+    final load = widget.onLoadEarlier;
+    if (load == null || _requestingEarlier || !widget.controller.hasClients) {
+      return;
+    }
+    _requestingEarlier = true;
+    final oldPosition = widget.controller.position;
+    final oldPixels = oldPosition.pixels;
+    final oldMaxExtent = oldPosition.maxScrollExtent;
+    try {
+      final changed = await load();
+      if (!changed || !mounted) return;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !widget.controller.hasClients) return;
+      final newPosition = widget.controller.position;
+      final target = oldPixels + newPosition.maxScrollExtent - oldMaxExtent;
+      widget.controller.jumpTo(
+        target.clamp(newPosition.minScrollExtent, newPosition.maxScrollExtent),
+      );
+    } finally {
+      _requestingEarlier = false;
+    }
+  }
+
+  Future<void> _requestLater() async {
+    final load = widget.onLoadLater;
+    if (load == null || _requestingLater) return;
+    _requestingLater = true;
+    try {
+      await load();
+    } finally {
+      _requestingLater = false;
     }
   }
 
@@ -227,5 +336,11 @@ class _ChatMessageTimelineState extends State<ChatMessageTimeline> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleScroll);
+    super.dispose();
   }
 }

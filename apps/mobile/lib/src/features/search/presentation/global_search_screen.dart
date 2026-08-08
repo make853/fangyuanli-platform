@@ -170,6 +170,9 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
             currentUserId: userId,
             peerUserId: conversation?.peerUserId,
             peerAvatar: conversation?.avatar,
+            initialUnreadCount: conversation?.unread.count ?? 0,
+            initialFirstUnreadSequence:
+                conversation?.unread.firstUnreadSequence,
           ),
         );
       case GlobalSearchCategory.systemConversations:

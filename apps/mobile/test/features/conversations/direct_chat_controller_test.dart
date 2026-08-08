@@ -243,6 +243,72 @@ void main() {
     },
   );
 
+  test('loads earlier messages through the shared sequence window', () async {
+    final repository = _PagingConversationRepository();
+    final controller = DirectChatController(
+      repository,
+      'conversation-1',
+      const Stream<RealtimeEvent>.empty(),
+    );
+
+    await _waitFor(() => controller.state.messages.length == 50);
+    expect(controller.state.messages.first.sequence, 51);
+    expect(controller.state.hasEarlier, isTrue);
+
+    expect(await controller.loadEarlier(), isTrue);
+    expect(controller.state.messages.first.sequence, 1);
+    expect(controller.state.messages.last.sequence, 100);
+    expect(controller.state.hasEarlier, isFalse);
+    expect(repository.beforeSequences, [51]);
+
+    controller.dispose();
+  });
+
+  test(
+    'opens a contiguous anchor window and pages forward without inventing gaps',
+    () async {
+      final repository = _PagingConversationRepository();
+      final events = StreamController<RealtimeEvent>();
+      final controller = DirectChatController(
+        repository,
+        'conversation-1',
+        events.stream,
+      );
+
+      await _waitFor(() => controller.state.messages.length == 50);
+      expect(await controller.loadAround(25), isTrue);
+      expect(controller.state.messages.first.sequence, 1);
+      expect(controller.state.messages.last.sequence, 50);
+      expect(controller.state.hasEarlier, isFalse);
+      expect(controller.state.hasLater, isTrue);
+      expect(repository.anchorSequences, [25]);
+
+      events.add(
+        RealtimeEvent(
+          name: 'message.created',
+          cursor: '101-0',
+          payload: _messageJson(
+            id: 'message-101',
+            sequence: 101,
+            senderUserId: 'user-b',
+            text: '锚点期间的新消息',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.messages.last.sequence, 50);
+
+      expect(await controller.loadLater(), isTrue);
+      expect(controller.state.messages.first.sequence, 1);
+      expect(controller.state.messages.last.sequence, 101);
+      expect(controller.state.hasLater, isFalse);
+      expect(repository.afterSequences, [50]);
+
+      await events.close();
+      controller.dispose();
+    },
+  );
+
   test(
     'plaza send refreshes a missing or expired location context without duplicating',
     () async {
@@ -401,6 +467,74 @@ class _DeferredSendConversationRepository implements ConversationRepository {
     int lastReadSequence, {
     ConversationAccessContext access = const ConversationAccessContext.direct(),
   }) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _PagingConversationRepository implements ConversationRepository {
+  final beforeSequences = <int>[];
+  final afterSequences = <int>[];
+  final anchorSequences = <int>[];
+
+  @override
+  Future<ConversationMessagePage> loadMessages(
+    String conversationId, {
+    int? beforeSequence,
+    int? afterSequence,
+    int? anchorSequence,
+    int limit = 50,
+    ConversationAccessContext access = const ConversationAccessContext.direct(),
+  }) async {
+    if (beforeSequence != null) {
+      beforeSequences.add(beforeSequence);
+      return ConversationMessagePage(
+        items: [
+          for (var sequence = 1; sequence < 51; sequence++)
+            _pageMessage(sequence),
+        ],
+        hasEarlier: false,
+        hasLater: true,
+      );
+    }
+    if (afterSequence != null) {
+      afterSequences.add(afterSequence);
+      return ConversationMessagePage(
+        items: [
+          for (var sequence = 51; sequence <= 100; sequence++)
+            _pageMessage(sequence),
+        ],
+        hasEarlier: true,
+        hasLater: false,
+      );
+    }
+    if (anchorSequence != null) {
+      anchorSequences.add(anchorSequence);
+      return ConversationMessagePage(
+        items: [
+          for (var sequence = 1; sequence <= 50; sequence++)
+            _pageMessage(sequence),
+        ],
+        hasEarlier: false,
+        hasLater: true,
+      );
+    }
+    return ConversationMessagePage(
+      items: [
+        for (var sequence = 51; sequence <= 100; sequence++)
+          _pageMessage(sequence),
+      ],
+      hasEarlier: true,
+      hasLater: false,
+    );
+  }
+
+  ConversationMessage _pageMessage(int sequence) => _message(
+    id: 'message-$sequence',
+    sequence: sequence,
+    senderUserId: sequence.isEven ? 'user-a' : 'user-b',
+    text: '消息 $sequence',
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

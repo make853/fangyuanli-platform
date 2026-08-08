@@ -36,6 +36,7 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   late String _selectedPlazaId;
   PlazaSummary? _selectedPlazaSnapshot;
   final _previewReadPlazaIds = <String>{};
+  final _entryUnread = <String, PlazaUnreadState>{};
   ConversationSyncController? _readVisibleController;
   ConversationSyncController? _scheduledReadVisibleController;
   bool _scheduledReadVisible = false;
@@ -136,6 +137,17 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
         currentSelection == null &&
         _selectedPlazaSnapshot?.id == _selectedPlazaId;
     final selected = currentSelection ?? _selectedPlazaSnapshot ?? plazas.first;
+    final selectedUnread =
+        _entryUnread[selected.id] ??
+        PlazaUnreadState(
+          count: selected.unreadCount,
+          appearance: selected.unreadAppearance,
+          firstUnreadSequence: selected.firstUnreadSequence,
+        );
+    if (selectedUnread.count > 0 &&
+        selectedUnread.firstUnreadSequence != null) {
+      _entryUnread.putIfAbsent(selected.id, () => selectedUnread);
+    }
     final canSend = !historicalSelection && selected.canSpeak;
     final readOnlyMessage = historicalSelection
         ? '已离开此广场，仅可查看历史消息'
@@ -183,6 +195,18 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                           ? 0
                           : plazas[index].unreadCount,
                       onTap: () => setState(() {
+                        final plaza = plazas[index];
+                        if (plaza.unreadCount > 0 &&
+                            plaza.firstUnreadSequence != null) {
+                          _entryUnread.putIfAbsent(
+                            plaza.id,
+                            () => PlazaUnreadState(
+                              count: plaza.unreadCount,
+                              appearance: plaza.unreadAppearance,
+                              firstUnreadSequence: plaza.firstUnreadSequence,
+                            ),
+                          );
+                        }
                         _selectedPlazaId = plazas[index].id;
                         _selectedPlazaSnapshot = plazas[index];
                         if (plazas[index].conversationId == null) {
@@ -233,6 +257,29 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                 : (clientMessageId) => ref
                       .read(plazaChatControllerProvider(liveScope).notifier)
                       .retry(clientMessageId),
+            onLoadEarlier: liveScope == null
+                ? null
+                : ref
+                      .read(plazaChatControllerProvider(liveScope).notifier)
+                      .loadEarlier,
+            onLoadLater: liveScope == null
+                ? null
+                : ref
+                      .read(plazaChatControllerProvider(liveScope).notifier)
+                      .loadLater,
+            initialUnreadCount: selectedUnread.count,
+            initialFirstUnreadSequence: selectedUnread.firstUnreadSequence,
+            onLocateSequence: liveScope == null
+                ? null
+                : (sequence) async {
+                    final located = await ref
+                        .read(plazaChatControllerProvider(liveScope).notifier)
+                        .loadAround(sequence);
+                    if (located && mounted) {
+                      setState(() => _entryUnread.remove(selected.id));
+                    }
+                    return located;
+                  },
             readOnlyMessage: readOnlyMessage,
             bottomChromeHeight:
                 (NavigationBarTheme.of(context).height ?? 80) +
