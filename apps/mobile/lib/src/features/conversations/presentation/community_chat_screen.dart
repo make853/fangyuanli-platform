@@ -81,6 +81,7 @@ class CommunityChatBody extends StatefulWidget {
     this.currentUserId,
     this.onSend,
     this.onRetry,
+    this.readOnlyMessage,
     this.bottomChromeHeight = 0,
     super.key,
   });
@@ -92,6 +93,7 @@ class CommunityChatBody extends StatefulWidget {
   final String? currentUserId;
   final Future<bool> Function(String value)? onSend;
   final ValueChanged<String>? onRetry;
+  final String? readOnlyMessage;
   final double bottomChromeHeight;
 
   @override
@@ -186,14 +188,17 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
                 : _liveMessages(widget.liveState!),
           ),
         ),
-        ChatComposer(
-          controller: _composerController,
-          textController: _textController,
-          focusNode: _focusNode,
-          onSend: _send,
-          onUnavailableAction: _pending,
-          bottomChromeHeight: widget.bottomChromeHeight,
-        ),
+        if (widget.readOnlyMessage case final message?)
+          _ChatReadOnlySurface(message: message)
+        else
+          ChatComposer(
+            controller: _composerController,
+            textController: _textController,
+            focusNode: _focusNode,
+            onSend: _send,
+            onUnavailableAction: _pending,
+            bottomChromeHeight: widget.bottomChromeHeight,
+          ),
       ],
     );
   }
@@ -273,9 +278,46 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
           ? ChatTimePresentation.format(message.createdAt)
           : null,
       onAvatarTap: () => _pending('用户资料'),
-      onRetry: message.clientMessageId == null
+      onRetry: message.clientMessageId == null || widget.onRetry == null
           ? null
           : () => widget.onRetry?.call(message.clientMessageId!),
+    );
+  }
+}
+
+class _ChatReadOnlySurface extends StatelessWidget {
+  const _ChatReadOnlySurface({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('chat-read-only-surface'),
+      constraints: const BoxConstraints(minHeight: 64),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE5EAE7))),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.visibility_outlined,
+            size: 18,
+            color: Color(0xFF78847E),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF66736D), fontSize: 13),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

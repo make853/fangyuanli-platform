@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../conversations/application/conversation_sync_controller.dart';
 import '../../conversations/domain/community_chat_models.dart';
 import '../../conversations/presentation/community_chat_screen.dart';
 import '../../nearby/presentation/nearby_ui.dart';
@@ -18,11 +19,13 @@ class PlazaScreen extends ConsumerStatefulWidget {
   const PlazaScreen({
     this.plazas = PlazaPreviewCatalog.plazas,
     this.previewMessages = PlazaPreviewCatalog.messages,
+    this.isActive = true,
     super.key,
   });
 
   final List<PlazaSummary> plazas;
   final List<CommunityMessagePreview> previewMessages;
+  final bool isActive;
 
   @override
   ConsumerState<PlazaScreen> createState() => _PlazaScreenState();
@@ -31,12 +34,23 @@ class PlazaScreen extends ConsumerStatefulWidget {
 class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   _PlazaView _view = _PlazaView.chat;
   late String _selectedPlazaId;
+  PlazaSummary? _selectedPlazaSnapshot;
   final _previewReadPlazaIds = <String>{};
+  ConversationSyncController? _readVisibleController;
+  ConversationSyncController? _scheduledReadVisibleController;
+  bool _scheduledReadVisible = false;
 
   @override
   void initState() {
     super.initState();
     _selectedPlazaId = widget.plazas.first.id;
+    _selectedPlazaSnapshot = widget.plazas.first;
+  }
+
+  @override
+  void dispose() {
+    _readVisibleController?.setReadVisible(false);
+    super.dispose();
   }
 
   void _openPlazaInfo(PlazaSummary plaza) {
@@ -112,10 +126,22 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   }
 
   Widget _buildChat(List<PlazaSummary> plazas, PlazaState plazaState) {
-    final selectedId = plazas.any((plaza) => plaza.id == _selectedPlazaId)
-        ? _selectedPlazaId
-        : plazas.first.id;
-    final selected = plazas.firstWhere((plaza) => plaza.id == selectedId);
+    final currentSelection = plazas
+        .where((plaza) => plaza.id == _selectedPlazaId)
+        .firstOrNull;
+    if (currentSelection != null) {
+      _selectedPlazaSnapshot = currentSelection;
+    }
+    final historicalSelection =
+        currentSelection == null &&
+        _selectedPlazaSnapshot?.id == _selectedPlazaId;
+    final selected = currentSelection ?? _selectedPlazaSnapshot ?? plazas.first;
+    final canSend = !historicalSelection && selected.canSpeak;
+    final readOnlyMessage = historicalSelection
+        ? '已离开此广场，仅可查看历史消息'
+        : selected.canSpeak
+        ? null
+        : '当前广场仅可查看';
     final conversationId = selected.conversationId;
     final currentUserId = ref.watch(
       authControllerProvider.select((state) => state.session?.userId),
@@ -127,6 +153,13 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
     final liveState = liveScope == null
         ? null
         : ref.watch(plazaChatControllerProvider(liveScope));
+    final liveController = liveScope == null
+        ? null
+        : ref.read(plazaChatControllerProvider(liveScope).notifier);
+    _scheduleReadVisibility(
+      liveController,
+      widget.isActive && _view == _PlazaView.chat && !historicalSelection,
+    );
     return Column(
       children: [
         SizedBox(
@@ -142,13 +175,16 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                   Expanded(
                     child: _PlazaSwitchCard(
                       plaza: plazas[index],
-                      selected: plazas[index].id == selected.id,
+                      selected:
+                          !historicalSelection &&
+                          plazas[index].id == selected.id,
                       unreadCount:
                           _previewReadPlazaIds.contains(plazas[index].id)
                           ? 0
                           : plazas[index].unreadCount,
                       onTap: () => setState(() {
                         _selectedPlazaId = plazas[index].id;
+                        _selectedPlazaSnapshot = plazas[index];
                         if (plazas[index].conversationId == null) {
                           _previewReadPlazaIds.add(plazas[index].id);
                         } else {
@@ -182,7 +218,7 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
             showPreviewNotice: liveState == null,
             liveState: liveState,
             currentUserId: currentUserId,
-            onSend: liveScope == null
+            onSend: liveScope == null || !canSend
                 ? null
                 : (value) => ref
                       .read(plazaChatControllerProvider(liveScope).notifier)
@@ -192,11 +228,12 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                         senderProfileVersion: ownProfile?.profileVersion ?? 1,
                         senderAvatar: ownProfile?.avatar,
                       ),
-            onRetry: liveScope == null
+            onRetry: liveScope == null || !canSend
                 ? null
                 : (clientMessageId) => ref
                       .read(plazaChatControllerProvider(liveScope).notifier)
                       .retry(clientMessageId),
+            readOnlyMessage: readOnlyMessage,
             bottomChromeHeight:
                 (NavigationBarTheme.of(context).height ?? 80) +
                 MediaQuery.viewPaddingOf(context).bottom,
@@ -204,6 +241,30 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
         ),
       ],
     );
+  }
+
+  void _scheduleReadVisibility(
+    ConversationSyncController? controller,
+    bool visible,
+  ) {
+    if (identical(_scheduledReadVisibleController, controller) &&
+        _scheduledReadVisible == visible) {
+      return;
+    }
+    _scheduledReadVisibleController = controller;
+    _scheduledReadVisible = visible;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(_scheduledReadVisibleController, controller) ||
+          _scheduledReadVisible != visible) {
+        return;
+      }
+      final nextController = visible ? controller : null;
+      if (identical(_readVisibleController, nextController)) return;
+      _readVisibleController?.setReadVisible(false);
+      _readVisibleController = nextController;
+      _readVisibleController?.setReadVisible(true);
+    });
   }
 }
 

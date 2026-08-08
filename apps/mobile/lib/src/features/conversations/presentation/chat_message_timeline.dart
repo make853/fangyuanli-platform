@@ -120,7 +120,11 @@ class ChatMessageTimeline extends StatefulWidget {
 }
 
 class _ChatMessageTimelineState extends State<ChatMessageTimeline> {
+  static const _maxInitialPositionPasses = 4;
+  static const _positionEpsilon = 0.5;
+
   bool _initialPositionReady = false;
+  int _positionRequest = 0;
 
   @override
   void initState() {
@@ -132,20 +136,75 @@ class _ChatMessageTimelineState extends State<ChatMessageTimeline> {
   void didUpdateWidget(covariant ChatMessageTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller ||
+        oldWidget.timelineKey != widget.timelineKey ||
         (oldWidget.messages.isEmpty && widget.messages.isNotEmpty)) {
-      _initialPositionReady = false;
       _positionBeforeReveal();
     }
   }
 
   void _positionBeforeReveal() {
+    _initialPositionReady = false;
+    final request = ++_positionRequest;
+    _settleAtLatest(
+      request: request,
+      remainingPasses: _maxInitialPositionPasses,
+    );
+  }
+
+  void _settleAtLatest({
+    required int request,
+    required int remainingPasses,
+    double? previousMaxExtent,
+  }) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (widget.controller.hasClients) {
-        widget.controller.jumpTo(widget.controller.position.maxScrollExtent);
+      if (!mounted || request != _positionRequest) return;
+      if (!widget.controller.hasClients ||
+          !widget.controller.position.hasContentDimensions) {
+        if (remainingPasses > 1) {
+          _scheduleNextPositionPass(
+            request: request,
+            remainingPasses: remainingPasses - 1,
+            previousMaxExtent: previousMaxExtent,
+          );
+          return;
+        }
+        setState(() => _initialPositionReady = true);
+        return;
       }
-      setState(() => _initialPositionReady = true);
+
+      final position = widget.controller.position;
+      final target = position.maxScrollExtent;
+      if ((position.pixels - target).abs() > _positionEpsilon) {
+        widget.controller.jumpTo(target);
+      }
+
+      final extentIsStable =
+          previousMaxExtent != null &&
+          (target - previousMaxExtent).abs() <= _positionEpsilon;
+      if (extentIsStable || remainingPasses <= 1) {
+        setState(() => _initialPositionReady = true);
+        return;
+      }
+
+      _scheduleNextPositionPass(
+        request: request,
+        remainingPasses: remainingPasses - 1,
+        previousMaxExtent: target,
+      );
     });
+  }
+
+  void _scheduleNextPositionPass({
+    required int request,
+    required int remainingPasses,
+    required double? previousMaxExtent,
+  }) {
+    _settleAtLatest(
+      request: request,
+      remainingPasses: remainingPasses,
+      previousMaxExtent: previousMaxExtent,
+    );
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   @override

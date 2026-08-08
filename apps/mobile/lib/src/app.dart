@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/app_theme.dart';
+import 'core/navigation/app_navigation.dart';
 import 'features/auth/application/auth_controller.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/home_shell.dart';
@@ -28,6 +29,7 @@ class FangyuanliApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
       ],
+      navigatorObservers: [appRouteObserver],
       theme: AppTheme.light(),
       home: switch (authState.status) {
         AuthStatus.bootstrapping => const _LaunchScreen(),

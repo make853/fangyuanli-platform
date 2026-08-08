@@ -19,6 +19,7 @@ void main() {
       'conversation-1',
       const Stream<RealtimeEvent>.empty(),
     );
+    controller.setReadVisible(true);
 
     await repository.loaded.future;
     await Future<void>.delayed(Duration.zero);
@@ -45,6 +46,7 @@ void main() {
       'conversation-1',
       const Stream<RealtimeEvent>.empty(),
     );
+    controller.setReadVisible(true);
 
     await repository.loaded.future;
     await Future<void>.delayed(Duration.zero);
@@ -88,6 +90,7 @@ void main() {
         'conversation-1',
         events.stream,
       );
+      controller.setReadVisible(true);
 
       await repository.loaded.future;
       await Future<void>.delayed(Duration.zero);
@@ -109,6 +112,47 @@ void main() {
         '你好',
         '实时到达',
       ]);
+      expect(repository.lastReadSequence, 2);
+
+      await events.close();
+      controller.dispose();
+    },
+  );
+
+  test(
+    'keeps realtime messages unread while hidden and marks them on entry',
+    () async {
+      final repository = _FakeConversationRepository();
+      final events = StreamController<RealtimeEvent>();
+      final controller = DirectChatController(
+        repository,
+        'conversation-1',
+        events.stream,
+      );
+
+      await repository.loaded.future;
+      await Future<void>.delayed(Duration.zero);
+      expect(repository.lastReadSequence, isNull);
+
+      events.add(
+        RealtimeEvent(
+          name: 'message.created',
+          cursor: '2-0',
+          payload: _messageJson(
+            id: 'message-hidden',
+            sequence: 2,
+            senderUserId: 'user-b',
+            text: '后台到达',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.messages.last.text, '后台到达');
+      expect(repository.lastReadSequence, isNull);
+
+      controller.setReadVisible(true);
+      await Future<void>.delayed(Duration.zero);
       expect(repository.lastReadSequence, 2);
 
       await events.close();

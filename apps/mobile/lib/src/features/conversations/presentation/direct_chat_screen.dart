@@ -36,26 +36,87 @@ class DirectChatScreen extends ConsumerStatefulWidget {
   ConsumerState<DirectChatScreen> createState() => _DirectChatScreenState();
 }
 
-class _DirectChatScreenState extends ConsumerState<DirectChatScreen> {
+class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
+    with WidgetsBindingObserver, RouteAware {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
   final _composerController = ChatComposerController();
   late final ChatTimelineViewportController _timelineController;
+  late final DirectChatController _chatController;
   final _messageKeys = <int, GlobalKey>{};
+  PageRoute<dynamic>? _route;
+  bool _routeVisible = false;
+  bool _appVisible = true;
 
   @override
   void initState() {
     super.initState();
     _timelineController = ChatTimelineViewportController();
+    _chatController = ref.read(
+      directChatControllerProvider(widget.conversationId).notifier,
+    );
+    WidgetsBinding.instance.addObserver(this);
+    _appVisible = _lifecycleIsVisible(WidgetsBinding.instance.lifecycleState);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (identical(_route, route)) return;
+    if (_route != null) appRouteObserver.unsubscribe(this);
+    _route = route is PageRoute<dynamic> ? route : null;
+    if (_route != null) appRouteObserver.subscribe(this, _route!);
   }
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
+    _routeVisible = false;
+    _syncReadVisibility();
     _textController.dispose();
     _focusNode.dispose();
     _timelineController.dispose();
     _composerController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didPush() {
+    _routeVisible = true;
+    _syncReadVisibility();
+  }
+
+  @override
+  void didPopNext() {
+    _routeVisible = true;
+    _syncReadVisibility();
+  }
+
+  @override
+  void didPushNext() {
+    _routeVisible = false;
+    _syncReadVisibility();
+  }
+
+  @override
+  void didPop() {
+    _routeVisible = false;
+    _syncReadVisibility();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appVisible = _lifecycleIsVisible(state);
+    _syncReadVisibility();
+  }
+
+  bool _lifecycleIsVisible(AppLifecycleState? state) =>
+      state == null || state == AppLifecycleState.resumed;
+
+  void _syncReadVisibility() {
+    _chatController.setReadVisible(_routeVisible && _appVisible);
   }
 
   Future<void> _send() async {

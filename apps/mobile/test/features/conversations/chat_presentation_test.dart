@@ -395,6 +395,283 @@ void main() {
     expect(find.byKey(const ValueKey('chat-emoji-panel')), findsNothing);
   });
 
+  testWidgets('键盘切换历史不会让表情或更多面板跳过打开动画', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final composerController = ChatComposerController();
+    final textController = TextEditingController();
+    final focusNode = FocusNode();
+    final keyboardInset = ValueNotifier(0.0);
+    addTearDown(composerController.dispose);
+    addTearDown(textController.dispose);
+    addTearDown(focusNode.dispose);
+    addTearDown(keyboardInset.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<double>(
+          valueListenable: keyboardInset,
+          builder: (context, inset, _) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              viewPadding: const EdgeInsets.only(bottom: 34),
+              viewInsets: EdgeInsets.only(bottom: inset),
+            ),
+            child: Scaffold(
+              resizeToAvoidBottomInset: false,
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: ChatComposer(
+                  controller: composerController,
+                  textController: textController,
+                  focusNode: focusNode,
+                  onSend: () async {},
+                  onUnavailableAction: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    double reservedHeight() => tester
+        .getSize(find.byKey(const ValueKey('chat-input-reserved-surface')))
+        .height;
+
+    for (final target in <ChatComposerPanel>[
+      ChatComposerPanel.emoji,
+      ChatComposerPanel.more,
+    ]) {
+      final seed = target == ChatComposerPanel.emoji
+          ? ChatComposerPanel.more
+          : ChatComposerPanel.emoji;
+      if (composerController.surface != ChatComposerSurface.closed) {
+        composerController.dismiss(focusNode);
+        await tester.pumpAndSettle();
+      }
+
+      // A completed custom panel -> keyboard handoff used to leave the shared
+      // animation controller at 1. Closing that keyboard and opening another
+      // panel then either jumped instantly or appeared to ignore the request.
+      composerController.showPanel(seed, focusNode);
+      await tester.pumpAndSettle();
+      composerController.showKeyboard(focusNode);
+      await tester.pump();
+      keyboardInset.value = 300;
+      await tester.pump();
+      composerController.dismiss(focusNode);
+      await tester.pump();
+      keyboardInset.value = 0;
+      await tester.pump();
+
+      expect(reservedHeight(), 34);
+      composerController.showPanel(target, focusNode);
+      await tester.pump();
+      expect(reservedHeight(), 34);
+
+      await tester.pump(const Duration(milliseconds: 125));
+      expect(
+        find.byKey(
+          ValueKey(
+            target == ChatComposerPanel.emoji
+                ? 'chat-emoji-panel'
+                : 'chat-more-panel',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(reservedHeight(), greaterThan(34));
+      expect(reservedHeight(), lessThan(300));
+
+      await tester.pumpAndSettle();
+      expect(reservedHeight(), 300);
+      expect(
+        find.byKey(
+          ValueKey(
+            target == ChatComposerPanel.emoji
+                ? 'chat-emoji-panel'
+                : 'chat-more-panel',
+          ),
+        ),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('面板收起过程中新的表情或更多指令不会被旧动画吞掉', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final composerController = ChatComposerController();
+    final textController = TextEditingController();
+    final focusNode = FocusNode();
+    addTearDown(composerController.dispose);
+    addTearDown(textController.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(viewPadding: EdgeInsets.only(bottom: 34)),
+        child: MaterialApp(
+          home: Scaffold(
+            resizeToAvoidBottomInset: false,
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatComposer(
+                controller: composerController,
+                textController: textController,
+                focusNode: focusNode,
+                onSend: () async {},
+                onUnavailableAction: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    double reservedHeight() => tester
+        .getSize(find.byKey(const ValueKey('chat-input-reserved-surface')))
+        .height;
+
+    for (final target in <ChatComposerPanel>[
+      ChatComposerPanel.emoji,
+      ChatComposerPanel.more,
+      ChatComposerPanel.emoji,
+      ChatComposerPanel.more,
+    ]) {
+      composerController.showPanel(target, focusNode);
+      await tester.pump(const Duration(milliseconds: 90));
+      composerController.dismiss(focusNode);
+      await tester.pump(const Duration(milliseconds: 70));
+      final heightBeforeReopen = reservedHeight();
+      composerController.showPanel(target, focusNode);
+      await tester.pump();
+      expect(reservedHeight(), closeTo(heightBeforeReopen, 0.5));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          ValueKey(
+            target == ChatComposerPanel.emoji
+                ? 'chat-emoji-panel'
+                : 'chat-more-panel',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      composerController.dismiss(focusNode);
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('键盘退场尾帧不会把表情或更多面板压成零高度', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final composerController = ChatComposerController();
+    final textController = TextEditingController();
+    final focusNode = FocusNode();
+    final keyboardInset = ValueNotifier(0.0);
+    addTearDown(composerController.dispose);
+    addTearDown(textController.dispose);
+    addTearDown(focusNode.dispose);
+    addTearDown(keyboardInset.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<double>(
+          valueListenable: keyboardInset,
+          builder: (context, inset, _) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              viewPadding: const EdgeInsets.only(bottom: 34),
+              viewInsets: EdgeInsets.only(bottom: inset),
+            ),
+            child: Scaffold(
+              resizeToAvoidBottomInset: false,
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: ChatComposer(
+                  controller: composerController,
+                  textController: textController,
+                  focusNode: focusNode,
+                  onSend: () async {},
+                  onUnavailableAction: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    double reservedHeight() => tester
+        .getSize(find.byKey(const ValueKey('chat-input-reserved-surface')))
+        .height;
+
+    for (final target in <ChatComposerPanel>[
+      ChatComposerPanel.emoji,
+      ChatComposerPanel.more,
+    ]) {
+      composerController.showKeyboard(focusNode);
+      await tester.pump();
+      keyboardInset.value = 300;
+      await tester.pump();
+      expect(focusNode.hasFocus, isTrue);
+
+      composerController.dismiss(focusNode);
+      await tester.pump();
+      keyboardInset.value = 12;
+      await tester.pump();
+      expect(focusNode.hasFocus, isFalse);
+      expect(composerController.surface, ChatComposerSurface.closed);
+
+      composerController.showPanel(target, focusNode);
+      await tester.pump();
+      expect(composerController.panel, target);
+      expect(reservedHeight(), 34);
+
+      await tester.pump(const Duration(milliseconds: 125));
+      expect(
+        find.byKey(
+          ValueKey(
+            target == ChatComposerPanel.emoji
+                ? 'chat-emoji-panel'
+                : 'chat-more-panel',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(reservedHeight(), greaterThan(34));
+      expect(reservedHeight(), lessThan(300));
+
+      keyboardInset.value = 0;
+      await tester.pumpAndSettle();
+      expect(reservedHeight(), 300);
+      expect(
+        find.byKey(
+          ValueKey(
+            target == ChatComposerPanel.emoji
+                ? 'chat-emoji-panel'
+                : 'chat-more-panel',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      composerController.dismiss(focusNode);
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('键盘和表情面板交接时总占位保持稳定', (tester) async {
     final composerController = ChatComposerController();
     final textController = TextEditingController();
@@ -610,6 +887,74 @@ void main() {
     }
   });
 
+  testWidgets('无底部导航聊天收起系统键盘时停在安全区且不回弹', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final composerController = ChatComposerController();
+    final textController = TextEditingController();
+    final focusNode = FocusNode();
+    final keyboardInset = ValueNotifier(300.0);
+    addTearDown(composerController.dispose);
+    addTearDown(textController.dispose);
+    addTearDown(focusNode.dispose);
+    addTearDown(keyboardInset.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<double>(
+          valueListenable: keyboardInset,
+          builder: (context, inset, _) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              viewPadding: const EdgeInsets.only(bottom: 34),
+              viewInsets: EdgeInsets.only(bottom: inset),
+            ),
+            child: Scaffold(
+              resizeToAvoidBottomInset: false,
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: ChatComposer(
+                  controller: composerController,
+                  textController: textController,
+                  focusNode: focusNode,
+                  onSend: () async {},
+                  onUnavailableAction: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    composerController.showKeyboard(focusNode);
+    await tester.pump();
+
+    final toolbarTops = <double>[];
+    for (final inset in <double>[300, 180, 60, 34, 20, 0]) {
+      keyboardInset.value = inset;
+      await tester.pump();
+      toolbarTops.add(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('chat-composer-toolbar')))
+            .dy,
+      );
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('chat-input-reserved-surface')))
+            .height,
+        inset > 34 ? inset : 34,
+      );
+    }
+
+    for (var index = 1; index < toolbarTops.length; index += 1) {
+      expect(toolbarTops[index], greaterThanOrEqualTo(toolbarTops[index - 1]));
+    }
+    expect(toolbarTops.last, closeTo(toolbarTops[toolbarTops.length - 2], 0.5));
+  });
+
   testWidgets('带底部导航的广场聊天切换输入表面时位置保持稳定', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;
@@ -792,6 +1137,86 @@ void main() {
     expect(revealedGate.opacity, 1);
     expect(find.text('消息 30'), findsOneWidget);
     expect(find.text('消息 1'), findsNothing);
+  });
+
+  testWidgets('可变高度长聊天首次打开时稳定停在最底部', (tester) async {
+    final timelineController = ChatTimelineViewportController();
+    addTearDown(timelineController.dispose);
+    final messages = [
+      for (var index = 1; index <= 40; index += 1)
+        _message(
+          sequence: index,
+          text: index.isEven
+              ? '这是一条用于验证可变高度布局的较长聊天消息 $index，它会在较窄屏幕上换行。'
+              : '短消息 $index',
+        ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            height: 420,
+            child: ChatMessageTimeline(
+              messages: messages,
+              controller: timelineController.scrollController,
+              itemBuilder: (context, message, previous) => ChatMessageBubble(
+                text: message.previewText,
+                deliveryState: message.deliveryState,
+                isMine: true,
+                avatarInitial: '我',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final position = timelineController.scrollController.position;
+    expect(position.pixels, closeTo(position.maxScrollExtent, 0.5));
+    expect(find.text('这是一条用于验证可变高度布局的较长聊天消息 40，它会在较窄屏幕上换行。'), findsOneWidget);
+    expect(find.text('短消息 1'), findsNothing);
+  });
+
+  testWidgets('复用时间线切换会话后重新定位到最底部', (tester) async {
+    final timelineController = ChatTimelineViewportController();
+    addTearDown(timelineController.dispose);
+    final messages = [
+      for (var index = 1; index <= 30; index += 1)
+        _message(sequence: index, text: '切换消息 $index'),
+    ];
+
+    Widget app(Key conversationKey) => MaterialApp(
+      home: Scaffold(
+        body: ChatMessageTimeline(
+          timelineKey: conversationKey,
+          messages: messages,
+          controller: timelineController.scrollController,
+          itemBuilder: (context, message, previous) => ChatMessageBubble(
+            text: message.previewText,
+            deliveryState: message.deliveryState,
+            isMine: true,
+            avatarInitial: '我',
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(app(const ValueKey('conversation-a')));
+    await tester.pumpAndSettle();
+    timelineController.scrollController.jumpTo(0);
+    await tester.pump();
+    expect(timelineController.scrollController.position.pixels, 0);
+
+    await tester.pumpWidget(app(const ValueKey('conversation-b')));
+    await tester.pumpAndSettle();
+
+    final position = timelineController.scrollController.position;
+    expect(position.pixels, closeTo(position.maxScrollExtent, 0.5));
+    expect(find.text('切换消息 30'), findsOneWidget);
+    expect(find.text('切换消息 1'), findsNothing);
   });
 
   testWidgets('处于最新位置时视口高度变化后仍保持最后一条完整可见', (tester) async {

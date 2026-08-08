@@ -170,6 +170,8 @@ class _ChatComposerState extends State<ChatComposer>
         nextInset >= _reservedInputSurfaceHeight - _keyboardSettledTolerance) {
       _renderedPanel = ChatComposerPanel.none;
       _transitioningToKeyboard = false;
+      _panelAnimationOwnsExtent = false;
+      _panelAnimationController.value = 0;
     }
   }
 
@@ -184,22 +186,25 @@ class _ChatComposerState extends State<ChatComposer>
     var expandPanelImmediately = false;
     var animatePanelOpen = false;
     var animatePanelClosed = false;
+    var resetPanelAnimation = false;
 
     setState(() {
       _keyboardInset = currentInset;
-      if (currentInset > 0) {
+      if (currentInset > 0 && widget.focusNode.hasFocus) {
         _lastKeyboardHeight = currentInset;
       }
 
       if (nextPanel != ChatComposerPanel.none) {
-        _reservedInputSurfaceHeight = currentInset > 0
-            ? currentInset
-            : (_lastKeyboardHeight > 0
-                  ? _lastKeyboardHeight
-                  : _fallbackInputSurfaceHeight);
+        final keyboardOwnsTransition =
+            currentInset > _keyboardSettledTolerance &&
+            widget.focusNode.hasFocus;
+        _reservedInputSurfaceHeight = _targetPanelHeight(
+          currentInset,
+          keyboardOwnsTransition: keyboardOwnsTransition,
+        );
         _renderedPanel = nextPanel;
         _transitioningToKeyboard = false;
-        if (currentInset > 0) {
+        if (keyboardOwnsTransition) {
           _panelAnimationOwnsExtent = false;
           expandPanelImmediately = true;
         } else if (previousPanel == ChatComposerPanel.none) {
@@ -232,15 +237,38 @@ class _ChatComposerState extends State<ChatComposer>
       _renderedPanel = ChatComposerPanel.none;
       _transitioningToKeyboard = false;
       _panelAnimationOwnsExtent = false;
+      resetPanelAnimation = true;
     });
 
     if (expandPanelImmediately) {
       _panelAnimationController.value = 1;
     } else if (animatePanelOpen) {
+      // Stable non-panel states are normalized to zero below. If a close is
+      // still in flight, forward from its current value so the new command
+      // takes over without jumping back to the collapsed origin.
       _panelAnimationController.forward();
     } else if (animatePanelClosed) {
       _panelAnimationController.reverse();
+    } else if (resetPanelAnimation) {
+      // Keyboard/voice/closed surfaces do not render a custom panel. Keeping
+      // their controller at zero prevents later emoji/more requests from
+      // inheriting an unrelated transition's terminal value.
+      _panelAnimationController.value = 0;
     }
+  }
+
+  double _targetPanelHeight(
+    double currentKeyboardInset, {
+    required bool keyboardOwnsTransition,
+  }) {
+    if (keyboardOwnsTransition) {
+      if (_lastKeyboardHeight > currentKeyboardInset) {
+        return _lastKeyboardHeight;
+      }
+      return currentKeyboardInset;
+    }
+    if (_lastKeyboardHeight > 0) return _lastKeyboardHeight;
+    return _fallbackInputSurfaceHeight;
   }
 
   void _onPanelAnimationStatusChanged(AnimationStatus status) {
@@ -293,8 +321,9 @@ class _ChatComposerState extends State<ChatComposer>
           ? _reservedInputSurfaceHeight
           : currentKeyboardInset;
     }
-    if (currentKeyboardInset > 0) return currentKeyboardInset;
-    return restingBottomInset;
+    return currentKeyboardInset > restingBottomInset
+        ? currentKeyboardInset
+        : restingBottomInset;
   }
 
   void _onTextChanged() => setState(() {});
@@ -529,6 +558,7 @@ class _ChatComposerState extends State<ChatComposer>
               _InputPanelViewport(
                 height: occupiedSurfaceHeight,
                 panelHeight: visiblePanelHeight,
+                contentHeight: _reservedInputSurfaceHeight,
                 child: switch (_renderedPanel) {
                   ChatComposerPanel.emoji => _EmojiPanel(
                     emojis: _emojis,
@@ -554,11 +584,13 @@ class _InputPanelViewport extends StatelessWidget {
   const _InputPanelViewport({
     required this.height,
     required this.panelHeight,
+    required this.contentHeight,
     required this.child,
   });
 
   final double height;
   final double panelHeight;
+  final double contentHeight;
   final Widget child;
 
   @override
@@ -577,7 +609,16 @@ class _InputPanelViewport extends StatelessWidget {
                   key: const ValueKey('chat-input-surface'),
                   width: double.infinity,
                   height: panelHeight,
-                  child: child,
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minHeight: contentHeight,
+                    maxHeight: contentHeight,
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: contentHeight,
+                      child: child,
+                    ),
+                  ),
                 ),
               ),
       ),
