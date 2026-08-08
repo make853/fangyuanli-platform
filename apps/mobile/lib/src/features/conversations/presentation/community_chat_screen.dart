@@ -194,7 +194,7 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
       target,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOut,
-      alignment: 0.05,
+      alignment: 0,
     );
     if (!mounted) return;
     setState(() {

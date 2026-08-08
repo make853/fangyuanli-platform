@@ -1179,7 +1179,11 @@ void main() {
     expect(locatedSequence, 10);
     expect(find.text('5条新消息'), findsNothing);
     expect(find.text('未读消息 10'), findsOneWidget);
-    expect(tester.getTopLeft(find.text('未读消息 10')).dy, lessThan(100));
+    expect(tester.getTopLeft(find.text('未读消息 10')).dy, lessThan(40));
+    final previousMessage = find.text('未读消息 9');
+    if (previousMessage.evaluate().isNotEmpty) {
+      expect(tester.getBottomRight(previousMessage).dy, lessThanOrEqualTo(0));
+    }
   });
 
   testWidgets('可变高度长聊天首次打开时稳定停在最底部', (tester) async {

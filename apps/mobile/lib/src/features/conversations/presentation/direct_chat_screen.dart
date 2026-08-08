@@ -254,7 +254,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
   Future<void> _openUnreadJump() async {
     final sequence = _unreadJumpSequence;
     if (sequence == null) return;
-    final located = await _locateSequence(sequence, alignment: 0.05);
+    final located = await _locateSequence(sequence, alignment: 0);
     if (!mounted || !located) return;
     setState(() {
       _unreadJumpCount = 0;
