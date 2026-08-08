@@ -221,7 +221,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
     }
   }
 
-  Future<bool> _locateSequence(int sequence) async {
+  Future<bool> _locateSequence(int sequence, {double alignment = 0.25}) async {
     var target = _messageKeys[sequence]?.currentContext;
     if (target == null) {
       final loaded = await _chatController.loadAround(sequence);
@@ -246,7 +246,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
       target,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOut,
-      alignment: 0.25,
+      alignment: alignment,
     );
     return true;
   }
@@ -254,7 +254,7 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
   Future<void> _openUnreadJump() async {
     final sequence = _unreadJumpSequence;
     if (sequence == null) return;
-    final located = await _locateSequence(sequence);
+    final located = await _locateSequence(sequence, alignment: 0.05);
     if (!mounted || !located) return;
     setState(() {
       _unreadJumpCount = 0;
