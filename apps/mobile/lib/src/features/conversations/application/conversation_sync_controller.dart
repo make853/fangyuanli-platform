@@ -88,8 +88,26 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
   late final StreamSubscription<RealtimeEvent> _subscription;
   Future<void>? _activeLoad;
   final Uuid _uuid;
+  bool _isReadVisible = false;
+  int? _lastReadSequenceRequested;
 
   bool get hasCachedMessages => state.messages.isNotEmpty;
+
+  /// Controls whether synchronized messages are actually visible to the user.
+  ///
+  /// Providers intentionally keep a conversation alive for a short time after
+  /// its screen closes. Realtime synchronization may continue in that window,
+  /// but it must not advance the read cursor until a visible chat surface owns
+  /// the conversation again.
+  void setReadVisible(bool visible) {
+    if (_isReadVisible == visible) return;
+    _isReadVisible = visible;
+    if (!visible) return;
+    final latestSequence = _latestConfirmedSequence(state.messages);
+    if (latestSequence != null) {
+      unawaited(_markRead(latestSequence));
+    }
+  }
 
   Future<void> _initialize() async {
     final cachedResults = await Future.wait<Object?>([
@@ -289,6 +307,12 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
   };
 
   Future<void> _markRead(int sequence) async {
+    if (!_isReadVisible ||
+        (_lastReadSequenceRequested != null &&
+            sequence <= _lastReadSequenceRequested!)) {
+      return;
+    }
+    _lastReadSequenceRequested = sequence;
     try {
       await _repository.markRead(
         _conversationId,
@@ -296,6 +320,9 @@ class ConversationSyncController extends StateNotifier<ConversationChatState> {
         access: accessContext,
       );
     } catch (_) {
+      if (_lastReadSequenceRequested == sequence) {
+        _lastReadSequenceRequested = null;
+      }
       // Read receipts must not interrupt loading or sending messages.
     }
   }

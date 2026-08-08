@@ -28,8 +28,11 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RouteAware {
   int _index = 0;
+  PageRoute<dynamic>? _route;
+  bool _routeVisible = false;
+  bool _appVisible = true;
 
   static const _destinations = [
     _Destination('广场', Icons.forum_outlined, Icons.forum_rounded),
@@ -43,16 +46,32 @@ class _HomeShellState extends ConsumerState<HomeShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _appVisible = _lifecycleIsVisible(WidgetsBinding.instance.lifecycleState);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (identical(_route, route)) return;
+    if (_route != null) appRouteObserver.unsubscribe(this);
+    _route = route is PageRoute<dynamic> ? route : null;
+    if (_route != null) appRouteObserver.subscribe(this, _route!);
   }
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final appVisible = _lifecycleIsVisible(state);
+    if (_appVisible != appVisible && mounted) {
+      setState(() => _appVisible = appVisible);
+    }
     if (state == AppLifecycleState.resumed) {
       unawaited(
         ref.read(realtimeControllerProvider.notifier).recoverAfterResume(),
@@ -71,6 +90,30 @@ class _HomeShellState extends ConsumerState<HomeShell>
       unawaited(
         ref.read(plazaControllerProvider.notifier).refresh(silent: true),
       );
+    }
+  }
+
+  @override
+  void didPush() => _setRouteVisible(true);
+
+  @override
+  void didPopNext() => _setRouteVisible(true);
+
+  @override
+  void didPushNext() => _setRouteVisible(false);
+
+  @override
+  void didPop() => _setRouteVisible(false);
+
+  bool _lifecycleIsVisible(AppLifecycleState? state) =>
+      state == null || state == AppLifecycleState.resumed;
+
+  void _setRouteVisible(bool visible) {
+    if (_routeVisible == visible) return;
+    if (mounted) {
+      setState(() => _routeVisible = visible);
+    } else {
+      _routeVisible = visible;
     }
   }
 
@@ -149,12 +192,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
       ),
       body: IndexedStack(
         index: _index,
-        children: const [
-          PlazaScreen(),
-          PlacesScreen(),
-          ActivitiesScreen(),
-          FriendsScreen(),
-          MyScreen(),
+        children: [
+          PlazaScreen(isActive: _index == 0 && _routeVisible && _appVisible),
+          const PlacesScreen(),
+          const ActivitiesScreen(),
+          const FriendsScreen(),
+          const MyScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(

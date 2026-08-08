@@ -2,6 +2,7 @@ import 'package:fangyuanli_mobile/src/features/activities/presentation/activitie
 import 'package:fangyuanli_mobile/src/features/places/presentation/places_screen.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/device_location_source.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/domain/geo_context_models.dart';
+import 'package:fangyuanli_mobile/src/features/plaza/domain/plaza_models.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/presentation/plaza_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,6 +77,59 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('广场信息'), findsOneWidget);
     expect(find.text('东街广场'), findsOneWidget);
+  });
+
+  testWidgets('区域切换后保留当前旧广场为只读，选择新广场后恢复输入', (tester) async {
+    const originalPlazas = [
+      PlazaSummary(id: 'old-main', name: '旧主广场', isPrimary: true),
+      PlazaSummary(id: 'old-east', name: '旧东广场', isPrimary: false),
+      PlazaSummary(id: 'old-west', name: '旧西广场', isPrimary: false),
+      PlazaSummary(id: 'old-south', name: '旧南广场', isPrimary: false),
+    ];
+    const newPlazas = [
+      PlazaSummary(id: 'new-main', name: '新主广场', isPrimary: true),
+      PlazaSummary(id: 'new-east', name: '新东广场', isPrimary: false),
+      PlazaSummary(id: 'new-west', name: '新西广场', isPrimary: false),
+      PlazaSummary(id: 'new-south', name: '新南广场', isPrimary: false),
+    ];
+
+    Widget app(List<PlazaSummary> plazas) => ProviderScope(
+      overrides: [
+        deviceLocationSourceProvider.overrideWithValue(
+          _UnavailableLocationSource(),
+        ),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: PlazaScreen(
+            key: const ValueKey('plaza-screen'),
+            plazas: plazas,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(app(originalPlazas));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+
+    await tester.pumpWidget(app(newPlazas));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('plaza-chat-old-main')), findsOneWidget);
+    expect(find.text('已离开此广场，仅可查看历史消息'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('chat-read-only-surface')),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('plaza-switch-new-main')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('plaza-chat-new-main')), findsOneWidget);
+    expect(find.text('已离开此广场，仅可查看历史消息'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
   });
 
   testWidgets('地点卡片主体进入聊天，聊天右上角进入地点详情', (tester) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+final appRouteObserver = RouteObserver<PageRoute<dynamic>>();
+
 enum AppSection { plaza, places, activities, friends, profile }
 
 enum AppEntryPoint {
