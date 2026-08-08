@@ -1139,6 +1139,53 @@ void main() {
     expect(find.text('消息 1'), findsNothing);
   });
 
+  testWidgets('新消息提示点击后定位首条未读并在当前页面消失', (tester) async {
+    final messages = [
+      for (var index = 1; index <= 30; index += 1)
+        _message(sequence: index, text: '未读消息 $index'),
+    ];
+    int? locatedSequence;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CommunityChatBody(
+            channel: const CommunityChannelDescriptor(
+              id: 'plaza-unread',
+              kind: CommunityChannelKind.plaza,
+              title: '未读测试广场',
+              subtitle: '主广场',
+              emptyMessage: '暂无消息',
+            ),
+            showPreviewNotice: false,
+            liveState: ConversationChatState(messages: messages),
+            currentUserId: 'user-a',
+            initialUnreadCount: 5,
+            initialFirstUnreadSequence: 10,
+            onLocateSequence: (sequence) async {
+              locatedSequence = sequence;
+              return true;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('5条新消息'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('chat-unread-jump')));
+    await tester.pumpAndSettle();
+
+    expect(locatedSequence, 10);
+    expect(find.text('5条新消息'), findsNothing);
+    expect(find.text('未读消息 10'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('未读消息 10')).dy, lessThan(40));
+    final previousMessage = find.text('未读消息 9');
+    if (previousMessage.evaluate().isNotEmpty) {
+      expect(tester.getBottomRight(previousMessage).dy, lessThanOrEqualTo(0));
+    }
+  });
+
   testWidgets('可变高度长聊天首次打开时稳定停在最底部', (tester) async {
     final timelineController = ChatTimelineViewportController();
     addTearDown(timelineController.dispose);
@@ -1178,6 +1225,63 @@ void main() {
     expect(position.pixels, closeTo(position.maxScrollExtent, 0.5));
     expect(find.text('这是一条用于验证可变高度布局的较长聊天消息 40，它会在较窄屏幕上换行。'), findsOneWidget);
     expect(find.text('短消息 1'), findsNothing);
+  });
+
+  testWidgets('向上加载更早消息后保持原首条消息的屏幕位置', (tester) async {
+    final timelineController = ChatTimelineViewportController();
+    addTearDown(timelineController.dispose);
+    final loadStarted = Completer<void>();
+    final releaseLoad = Completer<void>();
+    var messages = [
+      for (var index = 51; index <= 100; index += 1)
+        _message(sequence: index, text: '分页消息 $index'),
+    ];
+    late StateSetter update;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              update = setState;
+              return ChatMessageTimeline(
+                messages: messages,
+                controller: timelineController.scrollController,
+                hasEarlier: true,
+                onLoadEarlier: () async {
+                  if (!loadStarted.isCompleted) loadStarted.complete();
+                  await releaseLoad.future;
+                  update(() {
+                    messages = [
+                      for (var index = 1; index <= 100; index += 1)
+                        _message(sequence: index, text: '分页消息 $index'),
+                    ];
+                  });
+                  return true;
+                },
+                itemBuilder: (context, message, previous) => ChatMessageBubble(
+                  text: message.previewText,
+                  deliveryState: message.deliveryState,
+                  isMine: true,
+                  avatarInitial: '我',
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, 10000));
+    await tester.pump();
+    await loadStarted.future;
+    final before = tester.getTopLeft(find.text('分页消息 51')).dy;
+
+    releaseLoad.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('分页消息 1'), findsNothing);
+    expect(tester.getTopLeft(find.text('分页消息 51')).dy, closeTo(before, 1));
   });
 
   testWidgets('复用时间线切换会话后重新定位到最底部', (tester) async {

@@ -14,6 +14,7 @@ import 'chat_composer.dart';
 import 'chat_message_bubble.dart';
 import 'chat_message_timeline.dart';
 import 'chat_time.dart';
+import 'chat_unread_jump.dart';
 import 'direct_chat_settings_screen.dart';
 
 class DirectChatScreen extends ConsumerStatefulWidget {
@@ -23,6 +24,8 @@ class DirectChatScreen extends ConsumerStatefulWidget {
     required this.currentUserId,
     this.peerUserId,
     this.peerAvatar,
+    this.initialUnreadCount = 0,
+    this.initialFirstUnreadSequence,
     super.key,
   });
 
@@ -31,6 +34,8 @@ class DirectChatScreen extends ConsumerStatefulWidget {
   final String currentUserId;
   final String? peerUserId;
   final MediaAsset? peerAvatar;
+  final int initialUnreadCount;
+  final int? initialFirstUnreadSequence;
 
   @override
   ConsumerState<DirectChatScreen> createState() => _DirectChatScreenState();
@@ -47,6 +52,8 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
   PageRoute<dynamic>? _route;
   bool _routeVisible = false;
   bool _appVisible = true;
+  late int _unreadJumpCount;
+  late int? _unreadJumpSequence;
 
   @override
   void initState() {
@@ -55,6 +62,8 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
     _chatController = ref.read(
       directChatControllerProvider(widget.conversationId).notifier,
     );
+    _unreadJumpCount = widget.initialUnreadCount;
+    _unreadJumpSequence = widget.initialFirstUnreadSequence;
     WidgetsBinding.instance.addObserver(this);
     _appVisible = _lifecycleIsVisible(WidgetsBinding.instance.lifecycleState);
   }
@@ -207,18 +216,50 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
     }
     final sequence = result.sequence;
     if (sequence == null) return;
-    final target = _messageKeys[sequence]?.currentContext;
-    if (target == null) {
+    if (!await _locateSequence(sequence) && mounted) {
       _showUnavailableAction('该条聊天记录定位');
-      return;
     }
-    if (!target.mounted) return;
+  }
+
+  Future<bool> _locateSequence(int sequence, {double alignment = 0.25}) async {
+    var target = _messageKeys[sequence]?.currentContext;
+    if (target == null) {
+      final loaded = await _chatController.loadAround(sequence);
+      if (!mounted || !loaded) return false;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return false;
+      target = _messageKeys[sequence]?.currentContext;
+    }
+    if (target == null && _timelineController.scrollController.hasClients) {
+      final messages = ref
+          .read(directChatControllerProvider(widget.conversationId))
+          .messages;
+      target = await _timelineController.revealSequence(
+        messages: messages,
+        sequence: sequence,
+        keys: _messageKeys,
+      );
+      if (!mounted) return false;
+    }
+    if (target == null || !target.mounted) return false;
     await Scrollable.ensureVisible(
       target,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOut,
-      alignment: 0.25,
+      alignment: alignment,
     );
+    return true;
+  }
+
+  Future<void> _openUnreadJump() async {
+    final sequence = _unreadJumpSequence;
+    if (sequence == null) return;
+    final located = await _locateSequence(sequence, alignment: 0);
+    if (!mounted || !located) return;
+    setState(() {
+      _unreadJumpCount = 0;
+      _unreadJumpSequence = null;
+    });
   }
 
   @override
@@ -272,22 +313,39 @@ class _DirectChatScreenState extends ConsumerState<DirectChatScreen>
       body: Column(
         children: [
           Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => _composerController.dismiss(_focusNode),
-              child: _MessageList(
-                state: state,
-                userId: widget.currentUserId,
-                controller: _timelineController.scrollController,
-                ownAvatar: ownProfile?.avatar,
-                ownInitial: ownProfile?.initial ?? '我',
-                peerAvatar: currentContact?.avatar ?? widget.peerAvatar,
-                onAvatarTap: _openProfile,
-                onRetry: (clientMessageId) =>
-                    ref.read(provider.notifier).retry(clientMessageId),
-                keyForSequence: (sequence) =>
-                    _messageKeys.putIfAbsent(sequence, GlobalKey.new),
-              ),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () => _composerController.dismiss(_focusNode),
+                    child: _MessageList(
+                      state: state,
+                      userId: widget.currentUserId,
+                      controller: _timelineController.scrollController,
+                      ownAvatar: ownProfile?.avatar,
+                      ownInitial: ownProfile?.initial ?? '我',
+                      peerAvatar: currentContact?.avatar ?? widget.peerAvatar,
+                      onAvatarTap: _openProfile,
+                      onRetry: (clientMessageId) =>
+                          ref.read(provider.notifier).retry(clientMessageId),
+                      onLoadEarlier: ref.read(provider.notifier).loadEarlier,
+                      onLoadLater: ref.read(provider.notifier).loadLater,
+                      keyForSequence: (sequence) =>
+                          _messageKeys.putIfAbsent(sequence, GlobalKey.new),
+                    ),
+                  ),
+                ),
+                if (_unreadJumpCount > 0 && _unreadJumpSequence != null)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: ChatUnreadJump(
+                      count: _unreadJumpCount,
+                      onTap: _openUnreadJump,
+                    ),
+                  ),
+              ],
             ),
           ),
           ChatComposer(
@@ -315,6 +373,8 @@ class _MessageList extends StatelessWidget {
     required this.onAvatarTap,
     required this.keyForSequence,
     required this.onRetry,
+    required this.onLoadEarlier,
+    required this.onLoadLater,
     this.ownAvatar,
     this.peerAvatar,
   });
@@ -328,6 +388,8 @@ class _MessageList extends StatelessWidget {
   final ValueChanged<String?> onAvatarTap;
   final Key Function(int sequence) keyForSequence;
   final ValueChanged<String> onRetry;
+  final Future<bool> Function() onLoadEarlier;
+  final Future<bool> Function() onLoadLater;
 
   @override
   Widget build(BuildContext context) {
@@ -345,6 +407,10 @@ class _MessageList extends StatelessWidget {
     return ChatMessageTimeline(
       controller: controller,
       messages: state.messages,
+      hasEarlier: state.hasEarlier,
+      hasLater: state.hasLater,
+      onLoadEarlier: onLoadEarlier,
+      onLoadLater: onLoadLater,
       itemBuilder: (_, message, previous) =>
           _message(message, previous: previous),
     );

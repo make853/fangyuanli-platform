@@ -8,6 +8,8 @@ ios_device_id="${IOS_STAGING_DEVICE_ID:-}"
 client_role="${TEST_CLIENT_ROLE:-}"
 run_mode="${IOS_STAGING_MODE:-debug}"
 build_identity="${BUILD_IDENTITY:-$($script_dir/staging-source-identity.sh)}"
+build_root="${IOS_STAGING_BUILD_ROOT:-$mobile_dir/build/ios}"
+devicectl_bin="${DEVICECTL_BIN:-xcrun}"
 
 : "${ios_device_id:?IOS_STAGING_DEVICE_ID 必须填写 flutter devices 显示的精确设备 ID}"
 : "${client_role:?TEST_CLIENT_ROLE 必须填写 A 或 B}"
@@ -23,9 +25,18 @@ if [[ "$client_role" != A && "$client_role" != B ]]; then
 fi
 
 case "$run_mode" in
-  debug) flutter_mode_args=() ;;
-  profile) flutter_mode_args=(--profile) ;;
-  release) flutter_mode_args=(--release) ;;
+  debug)
+    flutter_mode_args=()
+    xcode_configuration="Debug"
+    ;;
+  profile)
+    flutter_mode_args=(--profile)
+    xcode_configuration="Profile"
+    ;;
+  release)
+    flutter_mode_args=(--release)
+    xcode_configuration="Release"
+    ;;
   *)
     print -u2 -- "IOS_STAGING_MODE 仅支持 debug、profile 或 release"
     exit 1
@@ -60,7 +71,13 @@ PY
 
 cd "$mobile_dir"
 print -r -- "构建身份：staging · ${client_role} · ${build_identity}"
-"$flutter_bin" run \
+fallback_app="$build_root/${xcode_configuration}-iphoneos/Runner.app"
+fallback_mtime_before=0
+if [[ -d "$fallback_app" ]]; then
+  fallback_mtime_before="$(stat -f '%m' "$fallback_app")"
+fi
+
+if "$flutter_bin" run \
   -d "$ios_device_id" \
   "${flutter_mode_args[@]}" \
   --dart-define=APP_FLAVOR=staging \
@@ -70,4 +87,34 @@ print -r -- "构建身份：staging · ${client_role} · ${build_identity}"
   --dart-define=STAGING_TEST_PHONE_B="$STAGING_TEST_PHONE_B" \
   --dart-define=STAGING_TEST_CODE="$STAGING_TEST_CODE" \
   --dart-define=BUILD_IDENTITY="$build_identity" \
-  --dart-define=TEST_CLIENT_ROLE="$client_role"
+  --dart-define=TEST_CLIENT_ROLE="$client_role"; then
+  exit 0
+fi
+
+# Some Flutter/Xcode combinations successfully produce a signed physical-iOS
+# app in `<Configuration>-iphoneos`, but Flutter still looks only in the legacy
+# `iphoneos` directory and exits before installation. Fall back only for A,
+# only when this invocation produced a newer signed app, so a stale bundle can
+# never be installed by accident.
+if [[ "$client_role" != A || ! -d "$fallback_app" ]]; then
+  exit 1
+fi
+fallback_mtime_after="$(stat -f '%m' "$fallback_app")"
+if (( fallback_mtime_after <= fallback_mtime_before )); then
+  print -u2 -- "Flutter 启动失败，且没有生成新的真机 App，拒绝安装旧产物。"
+  exit 1
+fi
+
+bundle_identifier="${IOS_STAGING_APP_BUNDLE_ID:-$(
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+    "$fallback_app/Info.plist"
+)}"
+print -r -- "检测到 Flutter 产物路径兼容问题，改用 Xcode 官方设备工具安装本次构建。"
+"$devicectl_bin" devicectl device install app \
+  --device "$ios_device_id" \
+  "$fallback_app"
+"$devicectl_bin" devicectl device process launch \
+  --device "$ios_device_id" \
+  --terminate-existing \
+  "$bundle_identifier"
+print -r -- "staging App 已通过备用通道安装并启动。"
