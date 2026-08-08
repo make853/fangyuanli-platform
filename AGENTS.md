@@ -3,6 +3,8 @@
 ## 权威资料
 
 - 产品行为：`docs/product/PRODUCT_SPEC.md`
+- 产品决策入口：`docs/product/DECISION_REGISTER.md`
+- 平台公共能力：`docs/architecture/PLATFORM_CAPABILITY_MAP.md`
 - API：`packages/contracts/openapi-v1.yaml`
 - 实时事件：`packages/contracts/asyncapi-v1.yaml`
 - 数据模型：`database/model.dbml`
