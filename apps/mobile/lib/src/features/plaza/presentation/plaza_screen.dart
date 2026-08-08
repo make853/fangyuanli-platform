@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/navigation/app_navigation.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../conversations/application/conversation_sync_controller.dart';
+import '../../conversations/data/conversation_repository.dart';
 import '../../conversations/domain/community_chat_models.dart';
 import '../../conversations/presentation/community_chat_screen.dart';
 import '../../nearby/presentation/nearby_ui.dart';
@@ -402,10 +403,48 @@ class _PlazaSwitchCard extends StatelessWidget {
   }
 }
 
-class PlazaInfoScreen extends StatelessWidget {
+class PlazaInfoScreen extends ConsumerStatefulWidget {
   const PlazaInfoScreen({required this.plaza, super.key});
 
   final PlazaSummary plaza;
+
+  @override
+  ConsumerState<PlazaInfoScreen> createState() => _PlazaInfoScreenState();
+}
+
+class _PlazaInfoScreenState extends ConsumerState<PlazaInfoScreen> {
+  late String _notificationMode = widget.plaza.notificationMode;
+  bool _savingNotificationMode = false;
+
+  Future<void> _setNotificationsEnabled(bool enabled) async {
+    final conversationId = widget.plaza.conversationId;
+    if (conversationId == null || _savingNotificationMode) return;
+    setState(() => _savingNotificationMode = true);
+    try {
+      final mode = await ref
+          .read(conversationSettingsRepositoryProvider)
+          .updateNotificationMode(conversationId, enabled ? 'normal' : 'muted');
+      if (!mounted) return;
+      setState(() {
+        _notificationMode = mode;
+        _savingNotificationMode = false;
+      });
+      ref
+          .read(plazaControllerProvider.notifier)
+          .setNotificationMode(widget.plaza.id, mode);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(enabled ? '已接收此广场通知' : '此广场已开启免打扰')),
+        );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _savingNotificationMode = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('设置失败：$error')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -420,8 +459,8 @@ class PlazaInfoScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
         children: [
-          if (plaza.conversationId == null) ...[
-            NearbyPreviewNotice(text: '${plaza.name}目前使用交互预览数据'),
+          if (widget.plaza.conversationId == null) ...[
+            NearbyPreviewNotice(text: '${widget.plaza.name}目前使用交互预览数据'),
             const SizedBox(height: 14),
           ],
           Card(
@@ -431,12 +470,12 @@ class PlazaInfoScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    plaza.name,
+                    widget.plaza.name,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${plaza.isPrimary ? '当前主广场' : '可发言的相邻广场'} · ${plaza.activityLabel}',
+                    '${widget.plaza.isPrimary ? '当前主广场' : '可发言的相邻广场'} · ${widget.plaza.activityLabel}',
                     style: const TextStyle(color: Color(0xFF66736D)),
                   ),
                 ],
@@ -447,11 +486,20 @@ class PlazaInfoScreen extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.notifications_none_rounded),
-                  title: const Text('通知设置'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => pending('通知设置'),
+                SwitchListTile(
+                  secondary: const Icon(Icons.notifications_none_rounded),
+                  title: const Text('接收此广场通知'),
+                  subtitle: Text(
+                    _notificationMode == 'muted'
+                        ? '未读仍会保留，但显示为灰点且不计入底栏红点'
+                        : '新消息显示红点，并计入广场底栏未读',
+                  ),
+                  value: _notificationMode != 'muted',
+                  onChanged:
+                      widget.plaza.conversationId == null ||
+                          _savingNotificationMode
+                      ? null
+                      : _setNotificationsEnabled,
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(

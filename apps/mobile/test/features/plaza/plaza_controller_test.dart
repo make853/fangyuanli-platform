@@ -256,6 +256,52 @@ void main() {
     await events.close();
     controller.dispose();
   });
+
+  test('单广场免打扰立即把红色未读改为灰色且不计入底栏', () async {
+    final controller = PlazaController(
+      _CompletingLocationSource(),
+      _FakeGeoContextRepository(
+        GeoContext(
+          locationContextToken: 'token',
+          expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+          anchor: const GeoAnchorState(
+            radiusMeters: 150,
+            isReused: true,
+            recalculationPending: false,
+          ),
+          plazas: const [],
+        ),
+      ),
+      snapshotStore: _MemoryPlazaSnapshotStore(
+        const PlazaOverviewSnapshot(
+          plazas: [
+            PlazaSummary(
+              id: 'plaza-1',
+              conversationId: 'conversation-1',
+              name: '主广场',
+              isPrimary: true,
+              unreadCount: 4,
+              unreadAppearance: UnreadAppearance.red,
+            ),
+          ],
+          anchorRadiusMeters: 150,
+        ),
+      ),
+      ownerUserId: 'user-a',
+      refreshOnInitialize: false,
+    );
+    await _waitFor(() => controller.state.plazas.isNotEmpty);
+
+    controller.setNotificationMode('plaza-1', 'muted');
+
+    expect(controller.state.plazas.single.notificationMode, 'muted');
+    expect(
+      controller.state.plazas.single.unreadAppearance,
+      UnreadAppearance.gray,
+    );
+    expect(controller.state.navigationUnread, 0);
+    controller.dispose();
+  });
 }
 
 Future<void> _waitFor(bool Function() predicate) async {

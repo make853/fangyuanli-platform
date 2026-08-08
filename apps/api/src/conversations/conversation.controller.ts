@@ -6,6 +6,7 @@ import {
   HttpException,
   Param,
   Post,
+  Patch,
   Put,
   Query,
   UseGuards
@@ -111,6 +112,26 @@ export class ConversationController {
           lastReadSequence: body.lastReadSequence,
           idempotencyKey,
           locationContextToken
+        }),
+      requestId
+    );
+  }
+
+  @Patch(":conversationId/settings")
+  settings(
+    @CurrentUserId() userId: string,
+    @Param("conversationId") conversationId: string,
+    @Body() body: Record<string, unknown>,
+    @Headers("idempotency-key") idempotencyKey?: string,
+    @Headers("x-request-id") requestId?: string
+  ): Promise<unknown> {
+    return this.respond(
+      () =>
+        this.conversations.updateSettings({
+          userId,
+          conversationId,
+          body,
+          idempotencyKey
         }),
       requestId
     );

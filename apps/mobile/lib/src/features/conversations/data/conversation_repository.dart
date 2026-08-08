@@ -63,6 +63,7 @@ class HttpConversationRepository implements ConversationRepository {
       '/conversations',
       queryParameters: const {'limit': 50},
     );
+
     final data = _data(envelope);
     final rawItems = data['items'];
     if (rawItems is! List) {
@@ -153,3 +154,32 @@ class HttpConversationRepository implements ConversationRepository {
 final conversationRepositoryProvider = Provider<ConversationRepository>((ref) {
   return HttpConversationRepository(ref.watch(authenticatedApiClientProvider));
 });
+
+class ConversationSettingsRepository {
+  ConversationSettingsRepository(this._client);
+
+  final AuthenticatedApiClient _client;
+
+  Future<String> updateNotificationMode(
+    String conversationId,
+    String notificationOverride,
+  ) async {
+    final envelope = await _client.patch(
+      '/conversations/$conversationId/settings',
+      idempotent: true,
+      data: {'notificationOverride': notificationOverride},
+    );
+    final data = envelope['data'];
+    if (data is! Map<String, dynamic>) {
+      throw const ApiFailure(message: '服务器返回的数据格式不正确');
+    }
+    return data['notificationOverride'] as String? ?? notificationOverride;
+  }
+}
+
+final conversationSettingsRepositoryProvider =
+    Provider<ConversationSettingsRepository>((ref) {
+      return ConversationSettingsRepository(
+        ref.watch(authenticatedApiClientProvider),
+      );
+    });
