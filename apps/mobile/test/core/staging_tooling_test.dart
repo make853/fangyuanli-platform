@@ -60,12 +60,85 @@ print -r -- "\$@" > '${capturedArguments.path}'
     expect(result.stderr, contains('测试端 B 必须是模拟器'));
     expect(await capturedArguments.exists(), isFalse);
   }, skip: macOsOnly);
+
+  test('physical A installs only a newly built fallback artifact', () async {
+    final buildRoot = Directory('${temporaryDirectory.path}/ios-build');
+    final fallbackApp = Directory(
+      '${buildRoot.path}/Profile-iphoneos/Runner.app',
+    );
+    final deviceCtlArguments = File(
+      '${temporaryDirectory.path}/devicectl-arguments.txt',
+    );
+    final fakeDeviceCtl = File('${temporaryDirectory.path}/xcrun');
+    await fakeDeviceCtl.writeAsString('''#!/bin/zsh
+print -r -- "\$@" >> '${deviceCtlArguments.path}'
+''');
+    await Process.run('chmod', ['+x', fakeDeviceCtl.path]);
+    await fakeFlutter.writeAsString('''#!/bin/zsh
+if [[ "\$1" == "devices" ]]; then
+  print -r -- '[{"name":"真实 iPhone","id":"physical-a","emulator":false}]'
+  exit 0
+fi
+mkdir -p '${fallbackApp.path}'
+touch '${fallbackApp.path}'
+exit 1
+''');
+
+    final result = await _runLauncher(
+      fakeFlutter: fakeFlutter,
+      deviceId: 'physical-a',
+      role: 'A',
+      mode: 'profile',
+      extraEnvironment: {
+        'IOS_STAGING_BUILD_ROOT': buildRoot.path,
+        'IOS_STAGING_APP_BUNDLE_ID': 'com.example.fallback',
+        'DEVICECTL_BIN': fakeDeviceCtl.path,
+      },
+    );
+
+    expect(result.exitCode, 0, reason: result.stderr.toString());
+    expect(result.stdout, contains('备用通道安装并启动'));
+    final arguments = await deviceCtlArguments.readAsLines();
+    expect(arguments, hasLength(2));
+    expect(arguments.first, contains('device install app'));
+    expect(arguments.first, contains(fallbackApp.path));
+    expect(arguments.last, contains('device process launch'));
+    expect(arguments.last, contains('com.example.fallback'));
+  }, skip: macOsOnly);
+
+  test('fallback refuses a stale physical artifact', () async {
+    final buildRoot = Directory('${temporaryDirectory.path}/ios-build');
+    final fallbackApp = Directory(
+      '${buildRoot.path}/Profile-iphoneos/Runner.app',
+    );
+    await fallbackApp.create(recursive: true);
+    await fakeFlutter.writeAsString('''#!/bin/zsh
+if [[ "\$1" == "devices" ]]; then
+  print -r -- '[{"name":"真实 iPhone","id":"physical-a","emulator":false}]'
+  exit 0
+fi
+exit 1
+''');
+
+    final result = await _runLauncher(
+      fakeFlutter: fakeFlutter,
+      deviceId: 'physical-a',
+      role: 'A',
+      mode: 'profile',
+      extraEnvironment: {'IOS_STAGING_BUILD_ROOT': buildRoot.path},
+    );
+
+    expect(result.exitCode, isNot(0));
+    expect(result.stderr, contains('拒绝安装旧产物'));
+  }, skip: macOsOnly);
 }
 
 Future<ProcessResult> _runLauncher({
   required File fakeFlutter,
   required String deviceId,
   required String role,
+  String mode = 'debug',
+  Map<String, String> extraEnvironment = const {},
 }) {
   return Process.run(
     'zsh',
@@ -75,13 +148,14 @@ Future<ProcessResult> _runLauncher({
       'FLUTTER_BIN': fakeFlutter.path,
       'IOS_STAGING_DEVICE_ID': deviceId,
       'TEST_CLIENT_ROLE': role,
-      'IOS_STAGING_MODE': 'debug',
+      'IOS_STAGING_MODE': mode,
       'BUILD_IDENTITY': 'source-1234',
       'API_BASE_URL': 'http://127.0.0.1:3000',
       'REALTIME_URL': 'ws://127.0.0.1:3000/ws/v1',
       'STAGING_TEST_PHONE_A': '13800000001',
       'STAGING_TEST_PHONE_B': '13800000002',
       'STAGING_TEST_CODE': '123456',
+      ...extraEnvironment,
     },
     stdoutEncoding: utf8,
     stderrEncoding: utf8,
