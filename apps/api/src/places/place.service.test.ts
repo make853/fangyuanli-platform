@@ -41,6 +41,9 @@ function projection(
     address: "测试路",
     categoryKey: "food_retail",
     categoryName: "餐饮与商铺",
+    providerPhotoUrl: null,
+    providerPhotoTitle: null,
+    providerPhotoCheckedAt: new Date("2026-08-02T08:00:00.000Z"),
     longitude: location.longitude + 0.001,
     latitude: location.latitude,
     certificationStatus: "unverified",
@@ -80,6 +83,7 @@ class FakePlaceRepository {
   active: PlaceProjection[] = [];
   afterActivation: PlaceProjection[] | null = null;
   activated: PlaceCandidate[] = [];
+  checkedPlaceGroups: string[] = [];
 
   async findActiveAround(): Promise<PlaceProjection[]> {
     this.calls += 1;
@@ -89,6 +93,10 @@ class FakePlaceRepository {
   async activateCandidates(candidates: PlaceCandidate[]): Promise<void> {
     this.activated.push(...candidates);
     if (this.afterActivation) this.active = this.afterActivation;
+  }
+
+  async markProviderPhotosChecked(input: { placeGroupIds: string[] }): Promise<void> {
+    this.checkedPlaceGroups.push(...input.placeGroupIds);
   }
 }
 
@@ -162,6 +170,8 @@ test("refreshes candidates and re-queries persisted groups when local results ar
       latitude: location.latitude,
       rawCategoryCode: "050100",
       rawCategoryName: "中餐厅",
+      providerPhotoUrl: "https://images.example.test/store.jpg",
+      providerPhotoTitle: "门店环境",
       sourceUpdatedAt: new Date("2026-08-02T08:00:00.000Z")
     }
   ];
@@ -176,6 +186,54 @@ test("refreshes candidates and re-queries persisted groups when local results ar
   assert.equal(repository.activated.length, 1);
   assert.equal(repository.calls, 2);
   assert.equal(result.items[0]?.placeGroupId, "new-place");
+});
+
+test("refreshes stale visible provider photos without waiting for missing places", async () => {
+  const { repository, provider, service } = fixture();
+  repository.active = [
+    projection("stale", {
+      providerPhotoCheckedAt: new Date("2026-07-20T08:00:00.000Z")
+    })
+  ];
+  repository.afterActivation = [
+    projection("stale", {
+      providerPhotoUrl: "https://images.example.test/store.jpg",
+      providerPhotoTitle: "门店环境",
+      providerPhotoCheckedAt: new Date("2026-08-02T08:01:00.000Z")
+    })
+  ];
+  provider.results = [
+    {
+      provider: "amap",
+      providerPlaceId: "amap-1",
+      name: "地点stale",
+      address: "测试路",
+      coordinateSystem: "gcj02",
+      longitude: location.longitude + 0.001,
+      latitude: location.latitude,
+      rawCategoryCode: "050100",
+      rawCategoryName: "中餐厅",
+      providerPhotoUrl: "https://images.example.test/store.jpg",
+      providerPhotoTitle: "门店环境",
+      sourceUpdatedAt: new Date("2026-08-02T08:01:00.000Z")
+    }
+  ];
+
+  const result = await service.discover({
+    userId,
+    locationContextToken: "location-token",
+    body: { limit: 1 },
+    now: new Date("2026-08-02T08:01:00.000Z")
+  });
+
+  assert.equal(provider.calls, 1);
+  assert.equal(repository.calls, 2);
+  assert.deepEqual(repository.checkedPlaceGroups, ["stale"]);
+  assert.deepEqual(result.items[0]?.image, {
+    source: "amap",
+    url: "https://images.example.test/store.jpg",
+    title: "门店环境"
+  });
 });
 
 test("does not call the map provider for history-only discovery", async () => {

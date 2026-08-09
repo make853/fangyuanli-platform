@@ -16,6 +16,9 @@ type PlaceRow = {
   address: string | null;
   category_key: PlaceProjection["categoryKey"];
   category_name: string;
+  provider_photo_url: string | null;
+  provider_photo_title: string | null;
+  provider_photo_checked_at: Date | null;
   longitude_gcj02: string;
   latitude_gcj02: string;
   certification_status:
@@ -61,6 +64,9 @@ export class PlaceRepository {
               poi.address,
               poi.display_category_key AS category_key,
               category.display_name AS category_name,
+              poi.provider_photo_url,
+              poi.provider_photo_title,
+              poi.provider_photo_checked_at,
               poi.longitude_gcj02,
               poi.latitude_gcj02,
               pg.certification_status,
@@ -138,6 +144,23 @@ export class PlaceRepository {
     });
   }
 
+  async markProviderPhotosChecked(input: {
+    placeGroupIds: string[];
+    checkedAt: Date;
+  }): Promise<void> {
+    if (input.placeGroupIds.length === 0) return;
+    await this.database.query(
+      `UPDATE place_pois poi
+          SET provider_photo_checked_at = $2,
+              updated_at = now()
+         FROM place_groups place_group
+        WHERE place_group.poi_id = poi.id
+          AND place_group.id = ANY($1::uuid[])
+          AND poi.provider_photo_checked_at IS DISTINCT FROM $2`,
+      [input.placeGroupIds, input.checkedAt]
+    );
+  }
+
   private async activateCandidate(
     transaction: QueryExecutor,
     candidate: PlaceCandidate
@@ -151,8 +174,10 @@ export class PlaceRepository {
       `INSERT INTO place_pois (
          id, amap_poi_id, name, address, longitude_gcj02, latitude_gcj02,
          coordinate_system, amap_category_code, amap_category_name,
-         display_category_key, source_updated_at, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, 'gcj02', $7, $8, $9, $10, now(), now())
+         display_category_key, provider_photo_url, provider_photo_title,
+         provider_photo_checked_at, source_updated_at, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, 'gcj02', $7, $8, $9, $10, $11,
+                 $12, $12, now(), now())
        ON CONFLICT (amap_poi_id) DO UPDATE
          SET name = EXCLUDED.name,
              address = EXCLUDED.address,
@@ -161,6 +186,9 @@ export class PlaceRepository {
              amap_category_code = EXCLUDED.amap_category_code,
              amap_category_name = EXCLUDED.amap_category_name,
              display_category_key = EXCLUDED.display_category_key,
+             provider_photo_url = EXCLUDED.provider_photo_url,
+             provider_photo_title = EXCLUDED.provider_photo_title,
+             provider_photo_checked_at = EXCLUDED.provider_photo_checked_at,
              source_updated_at = EXCLUDED.source_updated_at,
              updated_at = now()
        RETURNING id`,
@@ -174,6 +202,8 @@ export class PlaceRepository {
         candidate.rawCategoryCode,
         candidate.rawCategoryName,
         candidate.categoryKey,
+        candidate.providerPhotoUrl,
+        candidate.providerPhotoTitle,
         candidate.sourceUpdatedAt
       ]
     );
@@ -209,6 +239,9 @@ export class PlaceRepository {
       address: row.address,
       categoryKey: row.category_key,
       categoryName: row.category_name,
+      providerPhotoUrl: row.provider_photo_url,
+      providerPhotoTitle: row.provider_photo_title,
+      providerPhotoCheckedAt: row.provider_photo_checked_at,
       longitude: Number(row.longitude_gcj02),
       latitude: Number(row.latitude_gcj02),
       certificationStatus:

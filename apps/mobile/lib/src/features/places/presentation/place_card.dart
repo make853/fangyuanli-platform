@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../nearby/presentation/nearby_ui.dart';
@@ -22,16 +23,7 @@ class PlaceCard extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0F3F1),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Text(place.icon, style: const TextStyle(fontSize: 24)),
-              ),
+              _PlaceThumbnail(place: place),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -74,6 +66,42 @@ class PlaceCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PlaceThumbnail extends StatelessWidget {
+  const _PlaceThumbnail({required this.place});
+
+  final PlaceSummary place;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Container(
+      key: ValueKey('place-thumbnail-fallback-${place.id}'),
+      color: const Color(0xFFF0F3F1),
+      alignment: Alignment.center,
+      child: Text(place.icon, style: const TextStyle(fontSize: 24)),
+    );
+    final image = place.image;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(15),
+      child: SizedBox.square(
+        dimension: 48,
+        child: image == null
+            ? fallback
+            : CachedNetworkImage(
+                key: ValueKey('place-thumbnail-${place.id}'),
+                imageUrl: image.url,
+                fit: BoxFit.cover,
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                useOldImageOnUrlChange: true,
+                memCacheWidth: 144,
+                placeholder: (_, _) => fallback,
+                errorWidget: (_, _, _) => fallback,
+              ),
       ),
     );
   }

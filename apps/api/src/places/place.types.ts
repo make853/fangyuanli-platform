@@ -31,6 +31,8 @@ export type PlaceCandidate = Gcj02Point & {
   address: string | null;
   rawCategoryCode: string | null;
   rawCategoryName: string | null;
+  providerPhotoUrl: string | null;
+  providerPhotoTitle: string | null;
   categoryKey: PlaceCategoryKey;
   sourceUpdatedAt: Date;
 };
@@ -44,6 +46,9 @@ export type PlaceProjection = {
   address: string | null;
   categoryKey: PlaceCategoryKey;
   categoryName: string;
+  providerPhotoUrl: string | null;
+  providerPhotoTitle: string | null;
+  providerPhotoCheckedAt: Date | null;
   longitude: number;
   latitude: number;
   certificationStatus: "unverified" | "reviewPending" | "verified";
@@ -77,6 +82,11 @@ export type PlaceCard = {
   placeGroupId: string;
   conversationId: string;
   name: string;
+  image: {
+    source: "amap";
+    url: string;
+    title: string | null;
+  } | null;
   category: { key: PlaceCategoryKey; name: string };
   distance: { meters: number; display: string };
   certificationStatus: "unverified" | "reviewPending" | "verified";

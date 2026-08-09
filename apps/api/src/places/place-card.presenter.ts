@@ -33,6 +33,13 @@ export class PlaceCardPresenter {
       placeGroupId: projection.placeGroupId,
       conversationId: projection.conversationId,
       name: projection.name,
+      image: projection.providerPhotoUrl
+        ? {
+            source: "amap",
+            url: projection.providerPhotoUrl,
+            title: projection.providerPhotoTitle
+          }
+        : null,
       category: { key: projection.categoryKey, name: projection.categoryName },
       distance: { meters, display: displayDistance(meters) },
       certificationStatus: projection.certificationStatus,

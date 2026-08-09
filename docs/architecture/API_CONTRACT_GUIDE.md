@@ -755,7 +755,12 @@ X-Location-Context: locctx_opaque
   "placeGroupId": "019c...",
   "conversationId": "019c...",
   "name": "隆江猪脚饭",
-  "category": {"key": "food", "name": "餐饮"},
+  "category": {"key": "food_retail", "name": "餐饮与商铺"},
+  "image": {
+    "source": "amap",
+    "url": "https://example.com/place-photo.jpg",
+    "title": "门店环境"
+  },
   "distance": {"meters": 320, "display": "约320米"},
   "certificationStatus": "verified",
   "heat": {"level": "active", "display": "活跃"},
@@ -763,6 +768,11 @@ X-Location-Context: locctx_opaque
   "allowedActions": ["openChat", "viewDetail", "report"]
 }
 ```
+
+`image` 没有可用图片时固定返回 `null`。`source=amap` 表示可刷新的外部
+POI 图片，不代表商家官方头像或平台认证；客户端加载失败时必须回退类别图标，
+不得导致整张卡片失败。未来商家认领并上传自有头像后，由服务端按统一优先级覆盖，
+客户端不自行拼接多个图片来源。
 
 热度直接使用五级文字，不使用含义不清的绿点或灰点。
 

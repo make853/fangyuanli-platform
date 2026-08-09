@@ -61,6 +61,33 @@ enum PlaceUnreadAppearance {
 }
 
 @immutable
+class PlaceImage {
+  const PlaceImage({required this.source, required this.url, this.title});
+
+  static PlaceImage? tryParse(Object? value) {
+    if (value is! Map) return null;
+    final json = Map<String, dynamic>.from(value);
+    final source = json['source'];
+    final rawUrl = json['url'];
+    if (source != 'amap' || rawUrl is! String) return null;
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    final rawTitle = json['title'];
+    return PlaceImage(
+      source: source as String,
+      url: rawUrl,
+      title: rawTitle is String && rawTitle.trim().isNotEmpty
+          ? rawTitle.trim()
+          : null,
+    );
+  }
+
+  final String source;
+  final String url;
+  final String? title;
+}
+
+@immutable
 class PlaceSummary {
   const PlaceSummary({
     required this.id,
@@ -72,6 +99,7 @@ class PlaceSummary {
     required this.heat,
     required this.isVerified,
     required this.isCommercial,
+    this.image,
     this.conversationId = '',
     this.activePeople,
     this.isManagedByMe = false,
@@ -103,6 +131,7 @@ class PlaceSummary {
       heat: PlaceHeat.fromWire(heatJson['level'] as String),
       isVerified: json['certificationStatus'] == 'verified',
       isCommercial: category.isUsuallyCommercial,
+      image: PlaceImage.tryParse(json['image']),
       isManagedByMe: allowedActions.contains('managePlace'),
       isInHistory: isInHistory,
       unreadCount: (unreadJson['count'] as num).toInt(),
@@ -122,6 +151,7 @@ class PlaceSummary {
   final PlaceHeat heat;
   final bool isVerified;
   final bool isCommercial;
+  final PlaceImage? image;
   final int? activePeople;
   final bool isManagedByMe;
   final bool isInHistory;
