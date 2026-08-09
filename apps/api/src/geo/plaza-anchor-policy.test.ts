@@ -8,11 +8,9 @@ import type { PlazaPolicyValues } from "./plaza-policy.js";
 const userId = "019f0000-0000-7000-8000-00000000000a";
 const now = new Date("2026-08-02T10:00:00.000Z");
 const policy: PlazaPolicyValues = {
-  version: 1,
+  version: 2,
   anchorRadiusMeters: 150,
   maximumAccuracyMeters: 80,
-  switchConfirmationCount: 3,
-  switchDwellMilliseconds: 60_000,
   locationContextTtlMilliseconds: 600_000
 };
 
@@ -30,7 +28,7 @@ function anchor(overrides: Partial<PlazaAnchor> = {}): PlazaAnchor {
     pendingConfirmationCount: 0,
     pendingFirstSeenAt: null,
     lastAccuracyMeters: 10,
-    anchorPolicyVersion: 1,
+    anchorPolicyVersion: 2,
     createdAt: new Date("2026-08-02T09:00:00.000Z"),
     lastConfirmedAt: new Date("2026-08-02T09:59:00.000Z"),
     updatedAt: new Date("2026-08-02T09:59:00.000Z"),
@@ -77,22 +75,23 @@ test("keeps the existing four plazas inside the 150 metre anchor", () => {
   assert.equal(decision.recalculationPending, false);
 });
 
-test("switches only after both consecutive confirmations and dwell time", () => {
-  const first = decide(anchor(), now);
-  assert.equal(first.recalculationPending, true);
-  assert.equal(first.anchor.pendingConfirmationCount, 1);
+test("switches on the first accurate sample outside the anchor", () => {
+  const decision = decide(anchor(), now);
 
-  const second = decide(first.anchor, new Date(now.getTime() + 30_000));
-  assert.equal(second.recalculationPending, true);
-  assert.equal(second.anchor.pendingConfirmationCount, 2);
-
-  const third = decide(second.anchor, new Date(now.getTime() + 61_000));
-  assert.equal(third.recalculationPending, false);
-  assert.equal(third.isReused, false);
-  assert.deepEqual(third.plazaIds, ["new-main", "new-a", "new-b", "new-c"]);
+  assert.equal(decision.recalculationPending, false);
+  assert.equal(decision.isReused, false);
+  assert.deepEqual(decision.plazaIds, ["new-main", "new-a", "new-b", "new-c"]);
+  assert.deepEqual(decision.anchor.point, {
+    coordinateSystem: "gcj02",
+    longitude: 121.4755,
+    latitude: 31.2304
+  });
+  assert.equal(decision.anchor.pendingPlazaIds, null);
+  assert.equal(decision.anchor.pendingConfirmationCount, 0);
+  assert.equal(decision.anchor.pendingFirstSeenAt, null);
 });
 
-test("resets pending confirmation when the candidate combination changes", () => {
+test("clears obsolete pending confirmation state while switching", () => {
   const existing = anchor({
     pendingPlazaIds: ["other-main", "other-a", "other-b", "other-c"],
     pendingConfirmationCount: 2,
@@ -100,7 +99,8 @@ test("resets pending confirmation when the candidate combination changes", () =>
   });
   const decision = decide(existing, now);
 
-  assert.equal(decision.recalculationPending, true);
-  assert.equal(decision.anchor.pendingConfirmationCount, 1);
-  assert.equal(decision.anchor.pendingFirstSeenAt?.getTime(), now.getTime());
+  assert.equal(decision.recalculationPending, false);
+  assert.equal(decision.anchor.pendingPlazaIds, null);
+  assert.equal(decision.anchor.pendingConfirmationCount, 0);
+  assert.equal(decision.anchor.pendingFirstSeenAt, null);
 });

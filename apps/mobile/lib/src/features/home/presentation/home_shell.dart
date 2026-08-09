@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/location/foreground_location_scheduler.dart';
 import '../../../core/navigation/app_navigation.dart';
 import '../../../core/realtime/realtime_controller.dart';
 import '../../activities/presentation/activity_composer_screen.dart';
@@ -33,6 +34,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
   PageRoute<dynamic>? _route;
   bool _routeVisible = false;
   bool _appVisible = true;
+  late final ForegroundLocationScheduler _locationScheduler;
 
   static const _destinations = [
     _Destination('广场', Icons.forum_outlined, Icons.forum_rounded),
@@ -47,6 +49,14 @@ class _HomeShellState extends ConsumerState<HomeShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _appVisible = _lifecycleIsVisible(WidgetsBinding.instance.lifecycleState);
+    _locationScheduler = ForegroundLocationScheduler(
+      refresh: () =>
+          ref.read(plazaControllerProvider.notifier).refresh(silent: true),
+    );
+    if (_appVisible) {
+      // PlazaController performs the initial refresh when first watched.
+      _locationScheduler.enterForeground(refreshImmediately: false);
+    }
   }
 
   @override
@@ -63,6 +73,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
   void dispose() {
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
+    _locationScheduler.dispose();
     super.dispose();
   }
 
@@ -73,6 +84,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
       setState(() => _appVisible = appVisible);
     }
     if (state == AppLifecycleState.resumed) {
+      _locationScheduler.enterForeground();
       unawaited(
         ref.read(realtimeControllerProvider.notifier).recoverAfterResume(),
       );
@@ -87,9 +99,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
       unawaited(
         ref.read(profileControllerProvider.notifier).load(silent: true),
       );
-      unawaited(
-        ref.read(plazaControllerProvider.notifier).refresh(silent: true),
-      );
+    } else {
+      _locationScheduler.leaveForeground();
     }
   }
 

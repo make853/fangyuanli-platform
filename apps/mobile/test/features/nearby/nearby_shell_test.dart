@@ -125,7 +125,7 @@ void main() {
     expect(find.text('东街广场'), findsOneWidget);
   });
 
-  testWidgets('区域切换后保留当前旧广场为只读，选择新广场后恢复输入', (tester) async {
+  testWidgets('区域切换后移除旧广场并自动进入新主广场', (tester) async {
     const originalPlazas = [
       PlazaSummary(id: 'old-main', name: '旧主广场', isPrimary: true),
       PlazaSummary(id: 'old-east', name: '旧东广场', isPrimary: false),
@@ -162,20 +162,53 @@ void main() {
     await tester.pumpWidget(app(newPlazas));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('plaza-chat-old-main')), findsOneWidget);
-    expect(find.text('已离开此广场，仅可查看历史消息'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('chat-read-only-surface')),
-      findsOneWidget,
-    );
-    expect(find.byType(TextField), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('plaza-switch-new-main')));
-    await tester.pumpAndSettle();
-
     expect(find.byKey(const ValueKey('plaza-chat-new-main')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plaza-chat-old-main')), findsNothing);
     expect(find.text('已离开此广场，仅可查看历史消息'), findsNothing);
     expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('四广场切换分别保留未发送草稿', (tester) async {
+    const plazas = [
+      PlazaSummary(id: 'main', name: '主广场', isPrimary: true),
+      PlazaSummary(id: 'east', name: '东广场', isPrimary: false),
+      PlazaSummary(id: 'west', name: '西广场', isPrimary: false),
+      PlazaSummary(id: 'south', name: '南广场', isPrimary: false),
+    ];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceLocationSourceProvider.overrideWithValue(
+            _UnavailableLocationSource(),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: PlazaScreen(plazas: plazas)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '主广场草稿');
+    await tester.tap(find.byKey(const ValueKey('plaza-switch-east')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('主广场草稿'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '东广场草稿');
+    await tester.tap(find.byKey(const ValueKey('plaza-switch-main')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '主广场草稿',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('plaza-switch-east')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '东广场草稿',
+    );
   });
 
   testWidgets('地点卡片主体进入聊天，聊天右上角进入地点详情', (tester) async {

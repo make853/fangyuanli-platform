@@ -52,37 +52,7 @@ export class PlazaAnchorPolicy {
       return this.accept(input, existing.plazaIds, true, existing.createdAt);
     }
 
-    const isSamePending =
-      existing.pendingPlazaIds !== null &&
-      this.sameCombination(existing.pendingPlazaIds, candidatePlazaIds);
-    const pendingFirstSeenAt = isSamePending
-      ? (existing.pendingFirstSeenAt ?? now)
-      : now;
-    const pendingConfirmationCount = isSamePending
-      ? existing.pendingConfirmationCount + 1
-      : 1;
-    const dwellMet =
-      now.getTime() - pendingFirstSeenAt.getTime() >= policy.switchDwellMilliseconds;
-    const confirmationsMet =
-      pendingConfirmationCount >= policy.switchConfirmationCount;
-
-    if (dwellMet && confirmationsMet) {
-      return this.accept(input, candidatePlazaIds, false, existing.createdAt);
-    }
-
-    return {
-      plazaIds: [...existing.plazaIds],
-      anchor: {
-        ...existing,
-        pendingPlazaIds: [...candidatePlazaIds],
-        pendingConfirmationCount,
-        pendingFirstSeenAt,
-        lastAccuracyMeters: input.accuracyMeters,
-        updatedAt: now
-      },
-      isReused: true,
-      recalculationPending: true
-    };
+    return this.accept(input, candidatePlazaIds, false, existing.createdAt);
   }
 
   private accept(

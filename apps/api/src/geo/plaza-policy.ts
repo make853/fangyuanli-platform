@@ -4,8 +4,6 @@ export type PlazaPolicyValues = {
   version: number;
   anchorRadiusMeters: number;
   maximumAccuracyMeters: number;
-  switchConfirmationCount: number;
-  switchDwellMilliseconds: number;
   locationContextTtlMilliseconds: number;
 };
 
@@ -15,7 +13,7 @@ export class PlazaPolicy {
 
   values(): PlazaPolicyValues {
     return {
-      version: 1,
+      version: 2,
       anchorRadiusMeters: this.integer("PLAZA_ANCHOR_RADIUS_METERS", 150, 50, 500),
       maximumAccuracyMeters: this.integer(
         "PLAZA_MAXIMUM_ACCURACY_METERS",
@@ -23,14 +21,6 @@ export class PlazaPolicy {
         10,
         500
       ),
-      switchConfirmationCount: this.integer(
-        "PLAZA_SWITCH_CONFIRMATION_COUNT",
-        3,
-        1,
-        10
-      ),
-      switchDwellMilliseconds:
-        this.integer("PLAZA_SWITCH_DWELL_SECONDS", 60, 0, 600) * 1_000,
       locationContextTtlMilliseconds:
         this.integer("LOCATION_CONTEXT_TTL_SECONDS", 600, 60, 1_800) * 1_000
     };
