@@ -2711,7 +2711,7 @@ components:
     PlaceCard:
       type: object
       required:
-        [placeGroupId, conversationId, name, category, distance, certificationStatus, heat, unread, allowedActions]
+        [placeGroupId, conversationId, name, category, image, distance, certificationStatus, heat, unread, allowedActions]
       properties:
         placeGroupId:
           type: string
@@ -2723,6 +2723,10 @@ components:
           type: string
         category:
           $ref: '#/components/schemas/PlaceCategory'
+        image:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PlaceImage'
         distance:
           type: object
           required: [meters, display]
@@ -2751,6 +2755,20 @@ components:
             type: string
         version:
           type: integer
+
+    PlaceImage:
+      type: object
+      required: [source, url, title]
+      properties:
+        source:
+          type: string
+          enum: [amap]
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+          nullable: true
 
     PlaceDiscoverRequest:
       type: object

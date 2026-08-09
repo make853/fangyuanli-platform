@@ -56,7 +56,14 @@ test("requests Amap POIs with GCJ-02 coordinates and parses safe candidates", as
             address: "测试路1号",
             location: "116.474000,39.993600",
             type: "餐饮服务;中餐厅",
-            typecode: "050100"
+            typecode: "050100",
+            photos: [
+              { title: "无效图片", url: "javascript:alert(1)" },
+              {
+                title: "门店环境",
+                url: "http://images.example.test/store.jpg"
+              }
+            ]
           },
           {
             id: "invalid-location",
@@ -86,6 +93,7 @@ test("requests Amap POIs with GCJ-02 coordinates and parses safe candidates", as
   assert.equal(url?.searchParams.get("types"), "050000|060000|070000");
   assert.equal(url?.searchParams.get("sortrule"), "weight");
   assert.equal(url?.searchParams.get("page_size"), "20");
+  assert.equal(url?.searchParams.get("show_fields"), "photos");
   assert.deepEqual(candidates, [
     {
       provider: "amap",
@@ -97,6 +105,8 @@ test("requests Amap POIs with GCJ-02 coordinates and parses safe candidates", as
       latitude: 39.9936,
       rawCategoryCode: "050100",
       rawCategoryName: "餐饮服务;中餐厅",
+      providerPhotoUrl: "https://images.example.test/store.jpg",
+      providerPhotoTitle: "门店环境",
       sourceUpdatedAt: new Date("2026-08-09T01:00:00.000Z")
     }
   ]);

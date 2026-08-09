@@ -30,6 +30,8 @@ const HEAT_RANK: Record<PlaceHeatLevel, number> = {
   hot: 4
 };
 
+const PROVIDER_PHOTO_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class PlaceService {
   constructor(
@@ -47,13 +49,14 @@ export class PlaceService {
     body: Record<string, unknown>;
     now?: Date;
   }): Promise<{ items: PlaceCard[]; nextCursor: string | null; hasMore: boolean }> {
+    const now = input.now ?? new Date();
     const token = this.locationToken(input.locationContextToken);
     let location;
     try {
       location = await this.locations.resolve({
         token,
         userId: input.userId,
-        now: input.now ?? new Date()
+        now
       });
     } catch (error) {
       if (error instanceof LocationContextError) {
@@ -67,19 +70,46 @@ export class PlaceService {
       body: input.body
     });
     let measured = await this.loadMeasured(options);
+    this.sort(measured, options.sort);
 
-    if (!options.historyOnly && measured.length < options.offset + options.limit + 1) {
+    const visibleWindow = measured.slice(
+      options.offset,
+      options.offset + options.limit + 1
+    );
+    const needsMoreCandidates =
+      measured.length < options.offset + options.limit + 1;
+    const needsPhotoRefresh = visibleWindow.some(({ projection }) => {
+      const checkedAt = projection.providerPhotoCheckedAt;
+      return (
+        checkedAt === null ||
+        now.getTime() - checkedAt.getTime() >= PROVIDER_PHOTO_REFRESH_MS
+      );
+    });
+
+    if (!options.historyOnly && (needsMoreCandidates || needsPhotoRefresh)) {
       let rawCandidates: RawPlaceCandidate[] = [];
+      let providerSucceeded = false;
       try {
         rawCandidates = await this.candidates.discover({
           location,
           radiusMeters: options.distanceMeters,
           keyword: options.keyword,
           categoryKeys: options.categoryKeys,
-          limit: Math.min(50, options.offset + options.limit + 1)
+          limit: needsPhotoRefresh
+            ? 50
+            : Math.min(50, options.offset + options.limit + 1)
         });
+        providerSucceeded = true;
       } catch (error) {
         if (!(error instanceof PlaceCandidateProviderError)) throw error;
+      }
+      if (providerSucceeded && needsPhotoRefresh) {
+        await this.repository.markProviderPhotosChecked({
+          placeGroupIds: visibleWindow.map(
+            ({ projection }) => projection.placeGroupId
+          ),
+          checkedAt: now
+        });
       }
       if (rawCandidates.length > 0) {
         await this.repository.activateCandidates(
@@ -89,10 +119,10 @@ export class PlaceService {
           }))
         );
         measured = await this.loadMeasured(options);
+        this.sort(measured, options.sort);
       }
     }
 
-    this.sort(measured, options.sort);
     const page = measured.slice(options.offset, options.offset + options.limit + 1);
     const hasMore = page.length > options.limit;
     const items = page

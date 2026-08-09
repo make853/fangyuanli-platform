@@ -51,6 +51,12 @@ type AmapPoi = {
   location?: unknown;
   type?: unknown;
   typecode?: unknown;
+  photos?: unknown;
+};
+
+type AmapPhoto = {
+  title?: unknown;
+  url?: unknown;
 };
 
 export type PlaceCandidateProviderOptions = {
@@ -162,6 +168,7 @@ export class PlaceCandidateProvider {
       String(Math.min(MAX_AMAP_PAGE_SIZE, requestedLimit))
     );
     url.searchParams.set("page_num", String(page));
+    url.searchParams.set("show_fields", "photos");
     url.searchParams.set("output", "JSON");
     return url;
   }
@@ -189,6 +196,7 @@ export class PlaceCandidateProvider {
     const name = this.text(poi.name);
     const point = this.point(poi.location);
     if (!providerPlaceId || !name || !point) return null;
+    const photo = this.firstPhoto(poi.photos);
     return {
       provider: "amap",
       providerPlaceId,
@@ -198,8 +206,34 @@ export class PlaceCandidateProvider {
       ...point,
       rawCategoryCode: this.text(poi.typecode),
       rawCategoryName: this.text(poi.type),
+      providerPhotoUrl: photo?.url ?? null,
+      providerPhotoTitle: photo?.title ?? null,
       sourceUpdatedAt: this.now()
     };
+  }
+
+  private firstPhoto(value: unknown): { url: string; title: string | null } | null {
+    const photos = Array.isArray(value) ? value : value ? [value] : [];
+    for (const entry of photos) {
+      if (!entry || typeof entry !== "object") continue;
+      const photo = entry as AmapPhoto;
+      const url = this.photoUrl(photo.url);
+      if (!url) continue;
+      return { url, title: this.text(photo.title) };
+    }
+    return null;
+  }
+
+  private photoUrl(value: unknown): string | null {
+    const text = this.text(value);
+    if (!text || text.length > 2_048) return null;
+    try {
+      const url = new URL(text);
+      if (url.protocol === "http:") url.protocol = "https:";
+      return url.protocol === "https:" ? url.toString() : null;
+    } catch {
+      return null;
+    }
   }
 
   private point(value: unknown): { longitude: number; latitude: number } | null {
