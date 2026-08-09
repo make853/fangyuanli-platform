@@ -128,9 +128,18 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   }
 
   Widget _buildChat(List<PlazaSummary> plazas, PlazaState plazaState) {
-    final currentSelection = plazas
+    var currentSelection = plazas
         .where((plaza) => plaza.id == _selectedPlazaId)
         .firstOrNull;
+    final shouldReplacePreviewSelection =
+        currentSelection == null &&
+        _selectedPlazaSnapshot?.conversationId == null &&
+        plazas.any((plaza) => plaza.conversationId != null);
+    if (shouldReplacePreviewSelection) {
+      currentSelection = plazas.first;
+      _selectedPlazaId = currentSelection.id;
+      _selectedPlazaSnapshot = currentSelection;
+    }
     if (currentSelection != null) {
       _selectedPlazaSnapshot = currentSelection;
     }

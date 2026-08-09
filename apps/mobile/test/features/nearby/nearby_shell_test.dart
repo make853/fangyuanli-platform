@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:fangyuanli_mobile/src/features/activities/presentation/activities_screen.dart';
 import 'package:fangyuanli_mobile/src/features/places/presentation/places_screen.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/device_location_source.dart';
+import 'package:fangyuanli_mobile/src/features/plaza/data/geo_context_repository.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/domain/geo_context_models.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/domain/plaza_models.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/presentation/plaza_screen.dart';
@@ -9,6 +12,49 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('真实四广场到达后替换冷启动预览且不展示测试消息', (tester) async {
+    final location = _CompletingLocationSource();
+    final repository = _FixedGeoContextRepository(
+      GeoContext(
+        locationContextToken: 'live-location-context',
+        expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+        anchor: const GeoAnchorState(
+          radiusMeters: 150,
+          isReused: true,
+          recalculationPending: false,
+        ),
+        plazas: List.generate(
+          4,
+          (index) => PlazaSummary(
+            id: 'live-$index',
+            conversationId: 'conversation-$index',
+            name: index == 0 ? '真实主广场' : '真实相邻广场$index',
+            isPrimary: index == 0,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          deviceLocationSourceProvider.overrideWithValue(location),
+          geoContextRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: Scaffold(body: PlazaScreen())),
+      ),
+    );
+
+    expect(find.textContaining('当前为交互预览'), findsOneWidget);
+    location.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('plaza-chat-live-0')), findsOneWidget);
+    expect(find.textContaining('当前为交互预览'), findsNothing);
+    expect(find.text('楼下新开的咖啡店今天试营业，有人去过吗？'), findsNothing);
+    expect(find.text('已离开此广场，仅可查看历史消息'), findsNothing);
+  });
+
   testWidgets('广场四频道同屏，切换后展示对应频道且未读消失', (tester) async {
     tester.view.physicalSize = const Size(320, 700);
     tester.view.devicePixelRatio = 1;
@@ -188,4 +234,35 @@ class _UnavailableLocationSource implements DeviceLocationSource {
   Future<DevicePosition> currentPosition() {
     throw const DeviceLocationUnavailable('测试环境没有定位');
   }
+}
+
+class _CompletingLocationSource implements DeviceLocationSource {
+  final _completer = Completer<DevicePosition>();
+
+  void complete() {
+    _completer.complete(
+      DevicePosition(
+        coordinateSystem: GeoCoordinateSystem.gcj02,
+        longitude: 116.397,
+        latitude: 39.908,
+        accuracyMeters: 12,
+        capturedAt: DateTime.now().toUtc(),
+      ),
+    );
+  }
+
+  @override
+  Future<DevicePosition> currentPosition() => _completer.future;
+}
+
+class _FixedGeoContextRepository implements GeoContextRepository {
+  const _FixedGeoContextRepository(this.context);
+
+  final GeoContext context;
+
+  @override
+  Future<GeoContext> refresh(
+    DevicePosition position, {
+    String? expectedUserId,
+  }) async => context;
 }
