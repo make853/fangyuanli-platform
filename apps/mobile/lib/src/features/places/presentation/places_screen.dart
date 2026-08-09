@@ -1,34 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_navigation.dart';
 import '../../nearby/presentation/nearby_ui.dart';
-import '../data/place_preview_catalog.dart';
+import '../application/place_controller.dart';
 import '../domain/place_models.dart';
 import 'place_card.dart';
 import 'place_chat_screen.dart';
 import 'place_detail_screen.dart';
 
-class PlacesScreen extends StatefulWidget {
-  const PlacesScreen({this.places = PlacePreviewCatalog.places, super.key});
+class PlacesScreen extends ConsumerStatefulWidget {
+  const PlacesScreen({this.places, super.key});
 
-  final List<PlaceSummary> places;
+  /// Explicit data is reserved for isolated visual/widget tests.
+  /// Production leaves this null and reads the real place controller.
+  final List<PlaceSummary>? places;
 
   @override
-  State<PlacesScreen> createState() => _PlacesScreenState();
+  ConsumerState<PlacesScreen> createState() => _PlacesScreenState();
 }
 
-class _PlacesScreenState extends State<PlacesScreen> {
+class _PlacesScreenState extends ConsumerState<PlacesScreen> {
   PlaceCategory _category = PlaceCategory.all;
 
-  List<PlaceSummary> get _visiblePlaces {
+  List<PlaceSummary> _visiblePlaces(List<PlaceSummary> places) {
+    if (widget.places == null) return places;
     return switch (_category) {
-      PlaceCategory.all => [...widget.places],
+      PlaceCategory.all => [...places],
       PlaceCategory.history =>
-        widget.places.where((place) => place.isInHistory).toList(),
+        places.where((place) => place.isInHistory).toList(),
       PlaceCategory.nearest => [
-        ...widget.places,
+        ...places,
       ]..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters)),
-      _ => widget.places.where((place) => place.category == _category).toList(),
+      _ => places.where((place) => place.category == _category).toList(),
     };
   }
 
@@ -40,10 +44,14 @@ class _PlacesScreenState extends State<PlacesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final visiblePlaces = _visiblePlaces;
+    final liveState = widget.places == null
+        ? ref.watch(placeControllerProvider)
+        : null;
+    final visiblePlaces = _visiblePlaces(widget.places ?? liveState!.items);
     return Column(
       children: [
-        const NearbyPreviewNotice(text: '地点卡片为交互预览，高德地点服务接入后替换为真实结果'),
+        if (widget.places != null)
+          const NearbyPreviewNotice(text: '地点卡片为交互预览，高德地点服务接入后替换为真实结果'),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Material(
@@ -85,29 +93,54 @@ class _PlacesScreenState extends State<PlacesScreen> {
             ],
           ),
         ),
-        Expanded(
-          child: visiblePlaces.isEmpty
-              ? const Center(
-                  child: Text(
-                    '没有符合条件的地点',
-                    style: TextStyle(color: Color(0xFF78847E)),
-                  ),
-                )
-              : ListView.separated(
-                  key: const PageStorageKey('places-list'),
-                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 28),
-                  itemCount: visiblePlaces.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final place = visiblePlaces[index];
-                    return PlaceCard(
-                      place: place,
-                      onTap: () => _openChat(place),
-                    );
-                  },
-                ),
-        ),
+        Expanded(child: _placeList(liveState, visiblePlaces)),
       ],
+    );
+  }
+
+  Widget _placeList(PlaceState? liveState, List<PlaceSummary> visiblePlaces) {
+    if (liveState?.isLoading == true && visiblePlaces.isEmpty) {
+      return const Center(child: CircularProgressIndicator.adaptive());
+    }
+    if (visiblePlaces.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                liveState?.errorMessage ?? '没有符合条件的地点',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF78847E)),
+              ),
+              if (liveState?.errorMessage != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () =>
+                      ref.read(placeControllerProvider.notifier).refresh(),
+                  child: const Text('重新加载'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    final list = ListView.separated(
+      key: const PageStorageKey('places-list'),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 28),
+      itemCount: visiblePlaces.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final place = visiblePlaces[index];
+        return PlaceCard(place: place, onTap: () => _openChat(place));
+      },
+    );
+    if (widget.places != null) return list;
+    return RefreshIndicator.adaptive(
+      onRefresh: () => ref.read(placeControllerProvider.notifier).refresh(),
+      child: list,
     );
   }
 
@@ -119,7 +152,11 @@ class _PlacesScreenState extends State<PlacesScreen> {
       values: PlaceCategory.values,
       label: (value) => value.label,
     );
-    if (value != null && mounted) setState(() => _category = value);
+    if (value == null || !mounted) return;
+    setState(() => _category = value);
+    if (widget.places == null) {
+      await ref.read(placeControllerProvider.notifier).selectCategory(value);
+    }
   }
 
   void _openChat(PlaceSummary place) {

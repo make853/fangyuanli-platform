@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fangyuanli_mobile/src/features/activities/presentation/activities_screen.dart';
+import 'package:fangyuanli_mobile/src/features/places/data/place_preview_catalog.dart';
 import 'package:fangyuanli_mobile/src/features/places/presentation/places_screen.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/device_location_source.dart';
 import 'package:fangyuanli_mobile/src/features/plaza/data/geo_context_repository.dart';
@@ -213,7 +214,9 @@ void main() {
 
   testWidgets('地点卡片主体进入聊天，聊天右上角进入地点详情', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: PlacesScreen())),
+      const MaterialApp(
+        home: Scaffold(body: PlacesScreen(places: PlacePreviewCatalog.places)),
+      ),
     );
 
     await tester.tap(find.byKey(const ValueKey('place-card-jiang')));
@@ -246,7 +249,9 @@ void main() {
 
   testWidgets('地点筛选使用项目样式选择面板并筛出运动地点', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: PlacesScreen())),
+      const MaterialApp(
+        home: Scaffold(body: PlacesScreen(places: PlacePreviewCatalog.places)),
+      ),
     );
 
     await tester.tap(find.byKey(const ValueKey('place-category-picker')));

@@ -31,7 +31,9 @@ class PlaceChatScreen extends StatelessWidget {
       sourceSection: AppSection.places,
       detailsRoute: AppRouteId.placeDetail,
       detailsBuilder: detailsBuilder,
-      previewMessages: PlacePreviewCatalog.messages,
+      previewMessages: place.conversationId.isEmpty
+          ? PlacePreviewCatalog.messages
+          : const [],
     );
   }
 }

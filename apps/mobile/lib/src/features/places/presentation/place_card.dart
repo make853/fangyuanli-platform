@@ -58,7 +58,7 @@ class PlaceCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${formatNearbyDistance(place.distanceMeters)} · ${place.typeLabel} · ${place.isCommercial ? '营业场所' : '非营业场所'}${place.isVerified ? '' : ' · 未认证'}',
+                      '${formatNearbyDistance(place.distanceMeters)} · ${place.typeLabel}${place.isVerified ? '' : ' · 未认证'}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
