@@ -131,6 +131,63 @@ exit 1
     expect(result.exitCode, isNot(0));
     expect(result.stderr, contains('拒绝安装旧产物'));
   }, skip: macOsOnly);
+
+  test('field launcher discovers one physical iPhone and pins HTTPS', () async {
+    final privateWrapper = File(
+      '${temporaryDirectory.path}/run-ios-media-acceptance.sh',
+    );
+    await privateWrapper.writeAsString('''
+flutter_bin="${fakeFlutter.path}"
+ssh_key="${temporaryDirectory.path}/private-key.pem"
+remote_host="staging@example.invalid"
+''');
+    final fakeSsh = File('${temporaryDirectory.path}/ssh');
+    await fakeSsh.writeAsString(r'''#!/bin/zsh
+case "$*" in
+  *STAGING_PUBLIC_HOST*) print -r -- 'staging.example.com' ;;
+  *STAGING_TEST_PHONE_A*) print -r -- '13800000001' ;;
+  *STAGING_TEST_PHONE_B*) print -r -- '13800000002' ;;
+  *STAGING_SMS_TEST_CODE*) print -r -- '123456' ;;
+  *) exit 1 ;;
+esac
+''');
+    await Process.run('chmod', ['+x', fakeSsh.path]);
+    await fakeFlutter.writeAsString('''#!/bin/zsh
+if [[ "\$1" == "devices" ]]; then
+  print -r -- '[{"name":"真实 iPhone","id":"physical-field","emulator":false,"targetPlatform":"ios"}]'
+  exit 0
+fi
+print -r -- "\$@" > '${capturedArguments.path}'
+''');
+
+    final result = await Process.run(
+      'zsh',
+      ['scripts/run-ios-field-staging-app.sh'],
+      environment: {
+        ...Platform.environment,
+        'STAGING_ACCEPTANCE_WRAPPER': privateWrapper.path,
+        'SSH_BIN': fakeSsh.path,
+        'BUILD_IDENTITY': 'field-source-1234',
+      },
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
+
+    expect(result.exitCode, 0, reason: result.stderr.toString());
+    expect(result.stdout, contains('A = 真实 iPhone [physical-field]'));
+    final arguments = await capturedArguments.readAsString();
+    expect(arguments, contains('-d physical-field'));
+    expect(
+      arguments,
+      contains('--dart-define=API_BASE_URL=https://staging.example.com'),
+    );
+    expect(
+      arguments,
+      contains(
+        '--dart-define=REALTIME_URL=wss://staging.example.com/ws/v1',
+      ),
+    );
+  }, skip: macOsOnly);
 }
 
 Future<ProcessResult> _runLauncher({

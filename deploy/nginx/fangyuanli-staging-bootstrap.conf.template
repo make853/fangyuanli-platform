@@ -1,0 +1,16 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __STAGING_PUBLIC_HOST__;
+
+    server_tokens off;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/fangyuanli-certbot;
+        default_type text/plain;
+    }
+
+    location / {
+        return 404;
+    }
+}

@@ -45,6 +45,34 @@ curl --fail --retry 15 --retry-connrefused --retry-delay 1 --max-time 5 \
 systemd 重启后 Node 进程通常需要不足一秒开始监听；健康检查必须允许这段
 启动窗口，但重试结束仍失败时部署应立即停止并查看服务日志。
 
+## Staging 公网 HTTPS 入口
+
+真机场外测试不得直接暴露 Node 的3000端口，也不能依赖开发者 Mac 的 SSH
+端口转发。API继续只监听 `127.0.0.1:3000`，Nginx仅在80/443提供反向代理，
+并由 Let's Encrypt 签发和自动续期证书。
+
+先将测试域名解析到服务器公网IP，然后通过部署脚本配置入口：
+
+```bash
+cd /srv/fangyuanli
+sudo STAGING_PUBLIC_HOST=staging-api.example.com \
+  bash deploy/scripts/configure-staging-edge.sh
+```
+
+脚本会把 `STAGING_PUBLIC_HOST` 写入仅服务器保存的 `.env`，安装仓库内受控的
+Nginx配置，限制短信与普通API请求速率，并验证 HTTPS `/health`。腾讯云安全组
+只开放22、80、443；禁止开放3000、PostgreSQL或Redis端口。
+
+在真机安装可脱离Mac运行的A端测试包：
+
+```bash
+zsh apps/mobile/scripts/run-ios-field-a.sh
+```
+
+本机的 `a.sh` 和 `b.sh` 仍使用本地隧道，便于日常A/B调试；场外脚本只用于
+场外定位、移动网络和断网恢复验收。测试域名更换为正式域名时，只更新服务器
+环境变量并重新执行入口配置脚本，移动端业务代码无需修改。
+
 查看运行状态和最近日志：
 
 ```bash
