@@ -119,6 +119,8 @@ test("issues an opaque context and exactly four privacy-safe plaza summaries", a
   assert.equal(result.plazas.length, 4);
   assert.equal(result.plazas[0]?.relation, "main");
   assert.equal(result.plazas.slice(1).every((plaza) => plaza.relation === "adjacent"), true);
+  assert.equal(result.plazas[0]?.notificationMode, "muted");
+  assert.equal(result.plazas[1]?.notificationMode, "normal");
   assert.deepEqual(result.plazas[0]?.unread, {
     count: 5,
     appearance: "gray",

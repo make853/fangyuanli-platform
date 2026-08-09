@@ -142,6 +142,7 @@ export class GeoContextService {
       relation: isMain ? "main" : "adjacent",
       canView: true,
       canSpeak: true,
+      notificationMode: plaza.notificationMode,
       unread: {
         count: unreadCount,
         appearance:

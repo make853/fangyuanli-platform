@@ -59,6 +59,7 @@ export type PlazaSummary = {
   relation: "main" | "adjacent";
   canView: true;
   canSpeak: true;
+  notificationMode: "normal" | "muted";
   unread: {
     count: number;
     appearance: "none" | "red" | "gray";
