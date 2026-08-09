@@ -4,7 +4,10 @@ import type {
   LocationSnapshot
 } from "../geo/location-context.js";
 import { LocationContextReader } from "../geo/location-context.js";
-import type { PlaceCandidateProvider } from "./place-candidate.provider.js";
+import {
+  PlaceCandidateProviderError,
+  type PlaceCandidateProvider
+} from "./place-candidate.provider.js";
 import { PlaceCardPresenter } from "./place-card.presenter.js";
 import { PlaceCategoryMapper } from "./place-category.mapper.js";
 import { PlaceDiscoveryInput } from "./place-discovery.input.js";
@@ -64,8 +67,10 @@ class FakeLocationReader {
 class FakeCandidateProvider {
   calls = 0;
   results: RawPlaceCandidate[] = [];
+  error: Error | null = null;
   async discover(): Promise<RawPlaceCandidate[]> {
     this.calls += 1;
+    if (this.error) throw this.error;
     return this.results;
   }
 }
@@ -182,6 +187,21 @@ test("does not call the map provider for history-only discovery", async () => {
   });
   assert.deepEqual(result.items, []);
   assert.equal(provider.calls, 0);
+});
+
+test("returns persisted places when Amap is temporarily unavailable", async () => {
+  const { repository, provider, service } = fixture();
+  repository.active = [projection("persisted")];
+  provider.error = new PlaceCandidateProviderError("temporary failure");
+
+  const result = await service.discover({
+    userId,
+    locationContextToken: "location-token",
+    body: { limit: 20 }
+  });
+
+  assert.equal(provider.calls, 1);
+  assert.equal(result.items[0]?.placeGroupId, "persisted");
 });
 
 test("rejects invalid filters before touching place storage", async () => {

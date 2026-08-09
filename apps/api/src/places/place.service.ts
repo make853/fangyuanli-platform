@@ -3,7 +3,10 @@ import {
   LocationContextError,
   LocationContextReader
 } from "../geo/location-context.js";
-import { PlaceCandidateProvider } from "./place-candidate.provider.js";
+import {
+  PlaceCandidateProvider,
+  PlaceCandidateProviderError
+} from "./place-candidate.provider.js";
 import { PlaceCardPresenter } from "./place-card.presenter.js";
 import { PlaceCategoryMapper } from "./place-category.mapper.js";
 import { PlaceDiscoveryInput } from "./place-discovery.input.js";
@@ -15,6 +18,7 @@ import {
   type PlaceDiscoverOptions,
   type PlaceHeatLevel,
   type PlaceProjection,
+  type RawPlaceCandidate,
   type PlaceSort
 } from "./place.types.js";
 
@@ -65,13 +69,18 @@ export class PlaceService {
     let measured = await this.loadMeasured(options);
 
     if (!options.historyOnly && measured.length < options.offset + options.limit + 1) {
-      const rawCandidates = await this.candidates.discover({
-        location,
-        radiusMeters: options.distanceMeters,
-        keyword: options.keyword,
-        categoryKeys: options.categoryKeys,
-        limit: Math.min(50, options.offset + options.limit + 1)
-      });
+      let rawCandidates: RawPlaceCandidate[] = [];
+      try {
+        rawCandidates = await this.candidates.discover({
+          location,
+          radiusMeters: options.distanceMeters,
+          keyword: options.keyword,
+          categoryKeys: options.categoryKeys,
+          limit: Math.min(50, options.offset + options.limit + 1)
+        });
+      } catch (error) {
+        if (!(error instanceof PlaceCandidateProviderError)) throw error;
+      }
       if (rawCandidates.length > 0) {
         await this.repository.activateCandidates(
           rawCandidates.map((candidate) => ({
