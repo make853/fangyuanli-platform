@@ -79,16 +79,16 @@ test("requests GCJ-02 reverse geocoding and returns ranked stable names", async 
   assert.equal(aroundUrl?.searchParams.get("radius"), "3000");
   assert.equal(aroundUrl?.searchParams.get("sortrule"), "weight");
   assert.equal(aroundUrl?.searchParams.get("page_size"), "25");
-  assert.equal(candidates[0]?.name, "滨江体育中心广场");
+  assert.equal(candidates[0]?.name, "滨江城市广场");
   assert.deepEqual(candidates[0]?.point, {
     coordinateSystem: "gcj02",
-    longitude: 121.4739,
-    latitude: 31.2305
+    longitude: 121.474,
+    latitude: 31.2306
   });
   assert.equal(candidates[0]?.provider, "amap");
-  assert.equal(candidates[0]?.providerPlaceId, "aoi-stadium");
+  assert.equal(candidates[0]?.providerPlaceId, "poi-square");
   assert.equal(
-    candidates.some((candidate) => candidate.name === "滨江城市广场"),
+    candidates.some((candidate) => candidate.name === "滨江体育中心广场"),
     true
   );
 });

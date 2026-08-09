@@ -71,7 +71,8 @@ const MAJOR_TRANSIT_KEYWORDS = [
 const MAJOR_MALL_KEYWORDS = ["购物中心", "商场", "商业广场", "购物广场"] as const;
 const HIGHER_EDUCATION_TYPES = ["高等院校", "大学"] as const;
 const BASIC_EDUCATION_TYPES = ["中学", "小学"] as const;
-const MAJOR_HOSPITAL_TYPES = ["综合医院", "专科医院", "中医院"] as const;
+const HOSPITAL_KEYWORDS = ["医院", "中医院", "卫生院"] as const;
+const HEALTH_TYPES = ["医疗保健服务", "综合医院", "专科医院", "中医院"] as const;
 const STABLE_TYPES = [
   "风景名胜",
   "体育场馆",
@@ -188,9 +189,6 @@ export class PlazaNameSelector {
     if (this.shouldReject(candidate)) return null;
 
     const metroStation = this.isMetroStation(candidate);
-    const community =
-      this.includes(candidate.name, COMMUNITY_KEYWORDS) ||
-      this.includes(candidate.type, COMMUNITY_TYPES);
     const village =
       this.includes(candidate.type, VILLAGE_TYPES) &&
       /(?:村|庄|新村|镇)$/u.test(candidate.name);
@@ -203,81 +201,67 @@ export class PlazaNameSelector {
       candidate.type.includes("购物服务;商场") &&
       (this.includes(candidate.name, MAJOR_MALL_KEYWORDS) ||
         candidate.name.endsWith("广场"));
-    const majorHospital =
-      /医院|中医院/u.test(candidate.name) &&
-      this.includes(candidate.type, MAJOR_HOSPITAL_TYPES);
     const university =
       /大学|学院/u.test(candidate.name) &&
       this.includes(candidate.type, HIGHER_EDUCATION_TYPES);
-    const basicSchool = this.includes(candidate.type, BASIC_EDUCATION_TYPES);
     const stableType = this.includes(candidate.type, STABLE_TYPES);
     let score = 0;
     let source: PlazaNamingSource = "landmark";
     let kind: PlazaNamingKind = "area";
 
-    // A residential project containing “广场” is still a community. Type semantics
-    // take precedence over keyword coincidence. Metro identity is checked first
-    // because stations named after schools, hospitals or communities must still
-    // remain recognizable as transport landmarks.
+    // Semantic tiers use gaps larger than every distance/area adjustment, so a
+    // nearby fallback cannot outrank a representative regional landmark.
     if (metroStation) {
-      score = candidate.origin === "aoi" ? 1750 : 1650;
+      score = candidate.origin === "aoi" ? 5120 : 5000;
       source = "venue";
       kind = "transit";
-    } else if (village) {
-      score = 980;
-      source = "community";
-      kind = "village";
-    } else if (community) {
-      score = 1050;
-      source = "community";
-      kind = "community";
     } else if (citySquare && !this.isMerchantMasqueradingAsSquare(candidate)) {
-      score = candidate.origin === "aoi" ? 1750 : 1650;
       source = "venue";
-      // AMap can type station forecourts and scenic plazas as 城市广场. Keep
-      // their strong regional score while persisting the more useful semantic
-      // kind for four-plaza diversity and future policy audits.
-      kind = majorTransit
-        ? "transit"
-        : publicCulture
-          ? "culture_scenic"
-          : "public_square";
+      if (majorTransit) {
+        score = candidate.origin === "aoi" ? 4620 : 4500;
+        kind = "transit";
+      } else if (publicCulture) {
+        score = candidate.origin === "aoi" ? 4120 : 4000;
+        kind = "culture_scenic";
+      } else {
+        score = candidate.origin === "aoi" ? 5120 : 5000;
+        kind = "public_square";
+      }
     } else if (majorTransit) {
-      score = candidate.origin === "aoi" ? 1600 : 1500;
+      score = candidate.origin === "aoi" ? 4620 : 4500;
       source = "venue";
       kind = "transit";
     } else if (publicCulture) {
-      score = candidate.origin === "aoi" ? 1580 : 1480;
+      score = candidate.origin === "aoi" ? 4120 : 4000;
       source = "venue";
       kind = "culture_scenic";
     } else if (majorMall) {
-      score = candidate.origin === "aoi" ? 1380 : 1320;
+      score = candidate.origin === "aoi" ? 3620 : 3500;
       source = "venue";
       kind = "commercial_landmark";
-    } else if (majorHospital || university) {
-      score = candidate.origin === "aoi" ? 1240 : 1160;
+    } else if (university) {
+      score = candidate.origin === "aoi" ? 3120 : 3000;
       source = "venue";
       kind = "public_service";
-    } else if (candidate.origin === "businessArea") {
-      score = 900;
-      kind = "area";
-    } else if (candidate.origin === "aoi" && candidate.area >= 20_000) {
-      score = 860;
-      kind = "area";
-    } else if (stableType && candidate.origin !== "building") {
-      score = 700;
-      kind = "area";
     } else if (candidate.origin === "road") {
-      score = candidate.type === "道路交叉口" ? 680 : 560;
+      score = candidate.type === "道路交叉口" ? 2620 : 2500;
       source = "road";
       kind = "road";
-    } else if (basicSchool) {
-      // Schools are persistent but identify only one institution, so they are a
-      // last-resort fallback below regional landmarks, business areas and AOIs.
-      score = 300;
-      kind = "public_service";
+    } else if (candidate.origin === "businessArea") {
+      score = 2120;
+      kind = "area";
+    } else if (village) {
+      score = 1500;
+      source = "community";
+      kind = "village";
+    } else if (candidate.origin === "aoi" && candidate.area >= 20_000) {
+      score = 2000;
+      kind = "area";
+    } else if (stableType && candidate.origin !== "building") {
+      score = 1900;
+      kind = "area";
     } else if (candidate.origin === "building" && stableType) {
-      score = 450;
+      score = 1800;
       kind = "area";
     } else {
       return null;
@@ -305,14 +289,22 @@ export class PlazaNameSelector {
   private shouldReject(candidate: RawCandidate): boolean {
     const { name, type } = candidate;
     const metroStation = this.isMetroStation(candidate);
+    const community =
+      this.includes(name, COMMUNITY_KEYWORDS) ||
+      this.includes(type, COMMUNITY_TYPES);
     if (
       this.isSubordinate(name) ||
       this.isOrganization(name) ||
+      (!metroStation && community) ||
+      this.includes(name, HOSPITAL_KEYWORDS) ||
+      this.includes(type, HEALTH_TYPES) ||
+      (metroStation && /医院|学院/u.test(name)) ||
       (candidate.origin !== "road" && this.isRoadName(name)) ||
       this.includes(name, MERCHANT_NAME_KEYWORDS) ||
       (!metroStation && this.includes(name, LOW_QUALITY_EDUCATION)) ||
       (!metroStation && this.includes(type, LOW_QUALITY_EDUCATION)) ||
       (!metroStation && type.includes("培训机构") && /学院|学校/u.test(name)) ||
+      (!metroStation && this.includes(type, BASIC_EDUCATION_TYPES)) ||
       (!metroStation && this.includes(type, MINOR_HEALTH_TYPES)) ||
       (type.includes("公交车站") && !/客运站|汽车站/u.test(name))
     ) {
