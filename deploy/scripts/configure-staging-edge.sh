@@ -79,6 +79,10 @@ else
 fi
 ln -sfn "$certbot_bin" /usr/local/bin/certbot
 
+# apt 与 snap 的 Certbot 不能同时调度续期。旧版 apt 定时器不支持
+# 短期 IP 证书，停用它并由下方的 snap timer 统一接管。
+systemctl disable --now certbot.timer >/dev/null 2>&1 || true
+
 install -d -o www-data -g www-data -m 0755 "$certbot_root"
 rm -f /etc/nginx/sites-enabled/default
 
