@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlazaNameSelector } from "./plaza-name-selector.js";
 
-test("prioritizes stable venues and filters small merchants and roads", () => {
+test("prioritizes stable venues and excludes communities and small merchants", () => {
   const candidates = new PlazaNameSelector().select({
     aois: [
       {
@@ -40,10 +40,7 @@ test("prioritizes stable venues and filters small merchants and roads", () => {
   assert.equal(candidates[0]?.name, "滨江体育中心广场");
   assert.equal(candidates.some((candidate) => candidate.name.includes("咖啡")), false);
   assert.equal(candidates.some((candidate) => candidate.name.includes("庄周大道")), false);
-  assert.ok(
-    candidates.findIndex((candidate) => candidate.name === "晴川花园广场") <
-      candidates.findIndex((candidate) => candidate.name === "滨江商圈广场")
-  );
+  assert.equal(candidates.some((candidate) => candidate.name.includes("晴川花园")), false);
 });
 
 test("prefers a city plaza over its entrances, fountains and minor attractions", () => {
@@ -130,7 +127,7 @@ test("collapses metro exits into one stable station candidate", () => {
   );
 });
 
-test("ranks metro stations with city landmarks and always labels the metro identity", () => {
+test("keeps representative metro stations but excludes hospital and college station names", () => {
   const candidates = new PlazaNameSelector().select({
     pois: [
       {
@@ -144,6 +141,11 @@ test("ranks metro stations with city landmarks and always labels the metro ident
         distance: "100"
       },
       {
+        name: "城市学院站(地铁站)",
+        type: "交通设施服务;地铁站",
+        distance: "100"
+      },
+      {
         name: "城市中心广场",
         type: "风景名胜;公园广场;城市广场",
         distance: "100"
@@ -152,15 +154,16 @@ test("ranks metro stations with city landmarks and always labels the metro ident
   });
 
   const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
-  assert.equal(byName.get("市人民医院地铁站广场")?.kind, "transit");
   assert.equal(byName.get("实验中学地铁站广场")?.kind, "transit");
+  assert.equal(byName.has("市人民医院地铁站广场"), false);
+  assert.equal(byName.has("城市学院地铁站广场"), false);
   assert.equal(
-    byName.get("市人民医院地铁站广场")?.score,
+    byName.get("实验中学地铁站广场")?.score,
     byName.get("城市中心广场")?.score
   );
 });
 
-test("filters local organizations and keeps community names low priority", () => {
+test("filters local organizations and community names", () => {
   const candidates = new PlazaNameSelector().select({
     pois: [
       {
@@ -181,14 +184,7 @@ test("filters local organizations and keeps community names low priority", () =>
     ]
   });
 
-  assert.deepEqual(candidates, [
-    {
-      name: "贸易西路社区广场",
-      source: "community",
-      kind: "community",
-      score: 1046.4
-    }
-  ]);
+  assert.deepEqual(candidates, []);
 });
 
 test("prefers regional landmarks and rejects low-quality school, office and training names", () => {
@@ -258,13 +254,13 @@ test("prefers regional landmarks and rejects low-quality school, office and trai
     ),
     false
   );
-  assert.ok(
-    candidates.findIndex((candidate) => candidate.name === "庄周双语小学广场") >
-      candidates.findIndex((candidate) => candidate.name === "乐鼎·明德府广场")
+  assert.equal(
+    candidates.some((candidate) => /庄周双语小学|乐鼎·明德府/u.test(candidate.name)),
+    false
   );
 });
 
-test("collapses hospital sub-buildings into the parent hospital", () => {
+test("excludes hospitals and their subordinate buildings", () => {
   const candidates = new PlazaNameSelector().select({
     pois: [
       {
@@ -280,12 +276,10 @@ test("collapses hospital sub-buildings into the parent hospital", () => {
     ]
   });
 
-  assert.deepEqual(candidates.map((candidate) => candidate.name), [
-    "民权中医院广场"
-  ]);
+  assert.deepEqual(candidates, []);
 });
 
-test("keeps the representative public, heritage, commercial and community choices", () => {
+test("keeps representative public, heritage and commercial choices but excludes communities", () => {
   const candidates = new PlazaNameSelector().select({
     regionalPois: [
       {
@@ -336,8 +330,8 @@ test("keeps the representative public, heritage, commercial and community choice
   assert.equal(byName.get("中央城市广场")?.kind, "commercial_landmark");
   assert.equal(byName.get("圣晖广场")?.kind, "commercial_landmark");
   assert.equal(byName.get("华联城广场")?.kind, "commercial_landmark");
-  assert.equal(byName.get("南华社区广场")?.kind, "community");
-  assert.equal(byName.get("绿洲社区广场")?.kind, "community");
+  assert.equal(byName.has("南华社区广场"), false);
+  assert.equal(byName.has("绿洲社区广场"), false);
 });
 
 test("keeps station and scenic semantics when AMap also types them as city plazas", () => {
@@ -354,7 +348,7 @@ test("keeps station and scenic semantics when AMap also types them as city plaza
   assert.equal(candidates.find((item) => item.name === "民生广场")?.kind, "public_square");
 });
 
-test("uses villages before road intersections and plain roads as final fallbacks", () => {
+test("uses road intersections and plain roads before villages", () => {
   const candidates = new PlazaNameSelector().select({
     aois: [
       {
@@ -382,10 +376,56 @@ test("uses villages before road intersections and plain roads as final fallbacks
 
   assert.deepEqual(
     candidates.map((candidate) => candidate.name),
-    ["赵庄广场", "鲁庄新村广场", "西郊北路·庄周大道广场", "西郊北路广场"]
+    ["西郊北路·庄周大道广场", "西郊北路广场", "赵庄广场", "鲁庄新村广场"]
   );
-  assert.equal(candidates[0]?.kind, "village");
-  assert.equal(candidates[2]?.kind, "road");
+  assert.equal(candidates[0]?.kind, "road");
+  assert.equal(candidates[2]?.kind, "village");
+});
+
+test("keeps the confirmed semantic priority independent of distance", () => {
+  const candidates = new PlazaNameSelector().select({
+    pois: [
+      { name: "中心地铁站", type: "交通设施服务;地铁站", distance: "3000" },
+      { name: "民生广场", type: "风景名胜;公园广场;城市广场", distance: "2900" },
+      { name: "民权火车站", type: "交通设施服务;火车站", distance: "2500" },
+      { name: "葡萄酒厂遗址", type: "风景名胜;旅游景点", distance: "2200" },
+      { name: "华联购物中心", type: "购物服务;商场;购物中心", distance: "1800" },
+      { name: "商丘师范大学", type: "科教文化服务;学校;高等院校", distance: "1400" }
+    ],
+    roadinters: [
+      { first_name: "西郊北路", second_name: "庄周大道", distance: "1000" }
+    ],
+    addressComponent: {
+      businessAreas: [{ name: "城南商圈", distance: "400" }]
+    },
+    aois: [
+      {
+        name: "高新产业园",
+        type: "商务住宅;产业园区",
+        area: "50000",
+        distance: "100"
+      },
+      {
+        name: "赵庄村",
+        type: "地名地址信息;普通地名;村庄级地名",
+        area: "50000",
+        distance: "0"
+      }
+    ]
+  });
+
+  assert.deepEqual(candidates.map((candidate) => candidate.name), [
+    "民生广场",
+    "中心地铁站广场",
+    "民权火车站广场",
+    "葡萄酒厂遗址广场",
+    "华联购物中心广场",
+    "商丘师范大学广场",
+    "西郊北路·庄周大道广场",
+    "城南商圈广场",
+    "高新产业园广场",
+    "赵庄广场"
+  ]);
 });
 
 test("preserves valid Amap coordinates and prefers an auditable duplicate", () => {
