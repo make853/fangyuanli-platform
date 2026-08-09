@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { LocationSnapshot } from "../geo/location-context.js";
 import type { PlaceCategoryKey, RawPlaceCandidate } from "./place.types.js";
 
@@ -7,6 +7,9 @@ const MAX_AMAP_PAGE_SIZE = 25;
 const MAX_CACHE_ENTRIES = 512;
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 15 * 1000;
+const PLACE_CANDIDATE_PROVIDER_OPTIONS = Symbol(
+  "PLACE_CANDIDATE_PROVIDER_OPTIONS"
+);
 
 const AMAP_TYPES_BY_CATEGORY: Record<PlaceCategoryKey, readonly string[]> = {
   food_retail: ["050000", "060000", "070000"],
@@ -76,7 +79,11 @@ export class PlaceCandidateProvider {
     { expiresAt: number; promise: Promise<RawPlaceCandidate[]> }
   >();
 
-  constructor(options: PlaceCandidateProviderOptions = {}) {
+  constructor(
+    @Optional()
+    @Inject(PLACE_CANDIDATE_PROVIDER_OPTIONS)
+    options: PlaceCandidateProviderOptions = {}
+  ) {
     this.environment = options.environment ?? process.env;
     this.fetcher = options.fetcher ?? fetch;
     this.now = options.now ?? (() => new Date());
