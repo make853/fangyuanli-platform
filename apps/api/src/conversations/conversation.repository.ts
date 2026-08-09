@@ -8,6 +8,7 @@ import {
 } from "./conversation-access.service.js";
 import {
   ConversationDomainError,
+  type ConversationSettingsView,
   type ConversationDetail,
   type ConversationSummary,
   type MessageView,
@@ -364,6 +365,70 @@ export class ConversationRepository {
           ? await this.plazaNavigationUnread(userId)
           : await this.navigationUnread(userId)
     };
+  }
+
+  async updateSettings(input: {
+    userId: string;
+    conversationId: string;
+    notificationOverride?: "inherit" | "normal" | "muted";
+    pinned?: boolean;
+    announcementDismissedVersion?: number;
+    now: Date;
+  }): Promise<ConversationSettingsView> {
+    return this.database.transaction(async (client) => {
+      await this.access.authorize(client, {
+        userId: input.userId,
+        conversationId: input.conversationId,
+        capability: "view"
+      });
+      const result = await client.query<{
+        conversation_id: string;
+        notification_override: "inherit" | "normal" | "muted";
+        pinned: boolean;
+        announcement_dismissed_version: number | null;
+        updated_at: Date;
+      }>(
+        `INSERT INTO conversation_notification_settings (
+           conversation_id, user_id, notification_override, pinned,
+           announcement_dismissed_version, updated_at
+         ) VALUES (
+           $1, $2, COALESCE($3::notification_override_mode, 'inherit'),
+           COALESCE($4::boolean, false), $5::integer, $6
+         )
+         ON CONFLICT (conversation_id, user_id) DO UPDATE
+           SET notification_override = COALESCE(
+                 $3::notification_override_mode,
+                 conversation_notification_settings.notification_override
+               ),
+               pinned = COALESCE(
+                 $4::boolean,
+                 conversation_notification_settings.pinned
+               ),
+               announcement_dismissed_version = COALESCE(
+                 $5::integer,
+                 conversation_notification_settings.announcement_dismissed_version
+               ),
+               updated_at = $6
+         RETURNING conversation_id, notification_override, pinned,
+                   announcement_dismissed_version, updated_at`,
+        [
+          input.conversationId,
+          input.userId,
+          input.notificationOverride ?? null,
+          input.pinned ?? null,
+          input.announcementDismissedVersion ?? null,
+          input.now
+        ]
+      );
+      const row = result.rows[0];
+      return {
+        conversationId: row.conversation_id,
+        notificationOverride: row.notification_override,
+        pinned: row.pinned,
+        announcementDismissedVersion: row.announcement_dismissed_version,
+        updatedAt: row.updated_at.toISOString()
+      };
+    });
   }
 
   async listMessages(input: {

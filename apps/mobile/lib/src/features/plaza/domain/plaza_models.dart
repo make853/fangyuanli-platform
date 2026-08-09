@@ -47,6 +47,7 @@ class PlazaSummary {
     this.canSpeak = true,
     this.unreadAppearance = UnreadAppearance.none,
     this.firstUnreadSequence,
+    this.notificationMode = 'normal',
   });
 
   factory PlazaSummary.fromJson(Map<String, dynamic> json) {
@@ -64,6 +65,7 @@ class PlazaSummary {
       unreadCount: unread.count,
       unreadAppearance: unread.appearance,
       firstUnreadSequence: unread.firstUnreadSequence,
+      notificationMode: json['notificationMode'] as String? ?? 'normal',
     );
   }
 
@@ -77,6 +79,7 @@ class PlazaSummary {
   final bool canSpeak;
   final UnreadAppearance unreadAppearance;
   final int? firstUnreadSequence;
+  final String notificationMode;
 
   PlazaRelation get relation =>
       isPrimary ? PlazaRelation.main : PlazaRelation.adjacent;
@@ -96,6 +99,28 @@ class PlazaSummary {
       canSpeak: canSpeak,
       unreadAppearance: unread.appearance,
       firstUnreadSequence: unread.firstUnreadSequence,
+      notificationMode: notificationMode,
+    );
+  }
+
+  PlazaSummary copyWithNotificationMode(String mode) {
+    final nextAppearance = unreadCount <= 0
+        ? UnreadAppearance.none
+        : mode == 'muted'
+        ? UnreadAppearance.gray
+        : UnreadAppearance.red;
+    return PlazaSummary(
+      id: id,
+      conversationId: conversationId,
+      name: name,
+      isPrimary: isPrimary,
+      activePeople: activePeople,
+      unreadCount: unreadCount,
+      canView: canView,
+      canSpeak: canSpeak,
+      unreadAppearance: nextAppearance,
+      firstUnreadSequence: firstUnreadSequence,
+      notificationMode: mode,
     );
   }
 
@@ -107,6 +132,7 @@ class PlazaSummary {
     'canView': canView,
     'canSpeak': canSpeak,
     'activePeople': activePeople,
+    'notificationMode': notificationMode,
     'unread': PlazaUnreadState(
       count: unreadCount,
       appearance: unreadAppearance,

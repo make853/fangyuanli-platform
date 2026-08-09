@@ -191,6 +191,19 @@ class PlazaController extends StateNotifier<PlazaState> {
     _persistSnapshot();
   }
 
+  void setNotificationMode(String plazaId, String mode) {
+    state = state.copyWith(
+      plazas: [
+        for (final plaza in state.plazas)
+          if (plaza.id == plazaId)
+            plaza.copyWithNotificationMode(mode)
+          else
+            plaza,
+      ],
+    );
+    _persistSnapshot();
+  }
+
   void _onRealtimeEvent(RealtimeEvent event) {
     if (event.name != 'conversation.unread.changed' ||
         event.payload['navigationKey'] != 'plaza') {

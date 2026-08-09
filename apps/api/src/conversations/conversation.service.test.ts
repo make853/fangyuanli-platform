@@ -117,6 +117,79 @@ test("requires an idempotency key for message writes", async () => {
   );
 });
 
+test("updates one conversation notification override and republishes unread state", async () => {
+  let storedOverride: string | undefined;
+  const published: string[] = [];
+  const repository = {
+    async updateSettings(input: { notificationOverride?: string }) {
+      storedOverride = input.notificationOverride;
+      return {
+        conversationId,
+        notificationOverride: input.notificationOverride,
+        pinned: false,
+        announcementDismissedVersion: null,
+        updatedAt: new Date().toISOString()
+      };
+    },
+    async realtimeConversationState() {
+      return {
+        conversationId,
+        unread: {
+          count: 3,
+          appearance: "gray",
+          firstUnreadSequence: 1
+        },
+        navigationKey: "plaza",
+        navigationUnreadCount: 0
+      };
+    }
+  };
+  const realtime = {
+    async publish(_userId: string, event: string) {
+      published.push(event);
+      return {};
+    }
+  };
+  const service = new ConversationService(repository as never, realtime as never);
+
+  const result = (await service.updateSettings({
+    userId,
+    conversationId,
+    idempotencyKey: "mute-plaza",
+    body: { notificationOverride: "muted" }
+  })) as { notificationOverride: string };
+
+  assert.equal(storedOverride, "muted");
+  assert.equal(result.notificationOverride, "muted");
+  assert.deepEqual(published, ["conversation.unread.changed"]);
+});
+
+test("rejects empty or invalid conversation settings", async () => {
+  const service = new ConversationService({} as never);
+  await assert.rejects(
+    service.updateSettings({
+      userId,
+      conversationId,
+      idempotencyKey: "empty-settings",
+      body: {}
+    }),
+    (error: unknown) =>
+      error instanceof ConversationDomainError &&
+      error.code === "CONVERSATION_SETTINGS_EMPTY"
+  );
+  await assert.rejects(
+    service.updateSettings({
+      userId,
+      conversationId,
+      idempotencyKey: "bad-settings",
+      body: { notificationOverride: "sometimes" }
+    }),
+    (error: unknown) =>
+      error instanceof ConversationDomainError &&
+      error.code === "NOTIFICATION_OVERRIDE_INVALID"
+  );
+});
+
 test("publishes a new message and unread state to both participants", async () => {
   const published: Array<{ userId: string; event: string }> = [];
   const otherUserId = "019f0000-0000-7000-8000-00000000000f";

@@ -260,6 +260,82 @@ export class ConversationService {
     return result;
   }
 
+  async updateSettings(input: {
+    userId: string;
+    conversationId?: unknown;
+    body: Record<string, unknown>;
+    idempotencyKey?: string;
+  }): Promise<unknown> {
+    this.idempotencyKey(input.idempotencyKey);
+    const hasNotificationOverride = Object.hasOwn(
+      input.body,
+      "notificationOverride"
+    );
+    const hasPinned = Object.hasOwn(input.body, "pinned");
+    const hasAnnouncementVersion = Object.hasOwn(
+      input.body,
+      "announcementDismissedVersion"
+    );
+    if (!hasNotificationOverride && !hasPinned && !hasAnnouncementVersion) {
+      throw new ConversationDomainError(
+        "CONVERSATION_SETTINGS_EMPTY",
+        "至少需要修改一项会话设置",
+        400
+      );
+    }
+    const notificationOverride = input.body.notificationOverride;
+    if (
+      hasNotificationOverride &&
+      notificationOverride !== "inherit" &&
+      notificationOverride !== "normal" &&
+      notificationOverride !== "muted"
+    ) {
+      throw new ConversationDomainError(
+        "NOTIFICATION_OVERRIDE_INVALID",
+        "通知设置无效",
+        400
+      );
+    }
+    if (hasPinned && typeof input.body.pinned !== "boolean") {
+      throw new ConversationDomainError(
+        "PINNED_SETTING_INVALID",
+        "置顶设置无效",
+        400
+      );
+    }
+    const announcementVersion = input.body.announcementDismissedVersion;
+    if (
+      hasAnnouncementVersion &&
+      (typeof announcementVersion !== "number" ||
+        !Number.isSafeInteger(announcementVersion) ||
+        announcementVersion < 0)
+    ) {
+      throw new ConversationDomainError(
+        "ANNOUNCEMENT_VERSION_INVALID",
+        "公告版本无效",
+        400
+      );
+    }
+    const conversationId = this.uuid(
+      input.conversationId,
+      "CONVERSATION_ID_INVALID"
+    );
+    const result = await this.repository.updateSettings({
+      userId: input.userId,
+      conversationId,
+      notificationOverride: hasNotificationOverride
+        ? (notificationOverride as "inherit" | "normal" | "muted")
+        : undefined,
+      pinned: hasPinned ? (input.body.pinned as boolean) : undefined,
+      announcementDismissedVersion: hasAnnouncementVersion
+        ? (announcementVersion as number)
+        : undefined,
+      now: new Date()
+    });
+    await this.publishUnreadChanged(input.userId, conversationId);
+    return result;
+  }
+
   private async publishMessageCreated(
     actorUserId: string,
     message: MessageView,

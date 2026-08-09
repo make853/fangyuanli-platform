@@ -80,4 +80,12 @@ export type RealtimeConversationState = {
   navigationKey: "friends" | "plaza";
   navigationUnreadCount: number;
 };
+
+export type ConversationSettingsView = {
+  conversationId: string;
+  notificationOverride: "inherit" | "normal" | "muted";
+  pinned: boolean;
+  announcementDismissedVersion: number | null;
+  updatedAt: string;
+};
 import type { MediaView } from "../media/media.types.js";
