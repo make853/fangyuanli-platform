@@ -35,9 +35,9 @@ class PlazaScreen extends ConsumerStatefulWidget {
 class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   _PlazaView _view = _PlazaView.chat;
   late String _selectedPlazaId;
-  PlazaSummary? _selectedPlazaSnapshot;
   final _previewReadPlazaIds = <String>{};
   final _entryUnread = <String, PlazaUnreadState>{};
+  final _drafts = <String, String>{};
   ConversationSyncController? _readVisibleController;
   ConversationSyncController? _scheduledReadVisibleController;
   bool _scheduledReadVisible = false;
@@ -46,7 +46,6 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   void initState() {
     super.initState();
     _selectedPlazaId = widget.plazas.first.id;
-    _selectedPlazaSnapshot = widget.plazas.first;
   }
 
   @override
@@ -128,25 +127,14 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
   }
 
   Widget _buildChat(List<PlazaSummary> plazas, PlazaState plazaState) {
-    var currentSelection = plazas
+    final currentSelection = plazas
         .where((plaza) => plaza.id == _selectedPlazaId)
         .firstOrNull;
-    final shouldReplacePreviewSelection =
-        currentSelection == null &&
-        _selectedPlazaSnapshot?.conversationId == null &&
-        plazas.any((plaza) => plaza.conversationId != null);
-    if (shouldReplacePreviewSelection) {
-      currentSelection = plazas.first;
-      _selectedPlazaId = currentSelection.id;
-      _selectedPlazaSnapshot = currentSelection;
-    }
-    if (currentSelection != null) {
-      _selectedPlazaSnapshot = currentSelection;
-    }
-    final historicalSelection =
-        currentSelection == null &&
-        _selectedPlazaSnapshot?.id == _selectedPlazaId;
-    final selected = currentSelection ?? _selectedPlazaSnapshot ?? plazas.first;
+    final selected =
+        currentSelection ??
+        plazas.where((plaza) => plaza.isPrimary).firstOrNull ??
+        plazas.first;
+    _selectedPlazaId = selected.id;
     final selectedUnread =
         _entryUnread[selected.id] ??
         PlazaUnreadState(
@@ -158,12 +146,8 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
         selectedUnread.firstUnreadSequence != null) {
       _entryUnread.putIfAbsent(selected.id, () => selectedUnread);
     }
-    final canSend = !historicalSelection && selected.canSpeak;
-    final readOnlyMessage = historicalSelection
-        ? '已离开此广场，仅可查看历史消息'
-        : selected.canSpeak
-        ? null
-        : '当前广场仅可查看';
+    final canSend = selected.canSpeak;
+    final readOnlyMessage = selected.canSpeak ? null : '当前广场仅可查看';
     final conversationId = selected.conversationId;
     final currentUserId = ref.watch(
       authControllerProvider.select((state) => state.session?.userId),
@@ -180,7 +164,7 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
         : ref.read(plazaChatControllerProvider(liveScope).notifier);
     _scheduleReadVisibility(
       liveController,
-      widget.isActive && _view == _PlazaView.chat && !historicalSelection,
+      widget.isActive && _view == _PlazaView.chat,
     );
     return Column(
       children: [
@@ -197,9 +181,7 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                   Expanded(
                     child: _PlazaSwitchCard(
                       plaza: plazas[index],
-                      selected:
-                          !historicalSelection &&
-                          plazas[index].id == selected.id,
+                      selected: plazas[index].id == selected.id,
                       unreadCount:
                           _previewReadPlazaIds.contains(plazas[index].id)
                           ? 0
@@ -218,7 +200,6 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                           );
                         }
                         _selectedPlazaId = plazas[index].id;
-                        _selectedPlazaSnapshot = plazas[index];
                         if (plazas[index].conversationId == null) {
                           _previewReadPlazaIds.add(plazas[index].id);
                         } else {
@@ -291,6 +272,14 @@ class _PlazaScreenState extends ConsumerState<PlazaScreen> {
                     return located;
                   },
             readOnlyMessage: readOnlyMessage,
+            initialDraft: _drafts[selected.id] ?? '',
+            onDraftChanged: (value) {
+              if (value.isEmpty) {
+                _drafts.remove(selected.id);
+              } else {
+                _drafts[selected.id] = value;
+              }
+            },
             bottomChromeHeight:
                 (NavigationBarTheme.of(context).height ?? 80) +
                 MediaQuery.viewPaddingOf(context).bottom,

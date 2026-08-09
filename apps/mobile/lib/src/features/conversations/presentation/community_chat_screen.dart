@@ -89,6 +89,8 @@ class CommunityChatBody extends StatefulWidget {
     this.onLocateSequence,
     this.readOnlyMessage,
     this.bottomChromeHeight = 0,
+    this.initialDraft = '',
+    this.onDraftChanged,
     super.key,
   });
 
@@ -106,13 +108,15 @@ class CommunityChatBody extends StatefulWidget {
   final Future<bool> Function(int sequence)? onLocateSequence;
   final String? readOnlyMessage;
   final double bottomChromeHeight;
+  final String initialDraft;
+  final ValueChanged<String>? onDraftChanged;
 
   @override
   State<CommunityChatBody> createState() => _CommunityChatBodyState();
 }
 
 class _CommunityChatBodyState extends State<CommunityChatBody> {
-  final _textController = TextEditingController();
+  late final TextEditingController _textController;
   final _focusNode = FocusNode();
   final _composerController = ChatComposerController();
   late final ChatTimelineViewportController _timelineController;
@@ -124,6 +128,8 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
   @override
   void initState() {
     super.initState();
+    _textController = TextEditingController(text: widget.initialDraft)
+      ..addListener(_notifyDraftChanged);
     _timelineController = ChatTimelineViewportController();
     _unreadJumpCount = widget.initialUnreadCount;
     _unreadJumpSequence = widget.initialFirstUnreadSequence;
@@ -145,7 +151,7 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
   void didUpdateWidget(covariant CommunityChatBody oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.channel.id != widget.channel.id) {
-      _textController.clear();
+      _replaceDraft(widget.initialDraft);
       _composerController.dismiss(_focusNode);
       _announcementVisible = true;
       _messageKeys.clear();
@@ -205,11 +211,22 @@ class _CommunityChatBodyState extends State<CommunityChatBody> {
 
   @override
   void dispose() {
+    _textController.removeListener(_notifyDraftChanged);
     _textController.dispose();
     _focusNode.dispose();
     _timelineController.dispose();
     _composerController.dispose();
     super.dispose();
+  }
+
+  void _notifyDraftChanged() =>
+      widget.onDraftChanged?.call(_textController.text);
+
+  void _replaceDraft(String value) {
+    _textController.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
   }
 
   void _pending(String action) {
