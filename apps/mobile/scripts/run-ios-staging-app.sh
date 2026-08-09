@@ -72,9 +72,19 @@ PY
 cd "$mobile_dir"
 print -r -- "构建身份：staging · ${client_role} · ${build_identity}"
 fallback_app="$build_root/${xcode_configuration}-iphoneos/Runner.app"
+legacy_app="$build_root/iphoneos/Runner.app"
 fallback_mtime_before=0
 if [[ -d "$fallback_app" ]]; then
   fallback_mtime_before="$(stat -f '%m' "$fallback_app")"
+fi
+
+# Flutter occasionally looks in the legacy `iphoneos` directory after Xcode
+# wrote the current flavor to `<Configuration>-iphoneos`. A bundle left there
+# by an earlier run can otherwise be reported as a successful installation.
+# This is generated output only; removing it forces this invocation to either
+# install its fresh standard artifact or enter the timestamp-checked fallback.
+if [[ -d "$legacy_app" ]]; then
+  rm -rf -- "$legacy_app"
 fi
 
 if "$flutter_bin" run \
