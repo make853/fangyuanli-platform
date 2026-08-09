@@ -14,6 +14,7 @@ import '../../friends/presentation/friend_scan_screen.dart';
 import '../../friends/presentation/friends_screen.dart';
 import '../../posts/presentation/post_composer_screen.dart';
 import '../../places/presentation/places_screen.dart';
+import '../../places/application/place_controller.dart';
 import '../../plaza/application/plaza_controller.dart';
 import '../../plaza/presentation/plaza_screen.dart';
 import '../../profile/application/profile_controller.dart';
@@ -181,6 +182,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     final conversationState = ref.watch(conversationListControllerProvider);
     final friendsState = ref.watch(friendsControllerProvider);
     final plazaState = ref.watch(plazaControllerProvider);
+    final placeState = ref.watch(placeControllerProvider);
     final friendsUnread =
         conversationState.navigationUnread + friendsState.pendingRequestCount;
     return Scaffold(
@@ -222,6 +224,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
                 icon: destination.icon,
                 unreadCount: switch (destination.label) {
                   '广场' => plazaState.navigationUnread,
+                  '地点' => placeState.navigationUnread,
                   '好友' => friendsUnread,
                   _ => 0,
                 },
@@ -230,6 +233,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
                 icon: destination.selectedIcon,
                 unreadCount: switch (destination.label) {
                   '广场' => plazaState.navigationUnread,
+                  '地点' => placeState.navigationUnread,
                   '好友' => friendsUnread,
                   _ => 0,
                 },

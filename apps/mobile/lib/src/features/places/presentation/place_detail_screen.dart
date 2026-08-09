@@ -32,8 +32,10 @@ class PlaceDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
         children: [
-          NearbyPreviewNotice(text: '${place.name}目前使用交互预览数据'),
-          const SizedBox(height: 14),
+          if (place.conversationId.isEmpty) ...[
+            NearbyPreviewNotice(text: '${place.name}目前使用交互预览数据'),
+            const SizedBox(height: 14),
+          ],
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -90,7 +92,8 @@ class PlaceDetailScreen extends StatelessWidget {
           _PlaceDetailCard(
             title: '地点群信息',
             children: [
-              _DetailRow(label: '当前活跃', value: '${place.activePeople}人'),
+              if (place.activePeople case final activePeople?)
+                _DetailRow(label: '当前活跃', value: '$activePeople人'),
               const _DetailRow(label: '可见与发言', value: '地点出现在附近范围即可'),
               _DetailRow(
                 label: '认证状态',
