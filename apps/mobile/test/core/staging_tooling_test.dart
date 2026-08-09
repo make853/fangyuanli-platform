@@ -144,7 +144,7 @@ remote_host="staging@example.invalid"
     final fakeSsh = File('${temporaryDirectory.path}/ssh');
     await fakeSsh.writeAsString(r'''#!/bin/zsh
 case "$*" in
-  *STAGING_PUBLIC_HOST*) print -r -- 'staging.example.com' ;;
+  *STAGING_PUBLIC_HOST*) print -r -- '192.0.2.10' ;;
   *STAGING_TEST_PHONE_A*) print -r -- '13800000001' ;;
   *STAGING_TEST_PHONE_B*) print -r -- '13800000002' ;;
   *STAGING_SMS_TEST_CODE*) print -r -- '123456' ;;
@@ -179,12 +179,12 @@ print -r -- "\$@" > '${capturedArguments.path}'
     expect(arguments, contains('-d physical-field'));
     expect(
       arguments,
-      contains('--dart-define=API_BASE_URL=https://staging.example.com'),
+      contains('--dart-define=API_BASE_URL=https://192.0.2.10'),
     );
     expect(
       arguments,
       contains(
-        '--dart-define=REALTIME_URL=wss://staging.example.com/ws/v1',
+        '--dart-define=REALTIME_URL=wss://192.0.2.10/ws/v1',
       ),
     );
   }, skip: macOsOnly);

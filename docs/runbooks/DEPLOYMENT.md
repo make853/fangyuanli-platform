@@ -51,17 +51,19 @@ systemd 重启后 Node 进程通常需要不足一秒开始监听；健康检查
 端口转发。API继续只监听 `127.0.0.1:3000`，Nginx仅在80/443提供反向代理，
 并由 Let's Encrypt 签发和自动续期证书。
 
-先将测试域名解析到服务器公网IP，然后通过部署脚本配置入口：
+优先使用已备案的测试域名；暂时没有域名时也可直接使用服务器公网 IPv4。
+部署脚本会为域名申请普通证书，或为 IPv4 申请约6天有效且自动续期的短期
+证书：
 
 ```bash
 cd /srv/fangyuanli
-sudo STAGING_PUBLIC_HOST=staging-api.example.com \
+sudo STAGING_PUBLIC_HOST=服务器公网IP或staging-api.example.com \
   bash deploy/scripts/configure-staging-edge.sh
 ```
 
-脚本会把 `STAGING_PUBLIC_HOST` 写入仅服务器保存的 `.env`，安装仓库内受控的
-Nginx配置，限制短信与普通API请求速率，并验证 HTTPS `/health`。腾讯云安全组
-只开放22、80、443；禁止开放3000、PostgreSQL或Redis端口。
+脚本会把 `STAGING_PUBLIC_HOST` 写入仅服务器保存的 `.env`，安装官方 Certbot
+和仓库内受控的Nginx配置，限制短信与普通API请求速率，并验证 HTTPS `/health`。
+腾讯云安全组只开放22、80、443；禁止开放3000、PostgreSQL或Redis端口。
 
 在真机安装可脱离Mac运行的A端测试包：
 
@@ -70,7 +72,7 @@ zsh apps/mobile/scripts/run-ios-field-a.sh
 ```
 
 本机的 `a.sh` 和 `b.sh` 仍使用本地隧道，便于日常A/B调试；场外脚本只用于
-场外定位、移动网络和断网恢复验收。测试域名更换为正式域名时，只更新服务器
+场外定位、移动网络和断网恢复验收。公网 IPv4 更换为正式域名时，只更新服务器
 环境变量并重新执行入口配置脚本，移动端业务代码无需修改。
 
 查看运行状态和最近日志：
